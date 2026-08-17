@@ -615,6 +615,10 @@ Deviations / notes captured during implementation:
   The `log` channel card is **hidden** from the Settings Channels section (it's internal plumbing;
   events are always recorded regardless), while `log` stays in detector routing checkboxes and is
   treated as always-on for routing (`_targetsFor` matches `c.enabled || c.type == 'log'`).
+  `AppSettings.fromJson` **merges** any missing default channels into loaded settings (legacy
+  JSON persisted only `log` before Email/Discord existed, which left the Channels section empty
+  after hiding the log card); stored channel settings are preserved, merged ones default to
+  disabled.
 
 ## Appendix D — Desktop dev sources: live camera & audio (Aug 17 2026)
 
