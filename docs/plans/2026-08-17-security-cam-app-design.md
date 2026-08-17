@@ -477,7 +477,7 @@ Mac).
 |---|---|---|
 | Flutter | 3.41.2 stable / Dart 3.11.0 | Meets design floor (≥3.41); `flutter_foreground_task` is no longer used (replaced by the native module) |
 | Android SDK | `/home/tpa/code/android-env/android-sdk` | platforms android-33/34/36, build-tools 34.0.0/35.0.0, NDK 28.2, licenses accepted; `flutter doctor` Android toolchain ✓ |
-| JDK | 17 / 21 / 25 installed (`/usr/lib/jvm`) | PATH currently uses 25 — **set `flutter config --jdk-dir` to JDK 21 (or 17) before first Android build**; AGP 8.x tops out at JDK 21. Native module (Kotlin/CameraX) builds with the same JDK/Gradle |
+| JDK | 17 / 21 / 25 installed (`/usr/lib/jvm`) | **JDK 17 pinned** (`flutter config --jdk-dir /usr/lib/jvm/java-17-openjdk-amd64`): the 21/25 installs are **JRE-only (no `javac`)**, and AGP 8.x accepts 17. Verified: Android debug build + run on pixel_34 (B9.0) |
 | Emulator | 3 AVDs: pixel_34, pixel_34_aosp, pixel_24_aosp | Use pixel_34 for FGS/screen-off monitoring tests (lock + verify frames still arrive); pixel_24_aosp for min-API (24) checks |
 | Physical device | None connected (`adb devices` empty) | — |
 | Linux desktop | Toolchain ✓ | Fast local runs + `sqflite_common_ffi` storage tests before deploying to Android |
@@ -486,6 +486,7 @@ Mac).
 Phase 0 setup step: pin the JDK (21), confirm a clean `flutter create` + Android debug build
 on pixel_34, then scaffold the `camera_service` native module and verify a screen-off
 monitoring smoke test before any app code.
+
 ## Appendix C — Implementation status (Aug 17 2026)
 
 Phase 0 core (desktop-first dev model) is implemented and unit-tested; the app runs on Linux
@@ -711,3 +712,31 @@ prototyping, before the native Android `camera_service` module / iOS plugin land
 
 Mobile builds are unaffected at any point: the mobile `CameraSession`/audio implementations read
 their own config and ignore `cameraSource`/`audioSource`.
+
+## Appendix E — B9: Android mobile Phase 0 (Aug 17 2026)
+
+Android-first mobile milestone: native `camera_service` module (CameraX in a LifecycleService FGS
+hosting the FlutterEngine), real camera + mic + YAMNet, replacing the desktop sim/ffmpeg sources on
+Android. Desktop sources and the desktop app are unaffected.
+
+### B9.0 — Android baseline (✅ implemented)
+
+- JDK pinned to 17 (see Appendix B table). `compileSdk` set to **37** (installed) to satisfy
+  `flutter_secure_storage` (which compiles against 37); build is clean.
+- Verified on **pixel_34 AVD** (Android 14, API 34; booted headless with `-no-window -gpu
+  swiftshader_indirect`, KVM accel): app installs + launches with **no crashes** — sqflite
+  (`events.db` under the app files dir), Keystore secrets, Settings, Monitor, Events all work.
+- Monitoring smoke on the emulator: **Start → merged `Motion + Baby crying` event recorded**
+  (score 0.76), `snap-*.png` written to `files/snapshots/`, Events tab renders the row + thumbnail;
+  **Stop → Idle** cleanly. The full desktop pipeline (simulated sources → detectors → trigger
+  batcher → event pipeline → sqflite → snapshot store) runs unchanged on Android.
+- Notes: `adb` screen interaction used `uiautomator dump` for button bounds (Start/Stop at
+  `[32,1479][524,1605]`, content-desc `Start`/`Stop`). Emulator virtual camera + host PulseAudio
+  mic are available for later milestones.
+
+### B9.1 — Native `camera_service` module (screen-off FGS) — in progress
+
+(app-local Kotlin `camera_service` Android library module; `MonitoringService : LifecycleService`
+owning CameraX; FGS `camera|microphone`; PARTIAL_WAKE_LOCK; FlutterEngine hosted by the service;
+screen-off smoke gate: lock via `adb shell input keyevent KEYCODE_POWER` and verify ImageAnalysis
+frames keep flowing.)

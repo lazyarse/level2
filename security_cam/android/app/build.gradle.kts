@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "io.securitycam.security_cam"
-    compileSdk = flutter.compileSdkVersion
+    // 37 = highest installed platform (flutter_secure_storage compiles against 37).
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
