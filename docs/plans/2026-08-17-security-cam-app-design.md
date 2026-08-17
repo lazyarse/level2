@@ -481,6 +481,7 @@ Mac).
 | Emulator | 3 AVDs: pixel_34, pixel_34_aosp, pixel_24_aosp | Use pixel_34 for FGS/screen-off monitoring tests (lock + verify frames still arrive); pixel_24_aosp for min-API (24) checks |
 | Physical device | None connected (`adb devices` empty) | — |
 | Linux desktop | Toolchain ✓ | Fast local runs + `sqflite_common_ffi` storage tests before deploying to Android |
+| Dev media tooling | ffmpeg ✓ (`/usr/bin/ffmpeg`), `/dev/video0` + `/dev/video1`, PulseAudio + capture-capable ALSA (`pcmC0D0c`) | Enables the Appendix D dev sources (live webcam / mic / file playback) with no new pub dependencies — all `dart:io` + `image`, already present |
 
 Phase 0 setup step: pin the JDK (21), confirm a clean `flutter create` + Android debug build
 on pixel_34, then scaffold the `camera_service` native module and verify a screen-off
@@ -516,6 +517,7 @@ Deviations / notes captured during implementation:
 - Verified at runtime: app launches with no exceptions; `events.db` created under
   `~/.local/share/io.securitycam.security_cam/`; monitoring run writes snapshot PNGs and
   records events.
+
 - **Camera preview decode**: v1 used `ui.decodeImageFromPixelsSync`, which throws
   "decodeImageFromPixelsSync is not implemented on Skia" on every frame (Linux = Skia backend),
   aborting paint for the preview and the widgets below it (start/stop button, dropdown border —
@@ -523,3 +525,57 @@ Deviations / notes captured during implementation:
   `ui.decodeImageFromPixels`, caching the `ui.Image`, disposing only the replaced image
   (generation counter drops stale decodes), and reporting decode errors via `FlutterError`
   instead of throwing in `paint`. Covered by CameraView widget tests.
+- **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
+  (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
+
+## Appendix D — Desktop dev sources: live camera & audio (planned, Aug 17 2026)
+
+Agreed scope for Phase 0 dev tooling: replace the hardcoded simulated sessions with
+Settings-switchable sources so real scenes drive the pipeline during development. Desktop-only —
+the mobile `camera_service` native module / iOS plugin are unaffected and ignore these switches.
+
+Confirmed on this host: `ffmpeg` installed, `/dev/video0` + `/dev/video1` capture devices,
+PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencies — everything
+below uses `dart:io` (`Process`) + the already-present `image` package.
+
+### Settings (AppSettings, JSON round-trip, backward-compatible defaults)
+
+- `cameraSource`: `simulated` | `webcam` | `file` — default `simulated`
+- `cameraSourcePath`: device path (e.g. `/dev/video0`) or video file path
+- `audioSource`: `simulated` | `mic` | `file` — default `simulated`
+- `audioSourcePath`: audio file path
+
+### Camera: `FfmpegCameraSession implements CameraSession`
+
+- webcam: `ffmpeg -f v4l2 -framerate <fps> -i <dev> -vf scale=160:120 -pix_fmt gray -f rawvideo pipe:1`
+- file: `ffmpeg -re -stream_loop -1 -i <path> -vf scale=160:120 -pix_fmt gray -f rawvideo pipe:1`
+- stdout → pure `GrayFrameAssembler` → `GrayscaleBitmap`/`AnalysisFrame` stream at configured fps
+  (gray bytes are exactly `GrayscaleBitmap`'s layout — perfect fit).
+- `takeSnapshot()` = latest frame → PNG via `image` (same as the sim).
+- ffmpeg missing / device busy → readable error into the existing `MonitorState.error` path; sim
+  remains the fallback. stderr drained to avoid pipe-block deadlock; process killed in `dispose`.
+
+### Audio: `AudioSource` contract + `FfmpegAudioSource`
+
+- Extract `abstract AudioSource { Stream<AudioWindow> get windows; void start(); void stop(); void dispose(); }`;
+  `SimulatedAudioSource` implements it (already matches).
+- mic: `ffmpeg -f pulse -i default -ar 16000 -ac 1 -sample_fmt s16le -f s16le pipe:1`
+- file: `ffmpeg -re -stream_loop -1 -i <path> -ar 16000 -ac 1 -sample_fmt s16le -f s16le pipe:1`
+- stdout → pure `PcmWindowAccumulator` chunks 16 kHz s16le into 1 s `AudioWindow`s
+  (Float32 = sample/32768); looped files replay in real time.
+
+### Wiring & UI
+
+- `MonitorController.start()` picks camera/audio session from a small factory on
+  `settings.cameraSource`/`audioSource` (sim default); `_camera`/`_audio` typed as the contracts.
+- Settings screen: "Camera source" and "Audio source" `DropdownButton`-in-`InputDecorator`
+  controls (same pattern as the monitor screen), revealing a path field when webcam/file/mic-file
+  is selected. Persisted via the existing Save.
+
+### Tests & verification
+
+- Unit: `GrayFrameAssembler` (arbitrary chunk splits), `PcmWindowAccumulator`, ffmpeg arg builders,
+  settings round-trip incl. new fields with old-JSON fallback, source-selection factory.
+- Live: webcam → real preview + wave → motion alert + snapshot; recorded clip replayed from a file →
+  loops + alerts; mic → windows flow through the pipeline (note: the mock classifier rarely fires
+  baby_cry/glass on real speech — expected until YAMNet); bad device path → clear error, sim still works.
