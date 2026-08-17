@@ -533,6 +533,25 @@ Deviations / notes captured during implementation:
   noise in the mock); a real classifier differentiates later.
 - **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
   (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
+- **Planned next (agreed, not yet implemented) — trigger merging**: prevent bursts of
+  notifications by merging triggers that fire within a short window.
+  - `TriggerBatcher` between `pipeline.triggers` and `EventPipeline`: opens a batch on the first
+    trigger, captures the snapshot immediately (moment of interest), then flushes after a fixed
+    `notificationMergeWindow` (single `Timer`, no extending → notification delay bounded at the
+    window). Triggers after a flush start a new batch. Window = 0 disables merging (pass-through).
+  - `EventPipeline.handleBatch`: **one merged log entry**, one snapshot, one send per routed
+    channel (union of the batch's `routeToChannelIds` ∩ enabled), alert text joins labels
+    (`Motion + Baby crying detected in Hallway …`), `score` = max of the batch.
+  - **DB v2 migration**: `ALTER TABLE events ADD COLUMN trigger_types TEXT` (nullable, JSON array
+    of the individual types, only for merged rows). `trigger_type` stays a **single type** — the
+    type for normal events, or the new `TriggerType.merged = 'merged'` constant for merged rows
+    (never comma-joined). `RecordedEvent`/`RecordedEventRow` gain `triggerTypes: List<String>`.
+  - `AppSettings.notificationMergeWindow` (Duration, default 3 s, 0 = off), JSON round-trip,
+    Settings screen slider 0–30 s under a Notifications section. Events screen pretty-prints the
+    `triggerTypes` list and uses the first type's icon.
+  - Integration-test impact: the existing monitor runs (motion ≈0.5 s + baby_cry ≈1 s) merge into
+    one `merged` row with `triggerTypes = {motion, baby_cry}` and a single snapshot file; waits
+    bumped past the flush time.
 
 ## Appendix D — Desktop dev sources: live camera & audio (planned, Aug 17 2026)
 
