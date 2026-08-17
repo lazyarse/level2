@@ -1,16 +1,21 @@
+import 'dart:io';
+
 import '../core/camera_session.dart';
 import '../core/settings.dart';
+import 'android_camera_session.dart';
 import 'ffmpeg_camera_session.dart';
 import 'simulated_camera_session.dart';
 
-/// Dev-time camera source factory: `simulated` (default) → the moving-rect
-/// scene; `webcam`/`file` → [FfmpegCameraSession].
+/// Camera source factory.
 ///
-/// Dev-time only: the mobile `camera_service` module / iOS plugin always use
-/// the on-device camera and ignore [AppSettings.cameraSource]. To remove this
-/// dependency once prototyping is over, delete the `webcam`/`file` branches
-/// (and `ffmpeg_camera_session.dart`), keeping the sim as the desktop fallback.
+/// On Android the native `camera_service` module is always used — the on-device
+/// camera, ignoring [AppSettings.cameraSource] (mobile builds never use the
+/// dev-time sources). On desktop: `simulated` (default) → the moving-rect scene;
+/// `webcam`/`file` → [FfmpegCameraSession].
 CameraSession buildCameraSession(AppSettings settings) {
+  if (Platform.isAndroid) {
+    return AndroidCameraSession(cameraId: 'back');
+  }
   switch (settings.cameraSource) {
     case CameraSource.webcam:
     case CameraSource.file:

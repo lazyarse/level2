@@ -40,6 +40,18 @@ android {
     }
 }
 
+dependencies {
+    // 1.3.4 pinned: 1.4.x's bindToLifecycle(…, vararg useCases) collides in Kotlin
+    // with the 8-arg default-args synthetic facade (internal) — resolution picks
+    // the internal one and fails to compile.
+    val camerax = "1.3.4"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
+    implementation("androidx.core:core-ktx:1.13.1")
+}
+
 flutter {
     source = "../.."
 }

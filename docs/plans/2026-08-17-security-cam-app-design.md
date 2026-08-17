@@ -734,9 +734,39 @@ Android. Desktop sources and the desktop app are unaffected.
   `[32,1479][524,1605]`, content-desc `Start`/`Stop`). Emulator virtual camera + host PulseAudio
   mic are available for later milestones.
 
-### B9.1 — Native `camera_service` module (screen-off FGS) — in progress
+### B9.1 — Native `camera_service` module (screen-off FGS) — ✅ implemented
 
-(app-local Kotlin `camera_service` Android library module; `MonitoringService : LifecycleService`
-owning CameraX; FGS `camera|microphone`; PARTIAL_WAKE_LOCK; FlutterEngine hosted by the service;
-screen-off smoke gate: lock via `adb shell input keyevent KEYCODE_POWER` and verify ImageAnalysis
-frames keep flowing.)
+(app-local Kotlin `camera_service` **Android library module**; `MonitoringService : LifecycleService`
+owning CameraX; FGS `camera` (type `camera|microphone` is invalid — Android only accepts one
+`foregroundServiceType` per service element); PARTIAL_WAKE_LOCK; FlutterEngine hosted by the app
+activity — frame delivery is via an **EventChannel**, so the service itself needs no engine.)
+
+- **Wiring**: `MainActivity.onCreate` calls `CameraServiceChannels.attach(messenger, applicationContext)`.
+  MethodChannel `io.securitycam.security_cam/camera` (`startMonitoring(cameraId)` /
+  `stopMonitoring` / `captureStill`); EventChannel `io.securitycam.security_cam/frames` streams
+  `{width, height, gray}` at ~4 fps. `CameraFrameBus` fans frames out to registered sinks
+  (service → channels), so future consumers (audio bus) plug in the same way.
+- **ImageAnalysis** at 160×120, `STRATEGY_KEEP_ONLY_LATEST`, grayscale Y-plane extraction with
+  row/pixel stride handling (`toGray`). A 250 ms timestamp throttle in the analyzer bounds the
+  rate to ~4 fps (CameraX 1.3.4 has no `Camera2Interop.Extender.setTargetFrameRate`; dropped).
+  `ImageCapture` stills → JPEG bytes for the snapshot path.
+- **CameraX pinned 1.3.4**: 1.4.x `bindToLifecycle` Kotlin facade collision; on 1.3.4 use
+  `CameraSelector.DEFAULT_BACK_CAMERA` / `DEFAULT_FRONT_CAMERA` (the `LENS_FACING_*` constants are
+  `Int`, not `CameraSelector`). Use a `UseCaseGroup` for the two use cases.
+- **Platform-channel main-thread rule**: `EventSink.success`/`MethodChannel.Result` must run on the
+  main thread; the ImageAnalysis analyzer runs on a background pool — `publishFrame` posts to
+  `Handler(Looper.getMainLooper())` (first live run crashed with `@UiThread` violation; fixed).
+- **Dart side**: `AndroidCameraSession` (`lib/sensors/android_camera_session.dart`) listens to the
+  frames EventChannel; `buildCameraSession` returns it on Android; `parseFrameEvent` is a pure
+  helper (unit-tested; 105 tests green, analyze clean). `monitor_controller` subscribes to session
+  failures (nested ternary — Dart can't promote across `||`).
+- **Manifest**: `CAMERA`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CAMERA`, `WAKE_LOCK` permissions;
+  `<service android:name=".camera_service.MonitoringService" android:foregroundServiceType="camera"/>`.
+- **Live verification (pixel_34, headless)**:
+  - Start → FGS `Background started FGS: ...camera_service.MonitoringService`; logcat
+    `frames=30/60/120/180 (screen-on/off gate)` at ~4 fps (250 ms throttle).
+  - **Screen-off gate**: `adb shell input keyevent KEYCODE_POWER` → `mWakefulness=Asleep`; frames
+    kept flowing (60→120→180 across the Asleep window). **PASS**.
+  - Motion + Baby crying events (score 0.76, "Hallway") recorded at 22:22:11 and 22:23:11 — i.e.
+    **inside the screen-off window** — Events tab renders them.
+  - Stop → clean; no crashes after the main-thread fix.

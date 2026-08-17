@@ -11,6 +11,7 @@ import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
 import '../sensors/audio_source_factory.dart';
+import '../sensors/android_camera_session.dart';
 import '../sensors/camera_source_factory.dart';
 import '../sensors/ffmpeg_audio_source.dart';
 import '../sensors/ffmpeg_camera_session.dart';
@@ -140,11 +141,14 @@ class MonitorController extends ChangeNotifier {
         analysisHeight: 120,
         analysisFps: 4,
       ));
-      _cameraFailureSub = camera is FfmpegCameraSession
-          ? camera.failures.listen((message) {
-              unawaited(_failToError(message));
-            })
-          : null;
+      final cameraFailures = camera is FfmpegCameraSession
+          ? camera.failures
+          : camera is AndroidCameraSession
+              ? camera.failures
+              : null;
+      _cameraFailureSub = cameraFailures?.listen((message) {
+        unawaited(_failToError(message));
+      });
 
       final eventPipeline = EventPipeline(
         cameraSession: camera,
