@@ -19,6 +19,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _draft;
   final _nameController = TextEditingController();
+  final _cameraPathController = TextEditingController();
   final _tokenControllers = <String, TextEditingController>{};
   final _chatControllers = <String, TextEditingController>{};
 
@@ -27,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _draft = widget.controller.settings;
     _nameController.text = _draft.cameraName;
+    _cameraPathController.text = _draft.cameraSourcePath ?? '';
     for (final c in _draft.channelConfigs) {
       if (c.type == 'telegram') {
         _tokenControllers[c.id] =
@@ -44,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _cameraPathController.dispose();
     for (final c in _tokenControllers.values) {
       c.dispose();
     }
@@ -66,6 +69,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 24),
+          Text('Sources', style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Dev-time only: mobile builds always use the on-device camera and ignore these.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Camera source',
+              border: OutlineInputBorder(),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _draft.cameraSource,
+                isDense: true,
+                items: const [
+                  DropdownMenuItem(
+                      value: CameraSource.simulated, child: Text('Simulated')),
+                  DropdownMenuItem(
+                      value: CameraSource.webcam, child: Text('Webcam')),
+                  DropdownMenuItem(
+                      value: CameraSource.file, child: Text('Video file')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _draft = v == CameraSource.simulated
+                        ? _draft.copyWith(
+                            cameraSource: v, clearCameraSourcePath: true)
+                        : _draft.copyWith(cameraSource: v);
+                  });
+                },
+              ),
+            ),
+          ),
+          if (_draft.cameraSource != CameraSource.simulated) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _cameraPathController,
+              decoration: InputDecoration(
+                labelText: _draft.cameraSource == CameraSource.webcam
+                    ? 'Device path'
+                    : 'Video file path',
+                hintText: _draft.cameraSource == CameraSource.webcam
+                    ? '/dev/video0'
+                    : '/path/to/clip.mp4',
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Detectors', style: Theme.of(context).textTheme.titleMedium),
           for (final type in _draft.detectorConfigs.keys)
@@ -216,10 +271,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         channels.add(c);
       }
     }
+    final sourcePath = _draft.cameraSource == CameraSource.simulated
+        ? null
+        : _cameraPathController.text.trim();
     final next = _draft.copyWith(
       cameraName: _nameController.text.trim().isEmpty
           ? _draft.cameraName
           : _nameController.text.trim(),
+      cameraSourcePath: sourcePath,
+      clearCameraSourcePath: sourcePath == null,
       channelConfigs: channels,
     );
     await widget.controller.updateSettings(next);

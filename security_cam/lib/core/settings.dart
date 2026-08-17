@@ -2,14 +2,28 @@ import '../core/channel.dart';
 import '../core/detector.dart';
 import '../core/models.dart';
 
+/// Camera source choices (desktop dev-only; the mobile `camera_service` module
+/// and iOS plugin ignore these and always use the on-device camera).
+class CameraSource {
+  static const simulated = 'simulated';
+  static const webcam = 'webcam';
+  static const file = 'file';
+
+  const CameraSource._();
+}
+
 class AppSettings {
   final String cameraName;
+  final String cameraSource;
+  final String? cameraSourcePath;
   final Map<String, DetectorConfig> detectorConfigs;
   final List<ChannelConfig> channelConfigs;
   final Duration notificationMergeWindow;
 
   const AppSettings({
     this.cameraName = 'Hallway',
+    this.cameraSource = CameraSource.simulated,
+    this.cameraSourcePath,
     this.detectorConfigs = const {},
     this.channelConfigs = const [],
     this.notificationMergeWindow = const Duration(seconds: 3),
@@ -54,12 +68,19 @@ class AppSettings {
 
   AppSettings copyWith({
     String? cameraName,
+    String? cameraSource,
+    String? cameraSourcePath,
+    bool clearCameraSourcePath = false,
     Map<String, DetectorConfig>? detectorConfigs,
     List<ChannelConfig>? channelConfigs,
     Duration? notificationMergeWindow,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
+      cameraSource: cameraSource ?? this.cameraSource,
+      cameraSourcePath: clearCameraSourcePath
+          ? null
+          : cameraSourcePath ?? this.cameraSourcePath,
       detectorConfigs: detectorConfigs ?? this.detectorConfigs,
       channelConfigs: channelConfigs ?? this.channelConfigs,
       notificationMergeWindow: notificationMergeWindow ?? this.notificationMergeWindow,
@@ -68,6 +89,8 @@ class AppSettings {
 
   Map<String, dynamic> toJson() => {
         'cameraName': cameraName,
+        'cameraSource': cameraSource,
+        if (cameraSourcePath != null) 'cameraSourcePath': cameraSourcePath,
         'detectorConfigs': detectorConfigs.map((k, v) => MapEntry(k, v.toJson())),
         'channelConfigs': channelConfigs.map((c) => c.toJson()).toList(),
         'notificationMergeWindowMs': notificationMergeWindow.inMilliseconds,
@@ -83,6 +106,9 @@ class AppSettings {
         .toList();
     return AppSettings(
       cameraName: json['cameraName'] as String? ?? defaults.cameraName,
+      cameraSource:
+          json['cameraSource'] as String? ?? defaults.cameraSource,
+      cameraSourcePath: json['cameraSourcePath'] as String?,
       detectorConfigs: detectors ?? defaults.detectorConfigs,
       channelConfigs: channels ?? defaults.channelConfigs,
       notificationMergeWindow: Duration(

@@ -9,8 +9,9 @@ import '../detection/audio/audio_classifier.dart';
 import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
+import '../sensors/camera_source_factory.dart';
+import '../sensors/ffmpeg_camera_session.dart';
 import '../sensors/simulated_audio_source.dart';
-import '../sensors/simulated_camera_session.dart';
 import '../storage/event_recorder.dart';
 import '../storage/settings_store.dart';
 import '../storage/snapshot_store.dart';
@@ -26,7 +27,7 @@ class MonitorController extends ChangeNotifier {
   AppSettings settings = AppSettings.defaults();
   String? error;
 
-  SimulatedCameraSession? _camera;
+  CameraSession? _camera;
   SimulatedAudioSource? _audio;
   DetectorPipeline? _pipeline;
   TriggerBatcher? _batcher;
@@ -34,6 +35,7 @@ class MonitorController extends ChangeNotifier {
   StreamSubscription<AudioWindow>? _audioSub;
   StreamSubscription<TriggerEvent>? _triggerSub;
   StreamSubscription<TriggerBatch>? _batchSub;
+  StreamSubscription<String>? _cameraFailureSub;
 
   MonitorController({
     required this.settingsStore,
@@ -78,7 +80,7 @@ class MonitorController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final camera = SimulatedCameraSession();
+      final camera = buildCameraSession(settings);
       final audio = SimulatedAudioSource();
       final pipeline = DetectorPipeline(
         classifier: MockAudioEventClassifier(),
@@ -91,6 +93,11 @@ class MonitorController extends ChangeNotifier {
         analysisHeight: 120,
         analysisFps: 4,
       ));
+      _cameraFailureSub = camera is FfmpegCameraSession
+          ? camera.failures.listen((message) {
+              unawaited(_failToError(message));
+            })
+          : null;
 
       final eventPipeline = EventPipeline(
         cameraSession: camera,
@@ -139,11 +146,19 @@ class MonitorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _failToError(String message) async {
+    await _disposeRuntime();
+    state = MonitorState.error;
+    error = message;
+    notifyListeners();
+  }
+
   Future<void> _disposeRuntime() async {
     await _audioSub?.cancel();
     await _frameSub?.cancel();
     await _triggerSub?.cancel();
     await _batchSub?.cancel();
+    await _cameraFailureSub?.cancel();
     _audio?.stop();
     await _pipeline?.dispose();
     await _camera?.dispose();
@@ -152,6 +167,7 @@ class MonitorController extends ChangeNotifier {
     _frameSub = null;
     _triggerSub = null;
     _batchSub = null;
+    _cameraFailureSub = null;
     _audio = null;
     _camera = null;
     _pipeline = null;

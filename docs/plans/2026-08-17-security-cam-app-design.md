@@ -531,8 +531,9 @@ Deviations / notes captured during implementation:
   baby-cry ≈ 0.3, silence ≈ 0; `AudioScene.bang` = full-window broadband noise, rms ≈ 0.58 →
   score ≈ 0.85). Sim quirk: a loud bang also scores high on `glass` (both are loud broadband
   noise in the mock); a real classifier differentiates later.
-- **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
-  (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
+- **Desktop dev sources (implemented — see Appendix D)**: live webcam + video-file camera sources
+  (`ffmpeg` raw-gray frames → pipeline), switchable in Settings; mic + audio-file sources still
+  planned. Dev-time only, with a documented removal path.
 - **Phase 0 completion (A1–A4, A7 — implemented)**:
   - **A1** Events screen shows captured snapshots: `EventsScreen` gained a `SnapshotStore`; events
     with `snapshotName` render a 48px thumbnail (`Image.memory` via `load`) with tap-to-dialog
@@ -587,34 +588,42 @@ Deviations / notes captured during implementation:
     one `merged` row with `triggerTypes = {motion, baby_cry}` / `{motion, loud_noise}` and a
     single snapshot file.
 
-## Appendix D — Desktop dev sources: live camera & audio (planned, Aug 17 2026)
+## Appendix D — Desktop dev sources: live camera & audio (Aug 17 2026)
 
-Agreed scope for Phase 0 dev tooling: replace the hardcoded simulated sessions with
-Settings-switchable sources so real scenes drive the pipeline during development. Desktop-only —
-the mobile `camera_service` native module / iOS plugin are unaffected and ignore these switches.
+Phase 0 dev tooling to replace the hardcoded simulated sessions with Settings-switchable sources
+so real scenes drive the pipeline during development. Desktop-only — the mobile `camera_service`
+native module / iOS plugin are unaffected and ignore these switches.
 
-Confirmed on this host: `ffmpeg` installed, `/dev/video0` + `/dev/video1` capture devices,
-PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencies — everything
-below uses `dart:io` (`Process`) + the already-present `image` package.
+**Status: camera sources (webcam + video file) implemented; audio sources (mic + audio file) still
+planned.** Confirmed on this host: `ffmpeg 8.1.2`, `/dev/video0` + `/dev/video1` capture devices,
+PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencies — everything uses
+`dart:io` (`Process`) + the already-present `image` package.
 
 ### Settings (AppSettings, JSON round-trip, backward-compatible defaults)
 
-- `cameraSource`: `simulated` | `webcam` | `file` — default `simulated`
-- `cameraSourcePath`: device path (e.g. `/dev/video0`) or video file path
-- `audioSource`: `simulated` | `mic` | `file` — default `simulated`
-- `audioSourcePath`: audio file path
+- `cameraSource`: `simulated` | `webcam` | `file` — default `simulated` ✅ implemented
+- `cameraSourcePath`: device path (e.g. `/dev/video0`) or video file path ✅ implemented
+- `audioSource`: `simulated` | `mic` | `file` — default `simulated` (planned)
+- `audioSourcePath`: audio file path (planned)
 
-### Camera: `FfmpegCameraSession implements CameraSession`
+### Camera: `FfmpegCameraSession implements CameraSession` — ✅ implemented
 
 - webcam: `ffmpeg -f v4l2 -framerate <fps> -i <dev> -vf scale=160:120 -pix_fmt gray -f rawvideo pipe:1`
 - file: `ffmpeg -re -stream_loop -1 -i <path> -vf scale=160:120 -pix_fmt gray -f rawvideo pipe:1`
-- stdout → pure `GrayFrameAssembler` → `GrayscaleBitmap`/`AnalysisFrame` stream at configured fps
-  (gray bytes are exactly `GrayscaleBitmap`'s layout — perfect fit).
+- stdout → pure `GrayFrameAssembler` (`lib/sensors/gray_frame_assembler.dart`) →
+  `GrayscaleBitmap`/`AnalysisFrame` stream (gray bytes are exactly `GrayscaleBitmap`'s layout).
 - `takeSnapshot()` = latest frame → PNG via `image` (same as the sim).
-- ffmpeg missing / device busy → readable error into the existing `MonitorState.error` path; sim
-  remains the fallback. stderr drained to avoid pipe-block deadlock; process killed in `dispose`.
+- Async ffmpeg death (bad device/path) surfaces a readable message via a `failures` stream →
+  `MonitorState.error`; sim remains the fallback. stderr drained (bounded) to avoid pipe-block
+  deadlock; `dispose` = SIGTERM → SIGKILL fallback.
+- Source selection via `lib/sensors/camera_source_factory.dart`
+  (`buildCameraSession(AppSettings)`: sim default, ffmpeg for webcam/file, readable error when a
+  required path is missing). `MonitorController.start()` picks the session from settings and
+  subscribes the failure stream after `init()`.
+- Settings UI: **Sources** section with a camera-source dropdown (monitor-screen pattern) that
+  reveals a device/file path field; the section notes this is dev-time-only.
 
-### Audio: `AudioSource` contract + `FfmpegAudioSource`
+### Audio: `AudioSource` contract + `FfmpegAudioSource` — planned
 
 - Extract `abstract AudioSource { Stream<AudioWindow> get windows; void start(); void stop(); void dispose(); }`;
   `SimulatedAudioSource` implements it (already matches).
@@ -623,18 +632,34 @@ below uses `dart:io` (`Process`) + the already-present `image` package.
 - stdout → pure `PcmWindowAccumulator` chunks 16 kHz s16le into 1 s `AudioWindow`s
   (Float32 = sample/32768); looped files replay in real time.
 
-### Wiring & UI
-
-- `MonitorController.start()` picks camera/audio session from a small factory on
-  `settings.cameraSource`/`audioSource` (sim default); `_camera`/`_audio` typed as the contracts.
-- Settings screen: "Camera source" and "Audio source" `DropdownButton`-in-`InputDecorator`
-  controls (same pattern as the monitor screen), revealing a path field when webcam/file/mic-file
-  is selected. Persisted via the existing Save.
-
 ### Tests & verification
 
-- Unit: `GrayFrameAssembler` (arbitrary chunk splits), `PcmWindowAccumulator`, ffmpeg arg builders,
-  settings round-trip incl. new fields with old-JSON fallback, source-selection factory.
-- Live: webcam → real preview + wave → motion alert + snapshot; recorded clip replayed from a file →
-  loops + alerts; mic → windows flow through the pipeline (note: the mock classifier rarely fires
-  baby_cry/glass on real speech — expected until YAMNet); bad device path → clear error, sim still works.
+- Unit ✅: `GrayFrameAssembler` (exact-frame, arbitrary byte splits, multi-frame chunks, remainder
+  carry), ffmpeg argv builders (webcam + file exact argv, unsupported source), source-selection
+  factory (sim/webcam/file, missing-path error), settings round-trip incl. new fields +
+  old-JSON fallback.
+- Live ✅ (`test/ffmpeg_live_test.dart`, skipped if ffmpeg absent): bogus file path →
+  readable `ffmpeg exited with code …` error + teardown; real generated clip (`testsrc`) replays and
+  streams frames at `MonitorState.monitoring`.
+- Live (manual, verified on host): webcam `/dev/video0` real preview + motion alerts + snapshots;
+  `/tmp/clip.mp4` (generated `testsrc`) loops with alerts; bogus path → clear error, sim fallback.
+- Audio (planned): `PcmWindowAccumulator`, arg builders, live mic → windows flow (note: the mock
+  classifier rarely fires baby_cry/glass on real speech — expected until YAMNet).
+
+### Dev-time only — how to remove
+
+These ffmpeg-backed sources exist **only** to drive real footage through the pipeline during
+prototyping, before the native Android `camera_service` module / iOS plugin land. Removal path:
+
+1. Delete `lib/sensors/ffmpeg_camera_session.dart` and `lib/sensors/camera_source_factory.dart`
+   (plus `lib/sensors/gray_frame_assembler.dart` and, if added, `pcm_window_accumulator.dart`).
+2. Drop `cameraSource`/`cameraSourcePath` (and `audioSource`/`audioSourcePath`) from `AppSettings`
+   (fields, `copyWith`, JSON) and the **Sources** section from the Settings screen.
+3. Revert `MonitorController.start()` to construct the sim sessions directly (or keep the factory
+   with only the sim branch as a desktop fallback).
+4. Remove the ffmpeg-gated live tests (`test/ffmpeg_live_test.dart`, `test/ffmpeg_args_test.dart`,
+   `test/camera_source_factory_test.dart`, `test/gray_frame_assembler_test.dart`).
+5. `ffmpeg` itself is a dev-host dependency only; no pub dependency is introduced.
+
+Mobile builds are unaffected at any point: the mobile `CameraSession`/audio implementations read
+their own config and ignore `cameraSource`/`audioSource`.
