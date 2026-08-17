@@ -16,6 +16,7 @@ class EventPipeline {
   final Map<String, ChannelConfig> channelConfigs;
   final EventRecorder recorder;
   final SnapshotStore snapshotStore;
+  final Map<String, ChannelFactory> _channelFactories;
 
   EventPipeline({
     required this.cameraSession,
@@ -24,7 +25,8 @@ class EventPipeline {
     required this.channelConfigs,
     required this.recorder,
     required this.snapshotStore,
-  });
+    Map<String, ChannelFactory>? channelFactories,
+  }) : _channelFactories = channelFactories ?? channelRegistry;
 
   Future<void> handleBatch(TriggerBatch batch) async {
     final types = <String>{
@@ -52,7 +54,7 @@ class EventPipeline {
 
     final statuses = <String, String>{};
     for (final target in targets) {
-      final channel = channelRegistry[target.type]!(target);
+      final channel = _channelFactories[target.type]!(target);
       try {
         await channel.send(message);
         statuses[target.id] = 'delivered';

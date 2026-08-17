@@ -75,6 +75,25 @@ class SqliteEventLog implements EventRecorder {
     });
   }
 
+  @override
+  Future<List<String>> deleteEvents({DateTime? olderThan}) async {
+    final where = olderThan == null ? null : 'timestamp < ?';
+    final whereArgs =
+        olderThan == null ? null : [olderThan.toIso8601String()];
+    final rows = await _db.query(
+      _table,
+      columns: ['snapshot_name'],
+      where: where,
+      whereArgs: whereArgs,
+    );
+    final names = rows
+        .map((r) => r['snapshot_name'] as String?)
+        .whereType<String>()
+        .toList();
+    await _db.delete(_table, where: where, whereArgs: whereArgs);
+    return names;
+  }
+
   Future<List<RecordedEventRow>> recent({int limit = 100}) async {
     final rows = await _db.query(_table, orderBy: 'timestamp DESC', limit: limit);
     return rows.map(_rowFromMap).toList();

@@ -52,6 +52,17 @@ class MonitorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> clearEvents({Duration? olderThan}) async {
+    final cutoff =
+        olderThan == null ? null : DateTime.now().subtract(olderThan);
+    final names = await eventRecorder.deleteEvents(olderThan: cutoff);
+    for (final name in names) {
+      try {
+        await snapshotStore.delete(name);
+      } catch (_) {}
+    }
+  }
+
   Stream<AnalysisFrame>? get analysisFrames => _camera?.analysisFrames;
 
   AudioScene get audioScene => _audio?.scene ?? AudioScene.babyCry;

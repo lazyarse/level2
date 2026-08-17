@@ -38,5 +38,6 @@ Future<void> main() async {
   runApp(SecurityCamApp(
     controller: controller,
     eventLoader: () => eventLog.recent(limit: 200),
+    snapshotStore: snapshotStore,
   ));
 }

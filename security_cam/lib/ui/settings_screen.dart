@@ -105,6 +105,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }),
           ),
           const SizedBox(height: 24),
+          Text('Events', style: Theme.of(context).textTheme.titleMedium),
+          OutlinedButton.icon(
+            onPressed: () => _confirmClearEvents(const Duration(hours: 24)),
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text('Clear events older than 24h'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _confirmClearEvents(null),
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Clear all events'),
+          ),
+          const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save),
@@ -112,6 +125,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _confirmClearEvents(Duration? olderThan) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear events'),
+        content: Text(olderThan == null
+            ? 'Delete ALL recorded events and their snapshots?'
+            : 'Delete events older than ${olderThan.inHours}h and their snapshots?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.controller.clearEvents(olderThan: olderThan);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Events cleared')),
     );
   }
 
@@ -239,6 +280,26 @@ class _DetectorCard extends StatelessWidget {
                 ],
               ),
               Text('Cooldown: ${config.cooldown.inSeconds}s'),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: config.cooldown.inSeconds > 0
+                        ? () => onChanged(config.copyWith(
+                            cooldown: Duration(
+                                seconds: config.cooldown.inSeconds - 15)))
+                        : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: config.cooldown.inSeconds < 600
+                        ? () => onChanged(config.copyWith(
+                            cooldown: Duration(
+                                seconds: config.cooldown.inSeconds + 15)))
+                        : null,
+                  ),
+                ],
+              ),
               Wrap(
                 children: [
                   for (final id in channelIds)

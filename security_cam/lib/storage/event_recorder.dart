@@ -20,4 +20,6 @@ class RecordedEvent {
 
 abstract class EventRecorder {
   Future<void> record(RecordedEvent event);
+
+  Future<List<String>> deleteEvents({DateTime? olderThan});
 }

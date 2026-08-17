@@ -502,7 +502,7 @@ with simulated camera/audio so the full pipeline is exercised without hardware.
 | Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
 | Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
 | UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
-| Verification | ✅ | `flutter analyze` clean; 38 tests pass (detectors incl. loud-noise, pipeline/cooldown, trigger batcher, classifier scenes, Telegram via MockClient, settings round-trip incl. merge window, full MonitorController monitoring runs producing **merged** events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
+| Verification | ✅ | `flutter analyze` clean; 51 tests pass (detectors incl. loud-noise, pipeline/cooldown, trigger batcher, classifier scenes, Telegram via MockClient, settings round-trip incl. merge window, DB v1→v2 migration + deleteEvents, `handleBatch` via injected channels, events-screen thumbnail widget tests, shell navigation keeps Events state, full MonitorController monitoring runs producing **merged** events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified (merged event + thumbnails on the Events tab) |
 
 Deviations / notes captured during implementation:
 
@@ -533,26 +533,40 @@ Deviations / notes captured during implementation:
   noise in the mock); a real classifier differentiates later.
 - **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
   (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
-- **Planned next (agreed, not yet implemented) — Phase 0 completion (A1–A4, then A7)**:
-  - **A1** Events screen shows captured snapshots: `EventsScreen` gains a `SnapshotStore`, events
+- **Phase 0 completion (A1–A4, A7 — implemented)**:
+  - **A1** Events screen shows captured snapshots: `EventsScreen` gained a `SnapshotStore`; events
     with `snapshotName` render a 48px thumbnail (`Image.memory` via `load`) with tap-to-dialog
     full view + icon fallback; `SecurityCamApp`/`_Shell`/`main.dart` thread the store through.
   - **A2** Editable detector cooldown in Settings: `_DetectorCard` replaces the read-only cooldown
     text with − / + steppers (15 s step, 0–600 s; 0 = no cooldown), persisted via `cooldownMs`.
-  - **A3** DB v1→v2 migration test: open a temp-file v1 DB (old DDL), insert a row, reopen at v2
-    via `SqliteEventLog.open` → assert the old row reads back with empty `triggerTypes`; plus a v2
-    round-trip test (merged `triggerTypes` stored/read; single-type stores NULL).
-  - **A4** `EventPipeline.handleBatch` unit tests: add optional `channelFactories` param to
-    `EventPipeline` (defaults to `channelRegistry`) so tests can inject mock channels. Cover:
-    multi-detector union routing → one send, `trigger_type='merged'`, `triggerTypes`, max score,
-    snapshot saved once; single-trigger → own type, empty `triggerTypes`; empty routes → all
-    enabled channels; missing detector config → log-only fallback; channel failure (500) →
-    status `failed`, event still recorded.
-  - **A7** Live verification via `flutter run`: merged `Motion + Baby crying` event with visible
-    snapshot thumbnail, cooldown tweak to 0, no paint exceptions.
-  - **Deferred to Phase 1**: A5 snapshot retention purge, A6 `flutter_secure_storage` for the
-    Telegram token. **Next steps after**: B8 desktop dev sources (Appendix D), B9 mobile Phase 0
-    (native `camera_service` module, YAMNet swap, real mic).
+  - **A3** DB v1→v2 migration test: temp-file v1 DB (old DDL) reopens at v2 and the old row reads
+    back with empty `triggerTypes`; plus v2 round-trip (merged `triggerTypes` stored/read,
+    single-type stores NULL).
+  - **A4** `EventPipeline.handleBatch` unit tests: optional `channelFactories` param (defaults to
+    `channelRegistry`) injects mock channels. Covers: union routing → one send, merged metadata,
+    max score, snapshot saved once; single-trigger; empty routes → all enabled; missing detector
+    config → log-only fallback; channel failure (500) → status `failed`, event still recorded.
+  - **A7** Live verification on the dev machine: monitoring runs produced **merged**
+    `Motion + Baby crying` events with snapshot thumbnails visible on the Events tab; cooldown
+    steppers and clear-events verified in Settings; `flutter analyze` clean, **51 tests pass**.
+- **Events UX (implemented)**:
+  - Events tab auto-refreshes when selected: `_Shell` passes a `reloadTick`, incremented when the
+    Events destination is picked; `EventsScreen.didUpdateWidget` reloads on a tick change.
+  - Dialog preview enlarged to 480×360 with `InteractiveViewer` (pinch/scroll zoom, max 8×).
+  - **Bug found during A7**: `EventsScreen._reload` used `setState(() => _future = widget.loader())` —
+    the arrow closure returns the `Future`, tripping Flutter's debug assert ("setState() callback
+    argument returned a Future") during `didUpdateWidget`; the failed build left the Events subtree
+    unrendered (blank tab; header/nav still hit-testable — tooltips worked). Fixed with a
+    block-bodied `setState`. Caught by a new `shell_navigation_test.dart` that asserts the Events
+    State is **not** recreated across tab switches.
+  - **Clear events (pulled forward from A5)**: `EventRecorder.deleteEvents({DateTime? olderThan})`
+    + `SqliteEventLog` impl (queries then deletes rows, returns removed `snapshot_name`s);
+    `MonitorController.clearEvents` deletes rows + snapshot files; Settings Events section with
+    "Clear events older than 24h" and "Clear all events" behind confirm dialogs. Automatic snapshot
+    retention purge remains deferred to Phase 1.
+  - **Deferred to Phase 1**: A6 `flutter_secure_storage` for the Telegram token. **Next steps
+    after**: B8 desktop dev sources (Appendix D), B9 mobile Phase 0 (native `camera_service`
+    module, YAMNet swap, real mic).
 - **Trigger merging (implemented)**: prevent bursts of notifications by merging triggers that
   fire within a short window.
   - `TriggerBatcher` between `pipeline.triggers` and `EventPipeline`: opens a batch on the first
