@@ -500,8 +500,8 @@ with simulated camera/audio so the full pipeline is exercised without hardware.
 | Channels | ✅ | Log + Telegram (bot token/chat ID, `sendPhoto` w/ text fallback, injectable `http.Client`, validation). Email SMTP, Discord, Webhook presets, Pushover, MQTT → later phases per roadmap |
 | Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
 | Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
-| UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar |
-| Verification | ✅ | `flutter analyze` clean; 27 tests pass (detectors, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring run producing motion+baby_cry events + snapshot files); Linux debug build + launch smoke-tested |
+| UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
+| Verification | ✅ | `flutter analyze` clean; 30 tests pass (detectors, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring run producing motion+baby_cry events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
 
 Deviations / notes captured during implementation:
 
@@ -516,3 +516,10 @@ Deviations / notes captured during implementation:
 - Verified at runtime: app launches with no exceptions; `events.db` created under
   `~/.local/share/io.securitycam.security_cam/`; monitoring run writes snapshot PNGs and
   records events.
+- **Camera preview decode**: v1 used `ui.decodeImageFromPixelsSync`, which throws
+  "decodeImageFromPixelsSync is not implemented on Skia" on every frame (Linux = Skia backend),
+  aborting paint for the preview and the widgets below it (start/stop button, dropdown border —
+  red dot stayed, hit-testing kept working). Fixed by decoding asynchronously with the standard
+  `ui.decodeImageFromPixels`, caching the `ui.Image`, disposing only the replaced image
+  (generation counter drops stale decodes), and reporting decode errors via `FlutterError`
+  instead of throwing in `paint`. Covered by CameraView widget tests.
