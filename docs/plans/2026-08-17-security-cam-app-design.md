@@ -497,12 +497,12 @@ with simulated camera/audio so the full pipeline is exercised without hardware.
 | Detectors v1 | ✅ | Pixel-diff `MotionDetector` (tolerance 30, threshold ratio, persistence, cooldown), per-type `BabyCryDetector` / `GlassBreakDetector` / `LoudNoiseDetector` reading shared per-window `AudioEventScores` |
 | Audio | ✅ (mock) | `AudioEventClassifier` interface; `MockAudioEventClassifier` (RMS + zero-crossing → baby_cry / glass / loud_noise). YAMNet/tflite swap later on mobile (Appendix A1 notes) |
 | Pipeline | ✅ | `DetectorPipeline`: multi-trigger, per-detector cooldown, sync broadcast bus. Frames at 160×120 @ 4fps, audio windows @ 1s |
-| Event pipeline | ✅ | Trigger → snapshot → route = enabled ∩ `routeToChannelIds` (log-only if none) → per-channel send → SQLite record with per-channel statuses. Delivery retry/backoff (3 attempts) is **not yet implemented** (Phase 1). Worker-isolate offload for encode/SQLite/HTTP is **not yet implemented** (Phase 1) |
-| Channels | ✅ | Log + Telegram (bot token/chat ID, `sendPhoto` w/ text fallback, injectable `http.Client`, validation). Email SMTP, Discord, Webhook presets, Pushover, MQTT → later phases per roadmap |
-| Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
+| Event pipeline | ✅ | Trigger → snapshot → route = enabled ∩ `routeToChannelIds` (log-only if none) → per-channel send → SQLite record with per-channel statuses. Delivery retry/backoff (3 attempts, 1 s/2 s/4 s) implemented (Phase 0.5). Worker-isolate offload for encode/SQLite/HTTP: **deferred to B9** — async HTTP doesn't block the UI event loop, encode is ~ms at 160×120, DB writes are WAL-batched, so isolate complexity isn't justified at prototype scale |
+| Channels | ✅ | Log + Telegram (bot token/chat ID, `sendPhoto` w/ text fallback, injectable `http.Client`, validation) + Email (SMTP via `mailer` v7, injectable transport for tests, TLS toggle) + Discord (webhook multipart upload, injectable `http.Client`, URL validation). Webhook presets, Pushover, MQTT → later phases per roadmap |
+| Storage | ✅ | `SettingsStore` (shared_preferences) with `SecretStore` secrets (flutter_secure_storage Keystore/Keychain; SharedPreferences-backed dev store on desktop), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, automatic retention purge wired via `retentionDays`) |
 | Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
-| UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
-| Verification | ✅ | `flutter analyze` clean; 51 tests pass (detectors incl. loud-noise, pipeline/cooldown, trigger batcher, classifier scenes, Telegram via MockClient, settings round-trip incl. merge window, DB v1→v2 migration + deleteEvents, `handleBatch` via injected channels, events-screen thumbnail widget tests, shell navigation keeps Events state, full MonitorController monitoring runs producing **merged** events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified (merged event + thumbnails on the Events tab) |
+| UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram/Email/Discord + retention slider), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
+| Verification | ✅ | `flutter analyze` clean; 99 tests pass (detectors incl. loud-noise, pipeline/cooldown, trigger batcher, classifier scenes, Telegram + Email + Discord via injectable transports/MockClient, settings round-trip incl. merge window + retention + secret stripping/migration, DB v1→v2 migration + deleteEvents, `handleBatch` via injected channels, event pipeline retry/backoff, purge on 7-day boundary, Settings-screen channel-form widget tests, events-screen thumbnail widget tests, shell navigation keeps Events state, full MonitorController monitoring runs producing **merged** events + snapshot files, grayscaleToRGBA + CameraView widget tests, ffmpeg dev-source unit + live tests); Linux debug build + launch smoke-tested, monitoring run live-verified (merged event + thumbnails on the Events tab) |
 
 Deviations / notes captured during implementation:
 
@@ -560,14 +560,13 @@ Deviations / notes captured during implementation:
     unrendered (blank tab; header/nav still hit-testable — tooltips worked). Fixed with a
     block-bodied `setState`. Caught by a new `shell_navigation_test.dart` that asserts the Events
     State is **not** recreated across tab switches.
-  - **Clear events (pulled forward from A5)**: `EventRecorder.deleteEvents({DateTime? olderThan})`
+  - **Clear events (implemented)**: `EventRecorder.deleteEvents({DateTime? olderThan})`
     + `SqliteEventLog` impl (queries then deletes rows, returns removed `snapshot_name`s);
     `MonitorController.clearEvents` deletes rows + snapshot files; Settings Events section with
-    "Clear events older than 24h" and "Clear all events" behind confirm dialogs. Automatic snapshot
-    retention purge remains deferred to Phase 1.
-  - **Deferred to Phase 1**: A6 `flutter_secure_storage` for the Telegram token. **Next steps
-    after**: B8 desktop dev sources (Appendix D), B9 mobile Phase 0 (native `camera_service`
-    module, YAMNet swap, real mic).
+    "Clear events older than 24h" and "Clear all events" behind confirm dialogs.
+  - **Deferred to Phase 1 (now implemented)**: A6 `flutter_secure_storage` for channel tokens, A5
+    automatic retention purge, delivery retry/backoff. **Next steps after**: Phase 1 channels,
+    then B9 mobile Phase 0 (native `camera_service` module, YAMNet swap, real mic).
 - **Trigger merging (implemented)**: prevent bursts of notifications by merging triggers that
   fire within a short window.
   - `TriggerBatcher` between `pipeline.triggers` and `EventPipeline`: opens a batch on the first
@@ -587,6 +586,32 @@ Deviations / notes captured during implementation:
   - Tests: batcher unit tests (merge, window expiry, capture failure); integration runs now expect
     one `merged` row with `triggerTypes = {motion, baby_cry}` / `{motion, loud_noise}` and a
     single snapshot file.
+- **Phase 0.5 — secure storage, retention purge, delivery retry (implemented)**:
+  - **A6 secrets**: `SecretStore` abstraction (`lib/storage/secret_store.dart`) with
+    `SecureStorageSecretStore` (Keystore/Keychain) and `PrefsSecretStore` (SharedPreferences-backed
+    dev store). `SettingsStore.load()` injects secrets into in-memory settings and migrates legacy
+    inline tokens (keeps value in memory, `migrated` triggers a save that strips it); `save()`
+    strips `secretFields` per channel type (`telegram.botToken`, `email.password`,
+    `discord.webhookUrl`). `flutter_secure_storage ^11.0.0`; Linux dev needs `libsecret-1-dev` +
+    `libjsoncpp-dev`.
+  - **A5 retention**: `AppSettings.retentionDays` (default 7, 0 = off) + Settings Events slider;
+    `MonitorController.purgeOldEvents()` (public, testable) on a periodic timer
+    (`defaultPurgeInterval` = 6 h, `purgeInterval` ctor param injectable, `null` disables — widget
+    tests pass `null` to avoid pending-timer failures). `_deleteOlderThan` shared by clear/purge.
+  - **Retry/backoff**: `EventPipeline` gains `maxAttempts = 3`, `backoffDelays = [1 s, 2 s, 4 s]`,
+    injectable `sleep`; `_sendWithRetry` returns `delivered`/`failed`.
+  - Tests: `settings_store_test` (save strips token, load injects, legacy migration, log
+    round-trip), `monitor_controller_test` purge (7-day boundary deletes old rows+files; 0 = off),
+    `event_pipeline_test` retry (flaky delivers on 3rd attempt; exhausted → failed).
+- **Phase 1 — Email + Discord channels (implemented)**: `EmailChannel` (SMTP via `mailer` v7,
+  `SmtpServer(host, port: …)` + `mailer.send(message, server)`; `useTls` toggle; injectable
+  `sender` for tests) and `DiscordChannel` (multipart POST with snapshot attachment, `_webhookRe`
+  URL validation, injectable `http.Client`); both registered in `channelRegistry` (factories
+  refactored to top-level functions) + `buildChannelSettings`. Settings screen refactored to a
+  `_fieldControllers` map keyed `'<channelId>.<field>'` with per-type field lists and `_save`;
+  `AppSettings.defaults` now ships log + telegram + email + discord (all but log disabled).
+  `test/email_channel_test.dart` + `test/discord_channel_test.dart` (10 tests) +
+  `test/settings_screen_test.dart` widget tests (channel-form render + save round-trip).
 
 ## Appendix D — Desktop dev sources: live camera & audio (Aug 17 2026)
 
