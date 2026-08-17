@@ -78,6 +78,9 @@ class AppSettings {
       },
       channelConfigs: const [
         ChannelConfig(id: 'log', type: 'log', enabled: true),
+        ChannelConfig(id: 'telegram', type: 'telegram', enabled: false),
+        ChannelConfig(id: 'email', type: 'email', enabled: false),
+        ChannelConfig(id: 'discord', type: 'discord', enabled: false),
       ],
     );
   }

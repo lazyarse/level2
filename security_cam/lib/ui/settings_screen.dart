@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../channels/discord_channel.dart';
+import '../channels/email_channel.dart';
 import '../channels/telegram_channel.dart';
 import '../core/channel.dart';
 import '../core/detector.dart';
@@ -21,8 +23,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _nameController = TextEditingController();
   final _cameraPathController = TextEditingController();
   final _audioPathController = TextEditingController();
-  final _tokenControllers = <String, TextEditingController>{};
-  final _chatControllers = <String, TextEditingController>{};
+  final _fieldControllers = <String, TextEditingController>{};
+  final _emailTls = <String, bool>{};
 
   @override
   void initState() {
@@ -32,28 +34,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _cameraPathController.text = _draft.cameraSourcePath ?? '';
     _audioPathController.text = _draft.audioSourcePath ?? '';
     for (final c in _draft.channelConfigs) {
-      if (c.type == 'telegram') {
-        _tokenControllers[c.id] =
-            TextEditingController(text: _telegram(c).botToken);
-        _chatControllers[c.id] =
-            TextEditingController(text: _telegram(c).chatId);
+      switch (c.type) {
+        case 'telegram':
+          final s = TelegramChannelSettings.fromJson(c.settingsJson);
+          _field('${c.id}.token', s.botToken);
+          _field('${c.id}.chat', s.chatId);
+        case 'email':
+          final s = EmailChannelSettings.fromJson(c.settingsJson);
+          _field('${c.id}.host', s.host);
+          _field('${c.id}.port', s.port.toString());
+          _field('${c.id}.username', s.username);
+          _field('${c.id}.password', s.password);
+          _field('${c.id}.from', s.from);
+          _field('${c.id}.to', s.to);
+          _emailTls[c.id] = s.useTls;
+        case 'discord':
+          final s = DiscordChannelSettings.fromJson(c.settingsJson);
+          _field('${c.id}.webhook', s.webhookUrl);
       }
     }
   }
 
-  TelegramChannelSettings _telegram(ChannelConfig c) {
-    return TelegramChannelSettings.fromJson(c.settingsJson);
-  }
+TextEditingController _field(String key, [String? text]) =>
+    _fieldControllers.putIfAbsent(
+        key, () => TextEditingController(text: text ?? ''));
 
   @override
   void dispose() {
     _nameController.dispose();
     _cameraPathController.dispose();
     _audioPathController.dispose();
-    for (final c in _tokenControllers.values) {
-      c.dispose();
-    }
-    for (final c in _chatControllers.values) {
+    for (final c in _fieldControllers.values) {
       c.dispose();
     }
     super.dispose();
@@ -278,7 +289,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _channelCard(ChannelConfig config) {
-    final isTelegram = config.type == 'telegram';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -300,37 +310,115 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               }),
             ),
-            if (isTelegram) ...[
-              TextField(
-                controller: _tokenControllers[config.id],
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Bot token'),
-                onChanged: (_) => setState(() {}),
-              ),
-              TextField(
-                controller: _chatControllers[config.id],
-                decoration: const InputDecoration(labelText: 'Chat ID'),
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
+            ..._channelFields(config),
           ],
         ),
       ),
     );
   }
 
+  List<Widget> _channelFields(ChannelConfig config) {
+    switch (config.type) {
+      case 'telegram':
+        return [
+          TextField(
+            controller: _field('${config.id}.token'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Bot token'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.chat'),
+            decoration: const InputDecoration(labelText: 'Chat ID'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ];
+      case 'email':
+        return [
+          TextField(
+            controller: _field('${config.id}.host'),
+            decoration: const InputDecoration(labelText: 'SMTP host'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.port'),
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Port (587 or 465)'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.username'),
+            decoration: const InputDecoration(labelText: 'Username'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.password'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Password / app password'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.from'),
+            decoration: const InputDecoration(labelText: 'From address'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.to'),
+            decoration: const InputDecoration(labelText: 'To address'),
+            onChanged: (_) => setState(() {}),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Implicit TLS (SSL, port 465)'),
+            value: _emailTls[config.id] ?? false,
+            onChanged: (v) => setState(() => _emailTls[config.id] = v),
+          ),
+        ];
+      case 'discord':
+        return [
+          TextField(
+            controller: _field('${config.id}.webhook'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Webhook URL'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ];
+      default:
+        return const [];
+    }
+  }
+
   Future<void> _save() async {
     final channels = <ChannelConfig>[];
     for (final c in _draft.channelConfigs) {
-      if (c.type == 'telegram') {
-        channels.add(c.copyWith(
-          settingsJson: TelegramChannelSettings(
-            botToken: _tokenControllers[c.id]?.text ?? '',
-            chatId: _chatControllers[c.id]?.text ?? '',
-          ).toJson(),
-        ));
-      } else {
-        channels.add(c);
+      switch (c.type) {
+        case 'telegram':
+          channels.add(c.copyWith(
+            settingsJson: TelegramChannelSettings(
+              botToken: _field('${c.id}.token').text,
+              chatId: _field('${c.id}.chat').text,
+            ).toJson(),
+          ));
+        case 'email':
+          channels.add(c.copyWith(
+            settingsJson: EmailChannelSettings(
+              host: _field('${c.id}.host').text.trim(),
+              port: int.tryParse(_field('${c.id}.port').text.trim()) ?? 587,
+              username: _field('${c.id}.username').text.trim(),
+              password: _field('${c.id}.password').text,
+              from: _field('${c.id}.from').text.trim(),
+              to: _field('${c.id}.to').text.trim(),
+              useTls: _emailTls[c.id] ?? false,
+            ).toJson(),
+          ));
+        case 'discord':
+          channels.add(c.copyWith(
+            settingsJson: DiscordChannelSettings(
+              webhookUrl: _field('${c.id}.webhook').text.trim(),
+            ).toJson(),
+          ));
+        default:
+          channels.add(c);
       }
     }
     final sourcePath = _draft.cameraSource == CameraSource.simulated

@@ -92,7 +92,7 @@ void main() {
     await store.save(AppSettings.defaults());
 
     final loaded = await store.load();
-    expect(loaded.channelConfigs.map((c) => c.id), ['log']);
+    expect(loaded.channelConfigs.map((c) => c.id), contains('log'));
     expect(secrets.all, isEmpty);
   });
 }

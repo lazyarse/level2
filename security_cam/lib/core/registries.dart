@@ -1,3 +1,5 @@
+import '../channels/discord_channel.dart';
+import '../channels/email_channel.dart';
 import '../channels/log_channel.dart';
 import '../channels/telegram_channel.dart';
 import '../core/channel.dart';
@@ -19,13 +21,32 @@ final Map<String, DetectorFactory> detectorRegistry = {
 
 typedef ChannelFactory = Channel Function(ChannelConfig config);
 
+Channel _logChannel(ChannelConfig c) => LogChannel(id: c.id, enabled: c.enabled);
+
+Channel _telegramChannel(ChannelConfig c) => TelegramChannel(
+      id: c.id,
+      enabled: c.enabled,
+      settings: TelegramChannelSettings.fromJson(c.settingsJson),
+    );
+
+Channel _emailChannel(ChannelConfig c) => EmailChannel(
+      id: c.id,
+      enabled: c.enabled,
+      settings: EmailChannelSettings.fromJson(c.settingsJson),
+    );
+
+Channel _discordChannel(ChannelConfig c) => DiscordChannel(
+      id: c.id,
+      enabled: c.enabled,
+      settings: DiscordChannelSettings.fromJson(c.settingsJson),
+    );
+
+/// Top-level function references (sendable to a worker isolate).
 final Map<String, ChannelFactory> channelRegistry = {
-  'log': (c) => LogChannel(id: c.id, enabled: c.enabled),
-  'telegram': (c) => TelegramChannel(
-        id: c.id,
-        enabled: c.enabled,
-        settings: TelegramChannelSettings.fromJson(c.settingsJson),
-      ),
+  'log': _logChannel,
+  'telegram': _telegramChannel,
+  'email': _emailChannel,
+  'discord': _discordChannel,
 };
 
 /// Builds the typed [ChannelSettings] for a channel type (used by the settings
@@ -36,6 +57,10 @@ ChannelSettings buildChannelSettings(String type, Map<String, dynamic> json) {
       return const _LogChannelSettings();
     case 'telegram':
       return TelegramChannelSettings.fromJson(json);
+    case 'email':
+      return EmailChannelSettings.fromJson(json);
+    case 'discord':
+      return DiscordChannelSettings.fromJson(json);
     default:
       throw ArgumentError.value(type, 'type', 'unsupported channel type');
   }
