@@ -22,13 +22,27 @@ import '../storage/snapshot_store.dart';
 enum MonitorState { idle, starting, monitoring, error }
 
 class MonitorController extends ChangeNotifier {
+  static const defaultPurgeInterval = Duration(hours: 6);
+
   final SettingsStore settingsStore;
   final EventRecorder eventRecorder;
   final SnapshotStore snapshotStore;
 
+  /// Retention purge cadence; `null` disables the periodic timer (tests).
+  final Duration? purgeInterval;
+
   MonitorState state = MonitorState.idle;
   AppSettings settings = AppSettings.defaults();
   String? error;
+
+  Timer? _purgeTimer;
+
+  MonitorController({
+    required this.settingsStore,
+    required this.eventRecorder,
+    required this.snapshotStore,
+    this.purgeInterval = defaultPurgeInterval,
+  });
 
   CameraSession? _camera;
   AudioSource? _audio;
@@ -41,26 +55,45 @@ class MonitorController extends ChangeNotifier {
   StreamSubscription<String>? _cameraFailureSub;
   StreamSubscription<String>? _audioFailureSub;
 
-  MonitorController({
-    required this.settingsStore,
-    required this.eventRecorder,
-    required this.snapshotStore,
-  });
-
   Future<void> init() async {
     settings = await settingsStore.load();
+    _restartPurgeTimer();
     notifyListeners();
   }
 
   Future<void> updateSettings(AppSettings next) async {
     settings = next;
     await settingsStore.save(next);
+    _restartPurgeTimer();
     notifyListeners();
+  }
+
+  /// Automatic snapshot/event retention purge: deletes rows and snapshot files
+  /// older than [AppSettings.retentionDays] (0 disables). Called on init and on
+  /// a periodic timer; exposed for tests and manual triggering.
+  Future<void> purgeOldEvents() async {
+    final days = settings.retentionDays;
+    if (days <= 0) return;
+    await _deleteOlderThan(DateTime.now().subtract(Duration(days: days)));
+  }
+
+  void _restartPurgeTimer() {
+    _purgeTimer?.cancel();
+    _purgeTimer = null;
+    final interval = purgeInterval;
+    if (interval == null || settings.retentionDays <= 0) return;
+    unawaited(purgeOldEvents());
+    _purgeTimer =
+        Timer.periodic(interval, (_) => unawaited(purgeOldEvents()));
   }
 
   Future<void> clearEvents({Duration? olderThan}) async {
     final cutoff =
         olderThan == null ? null : DateTime.now().subtract(olderThan);
+    await _deleteOlderThan(cutoff);
+  }
+
+  Future<void> _deleteOlderThan(DateTime? cutoff) async {
     final names = await eventRecorder.deleteEvents(olderThan: cutoff);
     for (final name in names) {
       try {
@@ -193,6 +226,7 @@ class MonitorController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _purgeTimer?.cancel();
     unawaited(_disposeRuntime());
     super.dispose();
   }

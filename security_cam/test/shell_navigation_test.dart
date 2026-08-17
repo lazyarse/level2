@@ -37,6 +37,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: _FakeRecorder(),
       snapshotStore: _FakeStore(),
+      purgeInterval: null,
     );
     await controller.init();
 

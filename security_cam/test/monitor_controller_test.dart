@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:security_cam/sensors/simulated_audio_source.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
+import 'package:security_cam/storage/event_recorder.dart';
 import 'package:security_cam/storage/settings_store.dart';
 import 'package:security_cam/storage/snapshot_store.dart';
 
@@ -90,5 +91,87 @@ void main() {
     await controller.stop();
     expect(controller.state, MonitorState.idle);
     await eventLog.close();
+  });
+
+  test('retention purge deletes old events and their snapshot files', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsStore = await SettingsStore.open();
+    final eventLog = await SqliteEventLog.open(inMemoryDatabasePath);
+    final snapDir = await Directory.systemTemp.createTemp('scam_ret');
+    final snapshotStore = FileSnapshotStore(snapDir.path);
+
+    final oldFile = File('${snapDir.path}/old.png');
+    oldFile.writeAsBytesSync([1, 2, 3]);
+    final newFile = File('${snapDir.path}/new.png');
+    newFile.writeAsBytesSync([4, 5, 6]);
+
+    await eventLog.record(RecordedEvent(
+      timestamp: DateTime.now().subtract(const Duration(days: 10)),
+      cameraName: 'Hallway',
+      triggerType: 'motion',
+      score: 1.0,
+      snapshotName: 'old.png',
+    ));
+    await eventLog.record(RecordedEvent(
+      timestamp: DateTime.now(),
+      cameraName: 'Hallway',
+      triggerType: 'motion',
+      score: 1.0,
+      snapshotName: 'new.png',
+    ));
+
+    final controller = MonitorController(
+      settingsStore: settingsStore,
+      eventRecorder: eventLog,
+      snapshotStore: snapshotStore,
+    );
+    await controller.init();
+    await controller.updateSettings(
+        controller.settings.copyWith(retentionDays: 7));
+
+    await controller.purgeOldEvents();
+
+    final events = await eventLog.recent();
+    expect(events.map((e) => e.snapshotName), ['new.png']);
+    expect(oldFile.existsSync(), isFalse);
+    expect(newFile.existsSync(), isTrue);
+    await eventLog.close();
+    snapDir.deleteSync(recursive: true);
+  });
+
+  test('retention 0 disables the purge', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsStore = await SettingsStore.open();
+    final eventLog = await SqliteEventLog.open(inMemoryDatabasePath);
+    final snapDir = await Directory.systemTemp.createTemp('scam_ret0');
+    final snapshotStore = FileSnapshotStore(snapDir.path);
+
+    final oldFile = File('${snapDir.path}/old.png');
+    oldFile.writeAsBytesSync([1, 2, 3]);
+
+    await eventLog.record(RecordedEvent(
+      timestamp: DateTime.now().subtract(const Duration(days: 10)),
+      cameraName: 'Hallway',
+      triggerType: 'motion',
+      score: 1.0,
+      snapshotName: 'old.png',
+    ));
+
+    final controller = MonitorController(
+      settingsStore: settingsStore,
+      eventRecorder: eventLog,
+      snapshotStore: snapshotStore,
+    );
+    await controller.init();
+    await controller.updateSettings(
+        controller.settings.copyWith(retentionDays: 0));
+
+    await controller.purgeOldEvents();
+
+    final events = await eventLog.recent();
+    expect(events, isNotEmpty, reason: 'retention 0 must not purge');
+    expect(oldFile.existsSync(), isTrue);
+    await eventLog.close();
+    snapDir.deleteSync(recursive: true);
   });
 }

@@ -27,3 +27,29 @@ final Map<String, ChannelFactory> channelRegistry = {
         settings: TelegramChannelSettings.fromJson(c.settingsJson),
       ),
 };
+
+/// Builds the typed [ChannelSettings] for a channel type (used by the settings
+/// store to know which fields are secrets, and by the UI to edit them).
+ChannelSettings buildChannelSettings(String type, Map<String, dynamic> json) {
+  switch (type) {
+    case 'log':
+      return const _LogChannelSettings();
+    case 'telegram':
+      return TelegramChannelSettings.fromJson(json);
+    default:
+      throw ArgumentError.value(type, 'type', 'unsupported channel type');
+  }
+}
+
+class _LogChannelSettings implements ChannelSettings {
+  const _LogChannelSettings();
+
+  @override
+  String get type => 'log';
+
+  @override
+  Map<String, dynamic> toJson() => const {};
+
+  @override
+  List<String> get secretFields => const [];
+}

@@ -114,6 +114,7 @@ void main() {
     required Map<String, ChannelConfig> channels,
     Map<String, DetectorConfig> detectors = const {},
     Map<String, ChannelFactory>? factories,
+    Future<void> Function(Duration)? sleep,
   }) {
     return EventPipeline(
       cameraSession: _FakeCamera(),
@@ -123,6 +124,7 @@ void main() {
       recorder: recorder,
       snapshotStore: snapshots,
       channelFactories: factories,
+      sleep: sleep,
     );
   }
 
@@ -253,10 +255,72 @@ void main() {
         settings: const TelegramChannelSettings(botToken: '123456:ABC', chatId: '1'),
         client: failing,
       )},
+      sleep: (_) async {},
     );
 
     await p.handleBatch(batch([trigger('motion', 'motion')]));
 
     expect(recorder.recorded.single.channelStatuses, {'telegram': 'failed'});
+  });
+
+  test('retries a flaky channel and delivers on a later attempt', () async {
+    final recorder = _FakeRecorder();
+    var attempts = 0;
+    final flaky = MockClient((request) async {
+      attempts++;
+      if (attempts < 3) {
+        return http.Response('{"ok": false}', 500);
+      }
+      return http.Response('{"ok": true}', 200);
+    });
+    final sleeps = <Duration>[];
+    final p = pipeline(
+      recorder: recorder,
+      snapshots: _FakeSnapshotStore(),
+      channels: {'telegram': telegramConfig()},
+      detectors: {'motion': config('motion')},
+      factories: {'telegram': (c) => TelegramChannel(
+        id: 'telegram',
+        enabled: true,
+        settings: const TelegramChannelSettings(botToken: '123456:ABC', chatId: '1'),
+        client: flaky,
+      )},
+      sleep: (d) async => sleeps.add(d),
+    );
+
+    await p.handleBatch(batch([trigger('motion', 'motion')]));
+
+    expect(attempts, 3);
+    expect(recorder.recorded.single.channelStatuses, {'telegram': 'delivered'});
+    expect(sleeps, [const Duration(seconds: 1), const Duration(seconds: 2)]);
+  });
+
+  test('exhausted retries back off 1s then 2s and record failed', () async {
+    final recorder = _FakeRecorder();
+    var attempts = 0;
+    final alwaysFails = MockClient((request) async {
+      attempts++;
+      return http.Response('{"ok": false}', 500);
+    });
+    final sleeps = <Duration>[];
+    final p = pipeline(
+      recorder: recorder,
+      snapshots: _FakeSnapshotStore(),
+      channels: {'telegram': telegramConfig()},
+      detectors: {'motion': config('motion')},
+      factories: {'telegram': (c) => TelegramChannel(
+        id: 'telegram',
+        enabled: true,
+        settings: const TelegramChannelSettings(botToken: '123456:ABC', chatId: '1'),
+        client: alwaysFails,
+      )},
+      sleep: (d) async => sleeps.add(d),
+    );
+
+    await p.handleBatch(batch([trigger('motion', 'motion')]));
+
+    expect(attempts, 3);
+    expect(recorder.recorded.single.channelStatuses, {'telegram': 'failed'});
+    expect(sleeps, [const Duration(seconds: 1), const Duration(seconds: 2)]);
   });
 }

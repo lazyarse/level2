@@ -206,6 +206,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
           Text('Events', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Automatic retention: '
+            '${_draft.retentionDays == 0 ? 'off' : '${_draft.retentionDays} day${_draft.retentionDays == 1 ? '' : 's'}'}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          Slider(
+            value: _draft.retentionDays.clamp(0, 30).toDouble(),
+            min: 0,
+            max: 30,
+            divisions: 30,
+            label: _draft.retentionDays == 0
+                ? 'Off'
+                : '${_draft.retentionDays} days',
+            onChanged: (v) => setState(() {
+              _draft = _draft.copyWith(retentionDays: v.round());
+            }),
+          ),
           OutlinedButton.icon(
             onPressed: () => _confirmClearEvents(const Duration(hours: 24)),
             icon: const Icon(Icons.delete_sweep_outlined),

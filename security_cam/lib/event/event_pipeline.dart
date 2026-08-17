@@ -10,6 +10,12 @@ import '../storage/snapshot_store.dart';
 import 'trigger_batcher.dart';
 
 class EventPipeline {
+  static const defaultBackoffDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+  ];
+
   final CameraSession cameraSession;
   final String cameraName;
   final Map<String, DetectorConfig> detectorConfigs;
@@ -17,6 +23,9 @@ class EventPipeline {
   final EventRecorder recorder;
   final SnapshotStore snapshotStore;
   final Map<String, ChannelFactory> _channelFactories;
+  final int maxAttempts;
+  final List<Duration> backoffDelays;
+  final Future<void> Function(Duration) _sleep;
 
   EventPipeline({
     required this.cameraSession,
@@ -26,7 +35,11 @@ class EventPipeline {
     required this.recorder,
     required this.snapshotStore,
     Map<String, ChannelFactory>? channelFactories,
-  }) : _channelFactories = channelFactories ?? channelRegistry;
+    this.maxAttempts = 3,
+    this.backoffDelays = defaultBackoffDelays,
+    Future<void> Function(Duration)? sleep,
+  })  : _channelFactories = channelFactories ?? channelRegistry,
+        _sleep = sleep ?? Future.delayed;
 
   Future<void> handleBatch(TriggerBatch batch) async {
     final types = <String>{
@@ -55,12 +68,7 @@ class EventPipeline {
     final statuses = <String, String>{};
     for (final target in targets) {
       final channel = _channelFactories[target.type]!(target);
-      try {
-        await channel.send(message);
-        statuses[target.id] = 'delivered';
-      } catch (_) {
-        statuses[target.id] = 'failed';
-      }
+      statuses[target.id] = await _sendWithRetry(channel, message);
     }
 
     await recorder.record(RecordedEvent(
@@ -72,6 +80,21 @@ class EventPipeline {
       snapshotName: snapshot?.name,
       channelStatuses: statuses,
     ));
+  }
+
+  /// Sends with up to [maxAttempts] attempts, backing off between failures.
+  /// Returns `delivered` on success or `failed` after exhausting attempts.
+  Future<String> _sendWithRetry(Channel channel, AlertMessage message) async {
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await channel.send(message);
+        return 'delivered';
+      } catch (_) {
+        if (attempt == maxAttempts - 1) return 'failed';
+        await _sleep(backoffDelays[attempt]);
+      }
+    }
+    return 'failed';
   }
 
   List<ChannelConfig> _targetsFor(List<TriggerEvent> triggers) {
