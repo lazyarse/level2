@@ -770,3 +770,46 @@ activity — frame delivery is via an **EventChannel**, so the service itself ne
   - Motion + Baby crying events (score 0.76, "Hallway") recorded at 22:22:11 and 22:23:11 — i.e.
     **inside the screen-off window** — Events tab renders them.
   - Stop → clean; no crashes after the main-thread fix.
+
+### B9.2 — Real mic + YAMNet classifier — ✅ implemented
+
+(the on-device microphone via the `record` plugin + the real YAMNet model via `tflite_flutter`,
+swapping out the `MockAudioEventClassifier`/simulated audio on mobile.)
+
+- **Deps**: `record ^6.2` (16 kHz mono `pcm16bits` stream → `PcmWindowAccumulator` re-used to
+  build 0.975 s/15600-sample `AudioWindow`s) and `tflite_flutter 0.12.1` (LiteRT). Model + labels
+  bundled as `assets/yamnet.tflite` (4.1 MB) + `assets/yamnet_labels.txt`.
+- **Model reality check (important)**: `tfhub.dev/google/lite-model/yamnet/classification/tflite/1`
+  (`?lite-format=tflite`) is a **float32 model with the audio front-end fused in-graph** — input
+  `[15600]` raw 16 kHz waveform (no batch dim), output `[1, 521]`. The int8 ~400 KB variant
+  (`google/coral/yamnet`) URL is dead (returns HTML). Consequently **no Dart-side STFT/mel DSP is
+  needed** — a Dart `MelSpectrogram` front-end was implemented + reference-verified (max abs err
+  < 1e-5 vs scipy) and then **removed as dead code** once the real input shape was discovered.
+- **`YamnetAudioEventClassifier`** (`lib/detection/audio/yamnet_audio_event_classifier.dart`):
+  loads the model via `Interpreter.fromAsset`, reads input/output **quantization (scale/zero_point)
+  from the tensors at init** so int8 or float32 checkpoints both work, runs once per window,
+  dequantizes the 521-class vector, and maps alert types from the shared scores: `baby_cry` =
+  class 20 ("Baby cry, infant cry"), `glass` = max over classes 435/437/463/464 (Glass / Shatter /
+  Smash, crash / Breaking), `loud_noise` = RMS gate. Class indices verified against the bundled
+  label list. Scoring + quantization are pure static helpers (unit-tested, incl. int8/float32
+  round-trips and clamping).
+- **Wiring**: `buildAudioClassifier()` returns the YAMNet classifier on Android/iOS (mock on
+  desktop); `buildAudioSource()` returns `MicAudioSource` on mobile (existing sim/ffmpeg branches
+  untouched on desktop). `monitor_controller` now awaits the classifier factory. Debug logging:
+  `YAMNet ready: in=[15600] float32 out=[1, 521] float32` at init and per-type scores every 10
+  windows.
+- **Manifest**: added `RECORD_AUDIO`.
+- **Live verification (pixel_34, headless)**:
+  - `YAMNet ready` logs; monitoring starts (FGS + CameraX frames still flow).
+  - Per-window inference runs: `yamnet scores baby_cry=… glass=… loud_noise=…` every 10 windows —
+    real LiteRT inference on mic-derived windows, no crashes. 115 tests green, analyze clean.
+  - **Model behavior validated on host** (`ai-edge-litert` on the same bundled asset): silence →
+    "Silence" (0.80), sine → "Sine wave" (0.92), noise/glass-synth → "Static" — the checkpoint
+    classifies correctly; synthetic "baby cry" triggers singing/static classes (a sine AM carrier
+    is not cry-like enough for YAMNet; real-cry scoring needs a real clip — Donate-a-Cry is CC
+    BY-NC so not bundled, per the store-blocker note).
+  - **Emulator mic caveat**: in this headless environment the emulator's virtual mic delivers
+    digital silence (no host audio reaches the QEMU audio-in ADC; the emulator opens no
+    PulseAudio source-output to redirect). On-device windows/score flow is verified; real-sound
+    content is validated via the host model run. Physical devices will capture real audio through
+    the same `record` → windows → YAMNet path.

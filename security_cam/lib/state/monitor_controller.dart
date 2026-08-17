@@ -6,12 +6,12 @@ import '../core/audio_source.dart';
 import '../core/camera_session.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
-import '../detection/audio/audio_classifier.dart';
 import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
 import '../sensors/audio_source_factory.dart';
 import '../sensors/android_camera_session.dart';
+import '../sensors/audio_classifier_factory.dart';
 import '../sensors/camera_source_factory.dart';
 import '../sensors/ffmpeg_audio_source.dart';
 import '../sensors/ffmpeg_camera_session.dart';
@@ -131,7 +131,7 @@ class MonitorController extends ChangeNotifier {
             })
           : null;
       final pipeline = DetectorPipeline(
-        classifier: MockAudioEventClassifier(),
+        classifier: await buildAudioClassifier(),
         configs: settings.detectorConfigs.values.toList(),
       );
       await pipeline.init();
