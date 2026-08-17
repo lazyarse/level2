@@ -532,8 +532,8 @@ Deviations / notes captured during implementation:
   score ≈ 0.85). Sim quirk: a loud bang also scores high on `glass` (both are loud broadband
   noise in the mock); a real classifier differentiates later.
 - **Desktop dev sources (implemented — see Appendix D)**: live webcam + video-file camera sources
-  (`ffmpeg` raw-gray frames → pipeline), switchable in Settings; mic + audio-file sources still
-  planned. Dev-time only, with a documented removal path.
+  and mic + audio-file sources (`ffmpeg` raw-gray frames / raw PCM → pipeline), switchable in
+  Settings. Dev-time only, with a documented removal path.
 - **Phase 0 completion (A1–A4, A7 — implemented)**:
   - **A1** Events screen shows captured snapshots: `EventsScreen` gained a `SnapshotStore`; events
     with `snapshotName` render a 48px thumbnail (`Image.memory` via `load`) with tap-to-dialog
@@ -594,8 +594,8 @@ Phase 0 dev tooling to replace the hardcoded simulated sessions with Settings-sw
 so real scenes drive the pipeline during development. Desktop-only — the mobile `camera_service`
 native module / iOS plugin are unaffected and ignore these switches.
 
-**Status: camera sources (webcam + video file) implemented; audio sources (mic + audio file) still
-planned.** Confirmed on this host: `ffmpeg 8.1.2`, `/dev/video0` + `/dev/video1` capture devices,
+**Status: camera sources (webcam + video file) and audio sources (mic + audio file) implemented.**
+Confirmed on this host: `ffmpeg 8.1.2`, `/dev/video0` + `/dev/video1` capture devices,
 PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencies — everything uses
 `dart:io` (`Process`) + the already-present `image` package.
 
@@ -603,8 +603,8 @@ PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencie
 
 - `cameraSource`: `simulated` | `webcam` | `file` — default `simulated` ✅ implemented
 - `cameraSourcePath`: device path (e.g. `/dev/video0`) or video file path ✅ implemented
-- `audioSource`: `simulated` | `mic` | `file` — default `simulated` (planned)
-- `audioSourcePath`: audio file path (planned)
+- `audioSource`: `simulated` | `mic` | `file` — default `simulated` ✅ implemented
+- `audioSourcePath`: audio file path ✅ implemented
 
 ### Camera: `FfmpegCameraSession implements CameraSession` — ✅ implemented
 
@@ -623,42 +623,58 @@ PulseAudio with a capture-capable ALSA card (`pcmC0D0c`). No new pub dependencie
 - Settings UI: **Sources** section with a camera-source dropdown (monitor-screen pattern) that
   reveals a device/file path field; the section notes this is dev-time-only.
 
-### Audio: `AudioSource` contract + `FfmpegAudioSource` — planned
+### Audio: `AudioSource` contract + `FfmpegAudioSource` — ✅ implemented
 
-- Extract `abstract AudioSource { Stream<AudioWindow> get windows; void start(); void stop(); void dispose(); }`;
-  `SimulatedAudioSource` implements it (already matches).
-- mic: `ffmpeg -f pulse -i default -ar 16000 -ac 1 -sample_fmt s16le -f s16le pipe:1`
-- file: `ffmpeg -re -stream_loop -1 -i <path> -ar 16000 -ac 1 -sample_fmt s16le -f s16le pipe:1`
-- stdout → pure `PcmWindowAccumulator` chunks 16 kHz s16le into 1 s `AudioWindow`s
-  (Float32 = sample/32768); looped files replay in real time.
+- `abstract AudioSource { Stream<AudioWindow> get windows; void start(); void stop(); void dispose(); }`
+  (`lib/core/audio_source.dart`); `SimulatedAudioSource` implements it.
+- mic: `ffmpeg -f pulse -i default -ar 16000 -ac 1 -f s16le pipe:1`
+- file: `ffmpeg -re -stream_loop -1 -i <path> -ar 16000 -ac 1 -f s16le pipe:1`
+  (note: `-f s16le` already forces s16le — no `-sample_fmt` needed)
+- stdout → pure `PcmWindowAccumulator` (`lib/sensors/pcm_window_accumulator.dart`) chunks 16 kHz
+  s16le into 1 s `AudioWindow`s (Float32 = sample/32768), carrying partial windows across chunk
+  boundaries; looped files replay in real time.
+- Async ffmpeg death surfaces a readable message via a `failures` stream → `MonitorState.error`
+  (same pattern as the camera); `dispose` = SIGTERM → SIGKILL fallback.
+- Source selection via `lib/sensors/audio_source_factory.dart`
+  (`buildAudioSource(AppSettings)`: sim default, ffmpeg for mic/file, readable error when a
+  required path is missing). `MonitorController` holds `AudioSource?`; `audioScene`/
+  `setAudioScene` only apply to the sim, so the on-screen "Audio scene" dropdown stays but is
+  inert for mic/file.
 
 ### Tests & verification
 
 - Unit ✅: `GrayFrameAssembler` (exact-frame, arbitrary byte splits, multi-frame chunks, remainder
   carry), ffmpeg argv builders (webcam + file exact argv, unsupported source), source-selection
   factory (sim/webcam/file, missing-path error), settings round-trip incl. new fields +
-  old-JSON fallback.
+  old-JSON fallback. Audio: `PcmWindowAccumulator` (decode, byte-split, leftover carry),
+  `ffmpeg_audio_args_test` (mic + file exact argv), `audio_source_factory_test`.
 - Live ✅ (`test/ffmpeg_live_test.dart`, skipped if ffmpeg absent): bogus file path →
   readable `ffmpeg exited with code …` error + teardown; real generated clip (`testsrc`) replays and
-  streams frames at `MonitorState.monitoring`.
+  streams frames at `MonitorState.monitoring`; generated 10 s tone WAV replays through
+  `FfmpegAudioSource` and emits 1 s windows at 16 kHz.
 - Live (manual, verified on host): webcam `/dev/video0` real preview + motion alerts + snapshots;
-  `/tmp/clip.mp4` (generated `testsrc`) loops with alerts; bogus path → clear error, sim fallback.
-- Audio (planned): `PcmWindowAccumulator`, arg builders, live mic → windows flow (note: the mock
-  classifier rarely fires baby_cry/glass on real speech — expected until YAMNet).
+  `/tmp/clip.mp4` (generated `testsrc`) loops with alerts; audio file (`dev_resources/clip2.mp4`
+  path variant or a tone WAV) loops with the pipeline consuming windows; mic (`-f pulse -i default`)
+  captures with windows flowing; bogus path → clear error, sim fallback. (Note: the mock
+  classifier rarely fires baby_cry/glass on real speech/tones — expected until YAMNet.)
 
 ### Dev-time only — how to remove
 
 These ffmpeg-backed sources exist **only** to drive real footage through the pipeline during
 prototyping, before the native Android `camera_service` module / iOS plugin land. Removal path:
 
-1. Delete `lib/sensors/ffmpeg_camera_session.dart` and `lib/sensors/camera_source_factory.dart`
-   (plus `lib/sensors/gray_frame_assembler.dart` and, if added, `pcm_window_accumulator.dart`).
+1. Delete `lib/sensors/ffmpeg_camera_session.dart`, `lib/sensors/ffmpeg_audio_source.dart` and the
+   two factories (`lib/sensors/camera_source_factory.dart`, `lib/sensors/audio_source_factory.dart`)
+   plus the pure assemblers (`lib/sensors/gray_frame_assembler.dart`,
+   `lib/sensors/pcm_window_accumulator.dart`).
 2. Drop `cameraSource`/`cameraSourcePath` (and `audioSource`/`audioSourcePath`) from `AppSettings`
    (fields, `copyWith`, JSON) and the **Sources** section from the Settings screen.
 3. Revert `MonitorController.start()` to construct the sim sessions directly (or keep the factory
    with only the sim branch as a desktop fallback).
 4. Remove the ffmpeg-gated live tests (`test/ffmpeg_live_test.dart`, `test/ffmpeg_args_test.dart`,
-   `test/camera_source_factory_test.dart`, `test/gray_frame_assembler_test.dart`).
+   `test/ffmpeg_audio_args_test.dart`, `test/camera_source_factory_test.dart`,
+   `test/audio_source_factory_test.dart`, `test/gray_frame_assembler_test.dart`,
+   `test/pcm_window_accumulator_test.dart`), and the `dev_resources/` clip + README.
 5. `ffmpeg` itself is a dev-host dependency only; no pub dependency is introduced.
 
 Mobile builds are unaffected at any point: the mobile `CameraSession`/audio implementations read

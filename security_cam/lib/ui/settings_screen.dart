@@ -20,6 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _draft;
   final _nameController = TextEditingController();
   final _cameraPathController = TextEditingController();
+  final _audioPathController = TextEditingController();
   final _tokenControllers = <String, TextEditingController>{};
   final _chatControllers = <String, TextEditingController>{};
 
@@ -29,6 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _draft = widget.controller.settings;
     _nameController.text = _draft.cameraName;
     _cameraPathController.text = _draft.cameraSourcePath ?? '';
+    _audioPathController.text = _draft.audioSourcePath ?? '';
     for (final c in _draft.channelConfigs) {
       if (c.type == 'telegram') {
         _tokenControllers[c.id] =
@@ -47,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _nameController.dispose();
     _cameraPathController.dispose();
+    _audioPathController.dispose();
     for (final c in _tokenControllers.values) {
       c.dispose();
     }
@@ -117,6 +120,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? '/dev/video0'
                     : '/path/to/clip.mp4',
                 border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+          const SizedBox(height: 8),
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Audio source',
+              border: OutlineInputBorder(),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _draft.audioSource,
+                isDense: true,
+                items: const [
+                  DropdownMenuItem(
+                      value: AudioInput.simulated, child: Text('Simulated')),
+                  DropdownMenuItem(
+                      value: AudioInput.mic, child: Text('Microphone')),
+                  DropdownMenuItem(
+                      value: AudioInput.file, child: Text('Audio file')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _draft = v == AudioInput.simulated
+                        ? _draft.copyWith(
+                            audioSource: v, clearAudioSourcePath: true)
+                        : _draft.copyWith(audioSource: v);
+                  });
+                },
+              ),
+            ),
+          ),
+          if (_draft.audioSource == AudioInput.file) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _audioPathController,
+              decoration: const InputDecoration(
+                labelText: 'Audio file path',
+                hintText: '/path/to/clip.wav',
+                border: OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -274,12 +319,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final sourcePath = _draft.cameraSource == CameraSource.simulated
         ? null
         : _cameraPathController.text.trim();
+    final audioPath = _draft.audioSource == AudioInput.file
+        ? _audioPathController.text.trim()
+        : null;
     final next = _draft.copyWith(
       cameraName: _nameController.text.trim().isEmpty
           ? _draft.cameraName
           : _nameController.text.trim(),
       cameraSourcePath: sourcePath,
       clearCameraSourcePath: sourcePath == null,
+      audioSourcePath: audioPath,
+      clearAudioSourcePath: audioPath == null,
       channelConfigs: channels,
     );
     await widget.controller.updateSettings(next);

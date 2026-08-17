@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/audio_source.dart';
 import '../core/camera_session.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
@@ -9,7 +10,9 @@ import '../detection/audio/audio_classifier.dart';
 import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
+import '../sensors/audio_source_factory.dart';
 import '../sensors/camera_source_factory.dart';
+import '../sensors/ffmpeg_audio_source.dart';
 import '../sensors/ffmpeg_camera_session.dart';
 import '../sensors/simulated_audio_source.dart';
 import '../storage/event_recorder.dart';
@@ -28,7 +31,7 @@ class MonitorController extends ChangeNotifier {
   String? error;
 
   CameraSession? _camera;
-  SimulatedAudioSource? _audio;
+  AudioSource? _audio;
   DetectorPipeline? _pipeline;
   TriggerBatcher? _batcher;
   StreamSubscription<AnalysisFrame>? _frameSub;
@@ -36,6 +39,7 @@ class MonitorController extends ChangeNotifier {
   StreamSubscription<TriggerEvent>? _triggerSub;
   StreamSubscription<TriggerBatch>? _batchSub;
   StreamSubscription<String>? _cameraFailureSub;
+  StreamSubscription<String>? _audioFailureSub;
 
   MonitorController({
     required this.settingsStore,
@@ -67,10 +71,15 @@ class MonitorController extends ChangeNotifier {
 
   Stream<AnalysisFrame>? get analysisFrames => _camera?.analysisFrames;
 
-  AudioScene get audioScene => _audio?.scene ?? AudioScene.babyCry;
+  AudioScene get audioScene =>
+      _audio is SimulatedAudioSource
+          ? (_audio as SimulatedAudioSource).scene
+          : AudioScene.babyCry;
 
   void setAudioScene(AudioScene scene) {
-    if (_audio != null) _audio!.scene = scene;
+    if (_audio is SimulatedAudioSource) {
+      (_audio as SimulatedAudioSource).scene = scene;
+    }
     notifyListeners();
   }
 
@@ -81,7 +90,12 @@ class MonitorController extends ChangeNotifier {
     notifyListeners();
     try {
       final camera = buildCameraSession(settings);
-      final audio = SimulatedAudioSource();
+      final audio = buildAudioSource(settings);
+      _audioFailureSub = audio is FfmpegAudioSource
+          ? audio.failures.listen((message) {
+              unawaited(_failToError(message));
+            })
+          : null;
       final pipeline = DetectorPipeline(
         classifier: MockAudioEventClassifier(),
         configs: settings.detectorConfigs.values.toList(),
@@ -159,7 +173,9 @@ class MonitorController extends ChangeNotifier {
     await _triggerSub?.cancel();
     await _batchSub?.cancel();
     await _cameraFailureSub?.cancel();
+    await _audioFailureSub?.cancel();
     _audio?.stop();
+    await _audio?.dispose();
     await _pipeline?.dispose();
     await _camera?.dispose();
     await _batcher?.dispose();
@@ -168,6 +184,7 @@ class MonitorController extends ChangeNotifier {
     _triggerSub = null;
     _batchSub = null;
     _cameraFailureSub = null;
+    _audioFailureSub = null;
     _audio = null;
     _camera = null;
     _pipeline = null;

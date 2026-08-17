@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart' as sql;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:security_cam/core/settings.dart';
+import 'package:security_cam/sensors/ffmpeg_audio_source.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
 import 'package:security_cam/storage/settings_store.dart';
@@ -112,6 +113,47 @@ void main() {
     controller.dispose();
     await eventLog.close();
     snapDir.deleteSync(recursive: true);
+    work.deleteSync(recursive: true);
+  });
+
+  test('audio file source replays a tone and emits audio windows', () async {
+    if (!await _ffmpegAvailable()) {
+      markTestSkipped('ffmpeg not available');
+      return;
+    }
+    final work = await Directory.systemTemp.createTemp('scam_audio');
+    final audioPath = '${work.path}/tone.wav';
+    final result = await Process.run('ffmpeg', [
+      '-f', 'lavfi',
+      '-i', 'sine=frequency=440:duration=10:sample_rate=16000',
+      '-y',
+      audioPath,
+    ]);
+    if (result.exitCode != 0) {
+      markTestSkipped('could not generate tone: ${result.stderr}');
+      return;
+    }
+
+    final source = FfmpegAudioSource('file', audioPath);
+    var windows = 0;
+    var sampleRate = 0;
+    var windowSamples = 0;
+    final sub = source.windows.listen((w) {
+      windows++;
+      sampleRate = w.sampleRate;
+      windowSamples = w.samples.length;
+    });
+    final failureSub = source.failures.listen((_) {});
+    source.start();
+
+    await Future<void>.delayed(const Duration(seconds: 3));
+    await sub.cancel();
+    await failureSub.cancel();
+    await source.dispose();
+
+    expect(windows, greaterThan(0), reason: 'no windows arrived from tone');
+    expect(sampleRate, 16000);
+    expect(windowSamples, greaterThan(0));
     work.deleteSync(recursive: true);
   });
 }

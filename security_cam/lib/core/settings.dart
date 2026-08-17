@@ -12,10 +12,22 @@ class CameraSource {
   const CameraSource._();
 }
 
+/// Audio source choices (desktop dev-only; the mobile module/plugin always use
+/// the on-device microphone).
+class AudioInput {
+  static const simulated = 'simulated';
+  static const mic = 'mic';
+  static const file = 'file';
+
+  const AudioInput._();
+}
+
 class AppSettings {
   final String cameraName;
   final String cameraSource;
   final String? cameraSourcePath;
+  final String audioSource;
+  final String? audioSourcePath;
   final Map<String, DetectorConfig> detectorConfigs;
   final List<ChannelConfig> channelConfigs;
   final Duration notificationMergeWindow;
@@ -24,6 +36,8 @@ class AppSettings {
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
     this.cameraSourcePath,
+    this.audioSource = AudioInput.simulated,
+    this.audioSourcePath,
     this.detectorConfigs = const {},
     this.channelConfigs = const [],
     this.notificationMergeWindow = const Duration(seconds: 3),
@@ -71,6 +85,9 @@ class AppSettings {
     String? cameraSource,
     String? cameraSourcePath,
     bool clearCameraSourcePath = false,
+    String? audioSource,
+    String? audioSourcePath,
+    bool clearAudioSourcePath = false,
     Map<String, DetectorConfig>? detectorConfigs,
     List<ChannelConfig>? channelConfigs,
     Duration? notificationMergeWindow,
@@ -81,6 +98,10 @@ class AppSettings {
       cameraSourcePath: clearCameraSourcePath
           ? null
           : cameraSourcePath ?? this.cameraSourcePath,
+      audioSource: audioSource ?? this.audioSource,
+      audioSourcePath: clearAudioSourcePath
+          ? null
+          : audioSourcePath ?? this.audioSourcePath,
       detectorConfigs: detectorConfigs ?? this.detectorConfigs,
       channelConfigs: channelConfigs ?? this.channelConfigs,
       notificationMergeWindow: notificationMergeWindow ?? this.notificationMergeWindow,
@@ -91,6 +112,8 @@ class AppSettings {
         'cameraName': cameraName,
         'cameraSource': cameraSource,
         if (cameraSourcePath != null) 'cameraSourcePath': cameraSourcePath,
+        'audioSource': audioSource,
+        if (audioSourcePath != null) 'audioSourcePath': audioSourcePath,
         'detectorConfigs': detectorConfigs.map((k, v) => MapEntry(k, v.toJson())),
         'channelConfigs': channelConfigs.map((c) => c.toJson()).toList(),
         'notificationMergeWindowMs': notificationMergeWindow.inMilliseconds,
@@ -109,6 +132,8 @@ class AppSettings {
       cameraSource:
           json['cameraSource'] as String? ?? defaults.cameraSource,
       cameraSourcePath: json['cameraSourcePath'] as String?,
+      audioSource: json['audioSource'] as String? ?? defaults.audioSource,
+      audioSourcePath: json['audioSourcePath'] as String?,
       detectorConfigs: detectors ?? defaults.detectorConfigs,
       channelConfigs: channels ?? defaults.channelConfigs,
       notificationMergeWindow: Duration(

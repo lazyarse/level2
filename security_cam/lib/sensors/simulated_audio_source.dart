@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/audio_source.dart';
 import '../core/models.dart';
 
 enum AudioScene { silence, babyCry, glassBreak, bang }
 
-class SimulatedAudioSource {
+class SimulatedAudioSource implements AudioSource {
   static const sampleRate = 16000;
   static const windowSamples = 15600;
 
@@ -15,8 +16,10 @@ class SimulatedAudioSource {
   Timer? _timer;
   AudioScene scene = AudioScene.babyCry;
 
+  @override
   Stream<AudioWindow> get windows => _controller.stream;
 
+  @override
   void start() {
     _timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
       _controller.add(AudioWindow(
@@ -27,6 +30,7 @@ class SimulatedAudioSource {
     });
   }
 
+  @override
   void stop() {
     _timer?.cancel();
     _timer = null;
@@ -60,6 +64,7 @@ class SimulatedAudioSource {
     return samples;
   }
 
+  @override
   Future<void> dispose() async {
     stop();
     await _controller.close();
