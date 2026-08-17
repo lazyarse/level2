@@ -1,0 +1,79 @@
+import '../core/models.dart';
+import '../detection/audio/audio_classifier.dart';
+
+class DetectorConfig {
+  final String type;
+  final bool enabled;
+  final double threshold;
+  final int persistenceFrames;
+  final Duration cooldown;
+  final List<String> routeToChannelIds;
+
+  const DetectorConfig({
+    required this.type,
+    this.enabled = true,
+    this.threshold = 0.5,
+    this.persistenceFrames = 2,
+    this.cooldown = const Duration(seconds: 60),
+    this.routeToChannelIds = const [],
+  });
+
+  DetectorConfig copyWith({
+    String? type,
+    bool? enabled,
+    double? threshold,
+    int? persistenceFrames,
+    Duration? cooldown,
+    List<String>? routeToChannelIds,
+  }) {
+    return DetectorConfig(
+      type: type ?? this.type,
+      enabled: enabled ?? this.enabled,
+      threshold: threshold ?? this.threshold,
+      persistenceFrames: persistenceFrames ?? this.persistenceFrames,
+      cooldown: cooldown ?? this.cooldown,
+      routeToChannelIds: routeToChannelIds ?? this.routeToChannelIds,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'enabled': enabled,
+        'threshold': threshold,
+        'persistenceFrames': persistenceFrames,
+        'cooldownMs': cooldown.inMilliseconds,
+        'routeToChannelIds': routeToChannelIds,
+      };
+
+  factory DetectorConfig.fromJson(Map<String, dynamic> json) => DetectorConfig(
+        type: json['type'] as String,
+        enabled: json['enabled'] as bool? ?? true,
+        threshold: (json['threshold'] as num?)?.toDouble() ?? 0.5,
+        persistenceFrames: json['persistenceFrames'] as int? ?? 2,
+        cooldown: Duration(milliseconds: json['cooldownMs'] as int? ?? 60000),
+        routeToChannelIds:
+            (json['routeToChannelIds'] as List?)?.cast<String>() ?? const [],
+      );
+}
+
+abstract class Detector {
+  String get id;
+
+  DetectorConfig get config;
+
+  String get triggerType;
+
+  Future<void> init();
+
+  void reset();
+
+  Future<void> dispose();
+}
+
+abstract class FrameDetector extends Detector {
+  DetectionResult analyzeFrame(AnalysisFrame frame);
+}
+
+abstract class AudioDetector extends Detector {
+  DetectionResult analyzeScores(AudioEventScores scores);
+}
