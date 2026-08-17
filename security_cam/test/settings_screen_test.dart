@@ -76,6 +76,22 @@ void main() {
     expect(find.text('Webhook URL'), findsOneWidget);
   });
 
+  testWidgets('log channel is hidden from Channels but routable', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    await tester.scrollUntilVisible(
+        find.text('SMTP host'), 300, scrollable: _listScrollable);
+    expect(find.widgetWithText(SwitchListTile, 'log'), findsNothing,
+        reason: 'log is internal plumbing, not a user-toggleable channel');
+
+    await tester.drag(_listScrollable, const Offset(0, 1500));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(CheckboxListTile, 'log'), findsWidgets,
+        reason: 'detectors can still route to the log');
+  });
+
   testWidgets('save persists email and discord channel settings',
       (tester) async {
     final controller = await _controller();

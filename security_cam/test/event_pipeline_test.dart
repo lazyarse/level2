@@ -216,6 +216,25 @@ void main() {
     });
   });
 
+  test('log channel is always enabled for routing even when disabled', () async {
+    final recorder = _FakeRecorder();
+    final log = LogChannel(id: 'log');
+    final p = pipeline(
+      recorder: recorder,
+      snapshots: _FakeSnapshotStore(),
+      channels: {
+        'log': const ChannelConfig(id: 'log', type: 'log', enabled: false),
+      },
+      detectors: {'motion': config('motion', routes: const [])},
+      factories: {'log': (c) => log},
+    );
+
+    await p.handleBatch(batch([trigger('motion', 'motion')]));
+
+    expect(log.sent, hasLength(1));
+    expect(recorder.recorded.single.channelStatuses, {'log': 'delivered'});
+  });
+
   test('missing detector config contributes nothing (log-only fallback)',
       () async {
     final recorder = _FakeRecorder();

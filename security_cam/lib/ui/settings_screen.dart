@@ -194,7 +194,8 @@ TextEditingController _field(String key, [String? text]) =>
             ),
           const SizedBox(height: 24),
           Text('Channels', style: Theme.of(context).textTheme.titleMedium),
-          for (final c in _draft.channelConfigs) _channelCard(c),
+          for (final c in _draft.channelConfigs)
+            if (c.type != 'log') _channelCard(c),
           const SizedBox(height: 24),
           Text('Notifications', style: Theme.of(context).textTheme.titleMedium),
           Text(

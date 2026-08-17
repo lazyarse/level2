@@ -612,6 +612,9 @@ Deviations / notes captured during implementation:
   `AppSettings.defaults` now ships log + telegram + email + discord (all but log disabled).
   `test/email_channel_test.dart` + `test/discord_channel_test.dart` (10 tests) +
   `test/settings_screen_test.dart` widget tests (channel-form render + save round-trip).
+  The `log` channel card is **hidden** from the Settings Channels section (it's internal plumbing;
+  events are always recorded regardless), while `log` stays in detector routing checkboxes and is
+  treated as always-on for routing (`_targetsFor` matches `c.enabled || c.type == 'log'`).
 
 ## Appendix D — Desktop dev sources: live camera & audio (Aug 17 2026)
 

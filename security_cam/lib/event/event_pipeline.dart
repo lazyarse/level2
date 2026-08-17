@@ -103,7 +103,7 @@ class EventPipeline {
       return config != null && config.routeToChannelIds.isEmpty;
     });
     return channelConfigs.values
-        .where((c) => c.enabled)
+        .where((c) => c.enabled || c.type == 'log')
         .where((c) =>
             anyEmptyRoutes ||
             triggers.any((t) {
