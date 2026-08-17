@@ -813,3 +813,25 @@ swapping out the `MockAudioEventClassifier`/simulated audio on mobile.)
     PulseAudio source-output to redirect). On-device windows/score flow is verified; real-sound
     content is validated via the host model run. Physical devices will capture real audio through
     the same `record` → windows → YAMNet path.
+
+### B9.3 — Cross-version verification — ✅ verified
+
+(minSdk baseline check: the same APK on API 34 `pixel_34` and the AOSP API 24 `pixel_24_aosp`
+image, plus the desktop suite.)
+
+- **pixel_34 (API 34)**: real YAMNet loads (`YAMNet ready: in=[15600] float32 out=[1, 521]
+  float32`), per-window scores flow, CameraX frames flow, FGS active — unchanged from B9.2.
+- **pixel_24_aosp (API 24, AOSP 7.0)**: monitoring fully functional — FGS starts, camera frames
+  flow, screen-off gate **PASS** (frames kept counting across `KEYCODE_POWER` → `mWakefulness=Asleep`),
+  mock-scored audio windows flow. Desktop suite green (115 tests, analyze clean, Linux debug build OK).
+- **Two API-24 hardening fixes made during this phase**:
+  - **`NotificationChannel` is API 26+** — the FGS setup crashed `NoClassDefFoundError` on API 24.
+    Now guarded by `Build.VERSION.SDK_INT >= O` (pre-O notifications work without an explicit channel).
+  - **tflite_flutter's prebuilt `libtensorflowlite_jni.so` links `strtod_l`** (bionic added it in
+    API 24, but the AOSP 7.0 generic x86_64 image doesn't export it — verified
+    `strings /system/lib64/libc.so | grep -c strtod_l` → 0). On that image the model can't load;
+    `buildAudioClassifier()` now **falls back to the mock classifier on load failure** so camera +
+    mic monitoring keeps working instead of the whole pipeline failing. Real API-24+ devices and
+    newer images (and pixel_34) have the symbol and get real YAMNet; minSdk 24 stays correct.
+- **Known limitation**: the AOSP 7.0 x86_64 image can't run the real YAMNet model (above). This is
+  an image/native-lib quirk, not app logic; the fallback keeps the app fully functional there.

@@ -125,10 +125,14 @@ object MonitoringServiceController {
     private fun startForeground(service: LifecycleService) {
         activeService = service
         val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            CHANNEL_ID, "Monitoring", NotificationManager.IMPORTANCE_LOW
-        )
-        manager.createNotificationChannel(channel)
+        // NotificationChannel only exists on API 26+; pre-O the channel API is
+        // unavailable but notifications work without an explicit channel.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID, "Monitoring", NotificationManager.IMPORTANCE_LOW
+            )
+            manager.createNotificationChannel(channel)
+        }
         val contentIntent = PendingIntent.getActivity(
             service, 0, Intent(service, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
