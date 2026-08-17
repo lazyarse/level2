@@ -1,19 +1,24 @@
 # Security Camera App — Design
 
 Date: 2026-08-17
-Status: Complete — Sections 1–6 approved and written (design validated; implementation pending)
+Status: Complete — Sections 1–6 approved; revised after cohesion review (Aug 17 2026): Android camera → native Kotlin module, audio monitoring added to prototype, audio split into per-type detectors with per-type channel routing
 
 ## Goal
 
 A mobile app for Android + iOS that turns a phone into a "security camera": it monitors the
-camera feed for movement and alerts the user through pluggable notification **channels**
-(email, Telegram, more later). Each channel has its own user-defined settings.
+camera feed (and optionally the microphone) for movement and sound events and alerts the
+user through pluggable notification **channels** (email, Telegram, more later). Each channel
+has its own user-defined settings.
 
 ## Locked decisions (from Q&A)
 
 | Topic | Decision |
 |---|---|
-| Monitoring behavior | Android: background monitoring via foreground service (screen off / locked OK). iOS: foreground-only, auto-lock suppressed; stops if manually locked |
+| Monitoring behavior | Android: background monitoring via a native Kotlin foreground service (screen off / locked OK). iOS: foreground-only, auto-lock suppressed; stops if manually locked |
+| Android camera (cohesion decision) | **Native Kotlin module** (`camera_service` plugin): a `LifecycleService` owning CameraX, acting as the FGS and attached to a FlutterEngine — required because the stock `camera` plugin stops streaming when the Activity stops (screen off). Replaces `flutter_foreground_task`. This module is the future KMP camera implementation |
+| iOS camera | Stock `camera` plugin (camera_avfoundation) behind the same pure-Dart `CameraSession` contract; foreground-only |
+| Detection v1 | Pixel-diff motion detection (camera) + audio-event detection (mic) |
+| Audio monitoring (cohesion decision) | **In the prototype**: YAMNet int8 (baby cry + glass breaking) via `tflite_flutter`; audio is an independent trigger source in the event pipeline |
 | Tech stack | Flutter prototype → future port to native Kotlin/Swift (KMP) once features are locked. Portability comes from clean contracts, not language |
 | Detection v1 | Pixel-diff motion detection with a sensitivity setting |
 | Detection roadmap | Motion → person detection → pose detection; posture/fall detection becomes available downstream of pose |
@@ -32,12 +37,15 @@ camera feed for movement and alerts the user through pluggable notification **ch
 │  MonitorController (state machine: idle → starting → monitoring │
 │  → paused → error)  ← single source of truth, drives everything │
 ├─────────────────────────────────────────────────────────────────┤
-│  Detector pipeline (contract: Detector)                         │
-│   MotionDetector (v1) → PersonDetector → PoseDetector (roadmap) │
-│                          │ frames                                │
-│  Camera session (camera plugin) ── live preview + downscaled    │
-│                          │ stream for detection                 │
-│  Event pipeline: motion event → snapshot → throttle/cooldown →  │
+│  Detector pipeline (contract: Detector, multi-trigger)           │
+│   MotionDetector (v1) │ BabyCryDetector │ GlassBreakDetector (v1,   │
+│   shared YAMNet) │ → PersonDetector → PoseDetector (roadmap)        │
+│                          │ frames / PCM                          │
+│  Camera session (contract: CameraSession)                        │
+│   Android: native Kotlin CameraX LifecycleService (FGS)          │
+│   iOS: stock camera plugin (foreground)                         │
+│                          │ any detector triggered                │
+│  Event pipeline: trigger → snapshot → throttle/cooldown →       │
 │                          │ dispatch to channels                 │
 │  Channels (contract: Channel)                                   │
 │   EmailChannel (SMTP) │ TelegramChannel │ registry for more     │
@@ -48,26 +56,29 @@ camera feed for movement and alerts the user through pluggable notification **ch
 
 ### Monitoring lifecycle
 
-- **Android** — foreground service (`flutter_foreground_task` 10.x) keeps process + camera
-  alive with screen off or phone locked. Persistent non-dismissible notification
-  ("Monitoring active"), tap opens app. Declares `camera` foreground-service type (required
-  Android 14+, enforced through Android 16): manifest permissions
-  `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CAMERA`, runtime `CAMERA` +
-  `POST_NOTIFICATIONS`; `<service android:foregroundServiceType="camera">`.
-  - **No time limit** on `camera` FGS (the 6h/24h `onTimeout()` caps apply only to
+- **Android — native Kotlin `camera_service` module.** A `LifecycleService` owns the CameraX
+  session (Preview + ImageAnalysis + ImageCapture), is the foreground service, and hosts a
+  FlutterEngine so Dart keeps running with the screen off. This is the **only** supported way
+  to stream camera frames screen-off: the stock `camera` plugin binds CameraX to the Activity
+  lifecycle, so the stream dies when the Activity stops — `flutter_foreground_task` is **not
+  used** (it only keeps the process alive, not the camera; its background-Dart-isolate also
+  has a known degradation with Flutter 3.29+).
+  - FGS declared `camera|microphone` (combined types), permissions
+    `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`,
+    runtime `CAMERA` + `RECORD_AUDIO` + `POST_NOTIFICATIONS`.
+  - **No time limit** on camera/microphone FGS (the 6h/24h `onTimeout()` caps apply only to
     `dataSync`/`mediaProcessing`).
   - Must be started from a visible Activity / user action — never from `BOOT_COMPLETED`
-    (blocked for `camera` since Android 15). Screen can go off immediately after start.
-  - Screen-off capture needs `PARTIAL_WAKE_LOCK` (`ForegroundTaskOptions(allowWakeLock:
-    true)`); a bare wake lock without an FGS is revoked in Doze. Plan for OEM battery-killer
-    overrides (per-OEM "unrestricted battery" prompt in-app).
-  - **Main-isolate note:** run camera + motion detection in the main isolate; the FGS only
-    keeps the process alive. `flutter_foreground_task`'s background-Dart-isolate has a known
-    degradation issue with Flutter 3.29+ merged-platform-UI-thread changes — avoid it.
-  - Known caveat (v10): `flutter_foreground_task` requires Kotlin 1.9.10+, Gradle 8.6+,
-    minSdk 23.
-- **iOS** — keep-awake via `wakelock_plus` (1.7.x; `isIdleTimerDisabled`) while monitoring;
-  lifecycle observer stops monitoring cleanly on backgrounding / manual lock.
+    (blocked for camera since Android 15).
+  - Screen-off needs `PARTIAL_WAKE_LOCK`; a bare wake lock without an FGS is revoked in Doze.
+    Plan for OEM battery-killer overrides (per-OEM "unrestricted battery" prompt in-app).
+  - Swipe-from-recents: because the service owns the camera lifecycle (not the Activity),
+    monitoring survives; the service keeps running independently.
+  - Privacy indicators (camera + mic pills, Android 12+) show while in use; the persistent
+    non-dismissible notification ("Monitoring active") is mandatory.
+- **iOS — stock `camera` plugin, foreground-only.** Keep-awake via `wakelock_plus` (1.7.x;
+  `isIdleTimerDisabled`) while monitoring; lifecycle observer stops monitoring cleanly on
+  backgrounding / manual lock.
   - Camera capture while backgrounded remains prohibited (iOS 26 unchanged); the VoIP/PiP
     multitasking-camera trick is for call apps and risks App Store rejection — not used.
   - **Re-assert keep-awake on `willEnterForeground`** — Low Power / Adaptive Power Mode can
@@ -75,15 +86,37 @@ camera feed for movement and alerts the user through pluggable notification **ch
     stay awake.
   - `wakelock_plus` 1.7.x requires Flutter 3.41+/Dart 3.11+, min iOS 13.
 - Camera stream feeds both the live preview and a downscaled analysis stream
-  (e.g. 160×120 grayscale, ~2–4 fps during monitoring) to keep CPU/battery sane.
+  (e.g. 160×120 grayscale, ~2–4 fps during monitoring). The analysis stream is bounded
+  natively (low/medium preset + capped fps) so the per-frame channel copy stays trivial.
+- Microphone stream: 16 kHz mono PCM (~1 s windows) only during monitoring, classified
+  on-device, never uploaded.
 - Toolchain floor for the project: Flutter ≥ 3.41 / Dart ≥ 3.11 (satisfied by any current
   stable, e.g. Flutter 3.47 / Dart 3.13).
+
+### CameraSession contract (pure Dart)
+
+```dart
+abstract class CameraSession {
+  Future<void> init(CameraConfig config);        // camera id, analysis size, fps
+  Stream<AnalysisFrame> get analysisFrames;      // 160×120 grayscale @ 2–4 fps
+  Stream<PreviewFrame> get previewFrames;        // or native preview surface handle
+  Future<Snapshot> takeSnapshot();               // native full-res JPEG (orientation handled)
+  Future<void> dispose();
+}
+```
+
+- **Android implementation**: the native `camera_service` module (CameraX in the
+  LifecycleService; analysis frames + stills cross to Dart via EventChannel/MethodChannel).
+- **iOS implementation**: an adapter over the stock `camera` plugin.
+- One contract, two platform implementations — the clean seam the KMP port reuses as-is.
 
 ### Key isolation rules (make the KMP port cheap)
 
 - `Detector`, `Channel`, and the event pipeline are abstract contracts with no Flutter
   dependencies — pure Dart interfaces + data types.
-- The camera session is the only place touching platform-specific camera APIs.
+- `CameraSession` is the only platform-dependent contract; it has exactly two
+  implementations (native Kotlin module on Android, stock `camera` plugin on iOS) behind a
+  single Dart interface.
 - Everything else is plain Dart logic that a Kotlin/Swift rewrite reimplements against the
   same contracts.
 
@@ -92,16 +125,28 @@ camera feed for movement and alerts the user through pluggable notification **ch
 ### The detector contract (pure Dart, zero Flutter/platform dependencies)
 
 ```dart
+class DetectorConfig {
+  final String type;                // 'motion' | 'baby_cry' | 'glass_break' | ...
+  final bool enabled;
+  final double threshold;           // sensitivity mapping; per-type
+  final int persistenceFrames;      // windows of persistence (2-3 typical)
+  final Duration cooldown;          // per-detector (default 60 s)
+  final List<String> routeToChannelIds; // which channels get this type's alerts
+}
+
 abstract class Detector {
-  String get id;
-  Future<void> init();                    // load model sessions etc.
+  String get id;                    // = config.type
+  DetectorConfig get config;
+  String get triggerType;           // labels the alert, e.g. 'motion' | 'baby_cry'
+  Future<void> init();              // load model sessions etc.
   DetectionResult analyze(Frame frame);   // may use internal state
-  void reset();                           // on monitoring start (clear prev frame, counters)
-  Future<void> dispose();                 // release model sessions
+  void reset();                     // on monitoring start (clear prev frame, counters)
+  Future<void> dispose();           // release model sessions
 }
 
 class DetectionResult {
   final DateTime timestamp;
+  final String triggerType;
   final double score;          // 0..1, how strong the signal is
   final bool triggered;        // detector-specific decision
   final List<Detection> detections; // empty in v1; person boxes, pose keypoints later
@@ -111,7 +156,22 @@ class Frame {
   final DateTime timestamp;
   final GrayscaleBitmap bitmap; // small, e.g. 160×120
 }
+
+class AudioFrame {
+  final DateTime timestamp;
+  final Float32List pcm16;      // 0.975 s window, mono, 16 kHz, values in [-1, 1]
+}
 ```
+
+### Detector registry & configuration
+
+- Detectors are **configured instances**, not hardcoded: a registry maps
+  `{'motion': MotionDetector.new, 'baby_cry': BabyCryDetector.new, 'glass_break':
+  GlassBreakDetector.new, ...}`. The pipeline instantiates the enabled detectors from stored
+  `DetectorConfig`s on monitoring start.
+- Each type is **independently toggled, tuned, and cooled down**, and carries its own
+  `routeToChannelIds` (delivery routing — Section 3). Adding a future type (e.g. `scream`,
+  `gunshot`, `person`) = a detector class + one registry entry + a config/UI row.
 
 ### Detectors are stateful, but self-contained
 
@@ -135,12 +195,45 @@ class Frame {
    sensitivity → low threshold → small movements trigger.
 4. **Debounce**: motion must persist for N consecutive frames (default 2–3) before
    `triggered = true`, killing single-frame flicker/noise.
-5. Pipeline-level **cooldown** (user-configurable, default 60 s) suppresses repeated alerts
-   after the first.
+5. **Per-detector cooldown** (user-configurable, default 60 s) suppresses repeated alerts of
+   this type after the first; a global cap to prevent alert storms may be added later.
+6. Grayscale conversion samples the **Y plane directly** (Android) / luma from BGRA (iOS) —
+   the `image` package is not used for per-frame work.
+
+### Audio detectors (v1) — per-type instances
+
+1. Mic stream (16 kHz mono PCM, `record ^5`) accumulates into ~1 s windows (0.975 s = 15600
+   samples, matching YAMNet's input) and is fed to the pipeline once per window.
+2. **YAMNet int8** (`tfhub.dev/google/lite-model/yamnet/classification/tflite/1`,
+   Apache-2.0, ~400 KB) via `tflite_flutter` — ~12 ms per window (~1% duty cycle), run once
+   per window in the worker isolate; optional RMS/energy pre-gate to skip silence.
+3. **Shared inference, per-type decision**: one YAMNet run emits scores for all 521 AudioSet
+   classes; each audio detector (`baby_cry`, `glass_break`, later `scream`, `gunshot`, ...)
+   reads that same score vector and applies its own class selection, threshold, persistence,
+   and cooldown. Cost stays ~1% duty cycle no matter how many audio types are enabled.
+4. **Baby cry** (`BabyCryDetector`) = class 20; trigger threshold ~0.5 with 2-of-3 window
+   persistence (median confidence ~0.83 — usable as an alert trigger).
+5. **Glass break** (`GlassBreakDetector`) = fuse classes 435 `Glass` / 437 `Shatter` /
+   463 `Smash, crash` / 464 `Breaking` (max), threshold ~0.5 with persistence —
+   proof-of-concept quality (median ~0.5, expect false alarms from TV/speakers/slams).
+6. Scores are uncalibrated — thresholds are per-site settings, not constants.
+
+### Multi-trigger event pipeline
+
+- The pipeline fires on **any detector's `triggered`** (motion, baby cry, glass break — later
+  person), each with its own sensitivity, persistence, and **per-detector cooldown**.
+- The alert text names the trigger type: "Motion detected in Hallway at 14:32" /
+  "Baby crying detected in Hallway at 14:32" / "Glass breaking detected in Hallway at
+  14:32".
+- **Delivery routing** happens at dispatch: an alert goes to the enabled channels **∩** that
+  trigger type's `routeToChannelIds` (a type may route to all, a subset, or none = log-only).
+- Camera chaining stays: **motion gates the expensive person/pose stages** (Phase 2+); audio
+  is an independent source and does not gate on motion.
 
 ### Alert gating, by phase
 
-- **v1**: motion `triggered` → capture snapshot → dispatch to channels.
+- **v1**: any enabled detector `triggered` (motion, baby cry, glass break) → capture snapshot
+  → route to that type's channels.
 - **Phase 2 (person)**: detectors chain — `MotionDetector` gates the expensive stage: only
   on motion does `PersonDetector` run on that frame; alert only if a person is found. Keeps
   battery sane. Model: **YOLO26n** (current Ultralytics lineup, v8.4.x; YOLO11 is the stable
@@ -173,8 +266,9 @@ abstract class Channel {
 
 class AlertMessage {
   final DateTime timestamp;
-  final String text;                 // e.g. "Motion detected in hallway at 14:32"
-  final Uint8List? snapshotJpeg;     // optional attachment
+  final String triggerType;        // 'motion' | 'baby_cry' | 'glass_break' | ...
+  final String text;               // e.g. "Baby crying detected in Hallway at 14:32"
+  final Uint8List? snapshotJpeg;   // optional attachment
   final String? snapshotName;
 }
 
@@ -236,8 +330,12 @@ configured). The rest goes to `shared_preferences`, keyed by channel id.
 
 ### Delivery pipeline
 
-On alert → snapshot → each enabled channel `send()`s → retry with backoff (3 attempts) on
-failure → the event log records per-channel status (pending/delivered/failed).
+On any detector trigger → snapshot → route: enabled channels **∩** that trigger type's
+`routeToChannelIds` → each routed channel `send()`s → retry with backoff (3 attempts) on
+failure → the event log records per-channel status (pending/delivered/failed). A trigger
+type routed to no channels is logged but not delivered. Snapshot, JPEG encoding, SQLite
+writes, and channel HTTP run in a long-lived **worker isolate** so monitoring on the main
+isolate never blocks on I/O.
 
 ## Data & UI (Section 4 — approved)
 
@@ -245,26 +343,32 @@ failure → the event log records per-channel status (pending/delivered/failed).
 
 1. **Monitor screen** (primary) — live camera preview, camera picker (front/back + any
    additional physical cameras), user-assignable **camera name** (e.g. "Hallway") used in
-   alert text and event log entries, sensitivity slider, big Start/Stop button, status
-   indicator (monitoring / paused / error, source: `MonitorController` state machine).
+   alert text and event log entries, quick toggles for motion + audio, big Start/Stop
+   button, status indicator (monitoring / paused / error, source: `MonitorController` state
+   machine).
 2. **Channels screen** — list of configured channels with enable toggles; add/edit forms per
    channel type (one form per type, driven by the registry); "Test" button per channel;
    delete.
-3. **Event log** — chronological list: thumbnail, timestamp, camera name, motion score,
-   per-channel delivery status (pending / delivered / failed); tap for full snapshot view.
-4. **Settings** — cooldown seconds, debounce frames, snapshot retention; future: alert text
-   template.
+3. **Event log** — chronological list: thumbnail, timestamp, camera name, **trigger type**
+   (motion / baby cry / glass), score, per-channel delivery status (pending / delivered /
+   failed); tap for full snapshot view.
+4. **Settings → Detection** — a list of detector types (motion, baby cry, glass break; more
+   later), each with an enable toggle, sensitivity slider, persistence, and a **"routes to"
+   channel multi-select** (from configured channels; "none" = log-only).
+5. **Settings** — snapshot retention; future: alert text template, global alert cap.
 
 ### Storage
 
 | Data | Where |
 |---|---|
-| Non-secret settings (camera id, camera name, sensitivity, cooldown, channel plain fields) | `shared_preferences` |
+| Non-secret settings (camera id, camera name, channel plain fields) | `shared_preferences` |
+| Detector configs (type, enabled, threshold, persistence, cooldown, routeToChannelIds) | `shared_preferences` as JSON (registry-indexed) |
 | Secrets (SMTP password, bot token) | `flutter_secure_storage` (Keychain/Keystore) |
-| Event log | SQLite via `sqflite` (testable on desktop with `sqflite_common_ffi`) — id, timestamp, camera name, score, snapshot path, per-channel statuses |
+| Event log | SQLite via `sqflite` (testable on desktop with `sqflite_common_ffi`) — id, timestamp, camera name, trigger type, score, snapshot path, per-channel statuses |
 | Snapshot JPEGs | App documents dir: `snapshots/2026-08-17T14-32-05.jpg`; retention caps count (default 200) with cleanup on app start |
 
-Alert text uses the camera name: "Motion detected in Hallway at 14:32".
+Alert text uses the camera name and trigger type: "Baby crying detected in Hallway at
+14:32".
 
 ### UI plumbing
 
@@ -281,11 +385,17 @@ prototype; if it grows, introduce one deliberately rather than up front.
    remains inspectable. Failures surface in the event log and on the channels screen (last
    test/send result per channel).
 2. **Permission flows** — camera denied → guided explanation + deep link to system settings;
-   Android 13+ notification permission requested when monitoring starts; first-run onboarding
-   checks all required permissions up front.
+   mic denied (Android `RECORD_AUDIO`, iOS `NSMicrophoneUsageDescription`) handled the same
+   way; Android 13+ notification permission requested when monitoring starts; first-run
+   onboarding checks all required permissions (CAMERA, RECORD_AUDIO, POST_NOTIFICATIONS) up
+   front and explains why the mic FGS type + persistent notification are needed.
 3. **Camera errors** — camera in use by another app (wait/retry), no cameras available
    (clear error state), session dropped mid-monitoring (attempt reopen; if it fails, stop
    monitoring cleanly and notify via the persistent notification).
+4. **Audio errors** — iOS `AVAudioSession` conflict with the camera plugin (set category
+   `.playAndRecord` + mode `.measurement` once; if the session is lost mid-monitoring, log
+   the audio trigger offline and re-assert the category); mic already in use by another app
+   on Android.
 4. **Lifecycle errors** — foreground-service start failure on Android, keep-awake failure on
    iOS → both stop monitoring and surface an error state in `MonitorController`.
 5. **Configuration errors** — `validate()` runs before every send and on form save; invalid
@@ -297,44 +407,81 @@ prototype; if it grows, introduce one deliberately rather than up front.
 
 | Layer | Approach |
 |---|---|
-| MotionDetector | Unit tests on synthetic frame sequences: no change → no trigger; threshold crossing; sensitivity mapping; debounce (N frames); `reset()` clears state |
-| Pipeline | Cooldown/throttle behavior, alert-text template (camera name) |
+| MotionDetector | Unit tests on synthetic frame sequences (Y-plane sampling): no change → no trigger; threshold crossing; sensitivity mapping; debounce (N frames); per-type cooldown; `reset()` clears state |
+| Audio detectors | Unit tests on synthetic PCM per type: silence → no trigger; class-20 (baby cry) above/below threshold; 2-of-3 persistence; fused glass-class max; a second type triggering independently of the first; `reset()` clears state |
+| Pipeline / routing | Multi-trigger + per-detector cooldown; routing = enabled channels ∩ routeToChannelIds; type routed to no channels → logged, not delivered; alert-text template (camera name + trigger type) |
 | Channels | Email: in-process mock SMTP server; Telegram/Discord: local mock HTTP server asserting request shape + image-failure fallbacks |
-| Settings | JSON round-trip, `secretFields` separation, validation rules per channel |
-| Widgets | Monitor screen states (idle/monitoring/error), channel form validation, event log rendering |
+| Settings | JSON round-trip (channel + detector configs), `secretFields` separation, validation rules per channel and detector |
+| Widgets | Monitor screen states (idle/monitoring/error), Detection settings rows (toggle/sensitivity/routes-to), channel form validation, event log rendering |
 | Storage | SQLite via `sqflite_common_ffi` on desktop (integration tests) |
-| Device matrix | Android: screen-off foreground service, camera front/back, min-supported API; iOS: foreground monitoring, manual-lock stop, wakelock |
+| Native module | Kotlin/CameraX unit + instrumented tests; screen-off stream delivery (emulator pixel_34: lock + verify frames still arrive); still capture; service lifecycle |
+| Device matrix | Android: screen-off foreground service (camera+mic), camera front/back, min-supported API; iOS: foreground monitoring, manual-lock stop, wakelock, AVAudioSession co-existence |
 
 Plus a manual checklist for real-world verification: Gmail app-password SMTP, a real
-Telegram bot, a real Discord webhook, and a real phone on each platform.
+Telegram bot, a real Discord webhook, a real phone on each platform, and audio triggers
+(play a real baby-cry/glass-break sample at the monitored phone; tune per-site thresholds).
 
 ## Roadmap phasing (Section 6 — approved)
 
 | Phase | Scope |
 |---|---|
-| **0 — Core prototype** | Flutter scaffold, camera session + live preview, MotionDetector + sensitivity, event pipeline (snapshot + cooldown), camera name, Telegram channel, event log |
-| **1 — Alert completeness** | Email (SMTP) + Discord channels + channel settings UI, Android foreground service (screen-off monitoring), iOS keep-awake + lifecycle stop |
+| **0 — Core prototype (Android-first)** | Flutter scaffold, **native `camera_service` module** (CameraX LifecycleService, screen-off FGS, camera+mic), detector registry (MotionDetector + BabyCryDetector + GlassBreakDetector sharing one YAMNet inference), multi-trigger event pipeline (snapshot, per-detector cooldown, route-by-trigger-type, worker-isolate offload), camera name, Telegram channel, event log |
+| **1 — Alert completeness** | Email (SMTP) + Discord channels + channel settings UI, iOS camera adapter + keep-awake + lifecycle stop (iOS is foreground-only) |
 | **2 — Webhook family + person detection** | `WebhookChannel` presets (ntfy / Slack / Teams / custom), Pushover channel, person detection (YOLO26n via LiteRT + `tflite_flutter`, gated by motion) |
-| **3 — Pose + IoT** | MQTT channel (Home Assistant/IoT), pose detection (YOLO26n-pose), posture/fall downstream of pose keypoints; evaluate KMP port |
+| **3 — Pose + IoT** | MQTT channel (Home Assistant/IoT), pose detection (YOLO26n-pose), posture/fall downstream of pose keypoints; evaluate KMP port (the Kotlin module is already the KMP camera implementation) |
 | **Later (noted, not planned)** | WhatsApp/Signal/iMessage (no consumer API), SMS (requires paid gateway), local notifications (excluded — remote unsupervised device) |
 
 ## Appendix A — 2026 validation (external research, Aug 17 2026)
 
-Design assumptions re-verified against current docs/package registries. No changes to the
-architecture were required.
+Design assumptions re-verified against current docs/package registries. Initial pass (A1)
+checked components in isolation; a second **cohesion pass** (A2) checked how the pieces fit
+together and produced the native-module + audio decisions.
+
+### A1 — Component validation
 
 | Design element | Verdict | Key update folded into this doc |
 |---|---|---|
 | Flutter + Dart, zero-dep state | ✅ KEEP | Flutter 3.47 / Dart 3.13; no Flutter 4.x; `ChangeNotifier` + `ListenableBuilder` still idiomatic |
-| `camera` plugin | ✅ KEEP | 0.12.x, CameraX backend; background streaming needs `FOREGROUND_SERVICE_CAMERA` |
 | `tflite_flutter` | ✅ KEEP | ≥ 0.12.1 (LiteRT 1.4.0; Android 16KB page-size compliance for Play); `tflite_flutter_helper` deprecated — do pre/post-processing manually |
 | Person detection model | 🔄 UPDATE | YOLO26n current (Jan 2026, v8.4.x); YOLO11 fallback; YOLO12/13 not for production; export `format="litert"`; AGPL-3.0 confirmed (compatible with our AGPL-3.0 app; Apache-2.0 alternatives if ever closed: YOLOX-S / NanoDet / RTMDet) |
 | Pose model | 🔄 UPDATE | YOLO26n-pose preferred (boxes + keypoints, one graph); MoveNet legacy; official MediaPipe Tasks Flutter vision does not exist |
-| Android FGS monitoring | ✅ KEEP | `camera` FGS + `PARTIAL_WAKE_LOCK` still the documented screen-off pattern; no time limit on camera FGS; must start from visible activity (no `BOOT_COMPLETED`); Android 16 quotas affect only FGS-spawned background jobs |
-| `flutter_foreground_task` | ✅ KEEP (caveat) | v10.0.0; minSdk 23; background-Dart-isolate degradation with Flutter 3.29+ → main-isolate design (this doc) |
+| Audio model | ✅ KEEP | **YAMNet int8** (Apache-2.0, ~400 KB, 0.975 s / 16 kHz mono, ~12 ms CPU) — baby-cry class 20 usable (med. conf 0.83); glass = fused Glass/Shatter/Smash/Breaking, proof-of-concept (med. ~0.5). PANNs CNN14 = heavy second-opinion only. **ESC-50 and Donate-a-Cry corpora are CC BY-NC → store blocker; avoid fine-tuning on them** |
+| Audio capture | ✅ KEEP | `record ^5` (MIT) 16 kHz mono PCM stream; accumulate 1 s windows; energy pre-gate optional. Battery ≈ a few % over 8–12 h (vs camera 10–30%+) |
 | iOS foreground-only | ✅ KEEP | Camera-in-background still prohibited (iOS 26); `wakelock_plus` 1.7.x (Flutter 3.41+, iOS 13+); re-assert keep-awake on `willEnterForeground`; VoIP/PiP trick not used |
-| Permissions | ✅ KEEP | No partial camera access on Android 15/16; `ACCESS_LOCAL_NETWORK` only if LAN streaming (future); `POST_NOTIFICATIONS` Android 13+ |
+| Permissions | ✅ KEEP | No partial camera access on Android 15/16; `ACCESS_LOCAL_NETWORK` only if LAN streaming (future); `POST_NOTIFICATIONS` Android 13+; mic adds `RECORD_AUDIO` + FGS `microphone` type |
 | `flutter_secure_storage` | ✅ KEEP | ≥ 10.x (v10 rewrite, cipher-based; verify migration on device) |
 | Telegram / Discord / ntfy / Pushover | ✅ KEEP | APIs unchanged; Discord webhook file limit now 20 MB |
 | Email via SMTP | ✅ KEEP (caveat) | `mailer` v7.x maintained; Google Workspace needs XOAUTH2 (May 2025+); app passwords personal-Gmail-only; ports 587/465 OK, 25 blocked |
 | SQLite `sqflite` | ✅ KEEP (for now) | drift is the 2026 default, but `sqflite` + `sqflite_common_ffi` fine for a single event-log table; revisit at KMP port |
+
+### A2 — Cohesion findings (drove the two decisions)
+
+| Cohesion point | Finding | Resolution in this doc |
+|---|---|---|
+| Concurrent still capture | ✅ `takePicture()` during `startImageStream` works on both platforms (camerax 0.7.1+ removed concurrency restrictions) | Snapshot via `takePicture()`; stream-frame JPEG only as fallback |
+| Stream → grayscale cost | ✅ Cheap if done right | Sample the Y plane directly (skip `image` package); bound stream natively (low/medium preset + `MediaSettings.fps` 2–4) |
+| **Screen-off monitoring on Android** | ❌ **Stock `camera` plugin cannot do it** — CameraX binds to the Activity lifecycle; screen off → Activity `ON_STOP` → stream dies. FGS keeps the process, not the camera | **Native Kotlin `LifecycleService` module (decision)** |
+| `flutter_foreground_task` | ❌ Not used | Replaced by the native module (also avoids its background-Dart-isolate degradation + camera `MissingPluginException` on the task engine) |
+| Main-isolate frame work | ✅ Fine at 160×120 @ 2–4 fps | Offload JPEG encode + SQLite + HTTP to a long-lived worker isolate (not `Isolate.run` per event) |
+| Disk/network during monitoring | ✅ No Doze restriction on disk I/O; HTTP from an FGS = foreground network policy | WAL + batched writes; wakelock + battery exemption for deep Doze |
+| Audio as trigger source | ✅ Cheap (~1% duty cycle), feasible both platforms (iOS foreground-only) | **Audio monitoring in the prototype (decision)**; multi-trigger pipeline |
+| iOS mic + camera session | ⚠️ `AVAudioSession` conflict risk | Set `.playAndRecord` + `.measurement` once; re-assert on session loss |
+
+## Appendix B — Dev environment (this machine, Aug 2026)
+
+Working **Android** toolchain; **no iOS toolchain** (Linux host — building/running iOS requires a
+Mac with Xcode; the project's `ios/` folder is still generated, iOS testing happens later on a
+Mac).
+
+| Component | State | Notes |
+|---|---|---|
+| Flutter | 3.41.2 stable / Dart 3.11.0 | Meets design floor (≥3.41); `flutter_foreground_task` is no longer used (replaced by the native module) |
+| Android SDK | `/home/tpa/code/android-env/android-sdk` | platforms android-33/34/36, build-tools 34.0.0/35.0.0, NDK 28.2, licenses accepted; `flutter doctor` Android toolchain ✓ |
+| JDK | 17 / 21 / 25 installed (`/usr/lib/jvm`) | PATH currently uses 25 — **set `flutter config --jdk-dir` to JDK 21 (or 17) before first Android build**; AGP 8.x tops out at JDK 21. Native module (Kotlin/CameraX) builds with the same JDK/Gradle |
+| Emulator | 3 AVDs: pixel_34, pixel_34_aosp, pixel_24_aosp | Use pixel_34 for FGS/screen-off monitoring tests (lock + verify frames still arrive); pixel_24_aosp for min-API (24) checks |
+| Physical device | None connected (`adb devices` empty) | — |
+| Linux desktop | Toolchain ✓ | Fast local runs + `sqflite_common_ffi` storage tests before deploying to Android |
+
+Phase 0 setup step: pin the JDK (21), confirm a clean `flutter create` + Android debug build
+on pixel_34, then scaffold the `camera_service` native module and verify a screen-off
+monitoring smoke test before any app code.
