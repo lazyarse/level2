@@ -533,6 +533,26 @@ Deviations / notes captured during implementation:
   noise in the mock); a real classifier differentiates later.
 - **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
   (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
+- **Planned next (agreed, not yet implemented) — Phase 0 completion (A1–A4, then A7)**:
+  - **A1** Events screen shows captured snapshots: `EventsScreen` gains a `SnapshotStore`, events
+    with `snapshotName` render a 48px thumbnail (`Image.memory` via `load`) with tap-to-dialog
+    full view + icon fallback; `SecurityCamApp`/`_Shell`/`main.dart` thread the store through.
+  - **A2** Editable detector cooldown in Settings: `_DetectorCard` replaces the read-only cooldown
+    text with − / + steppers (15 s step, 0–600 s; 0 = no cooldown), persisted via `cooldownMs`.
+  - **A3** DB v1→v2 migration test: open a temp-file v1 DB (old DDL), insert a row, reopen at v2
+    via `SqliteEventLog.open` → assert the old row reads back with empty `triggerTypes`; plus a v2
+    round-trip test (merged `triggerTypes` stored/read; single-type stores NULL).
+  - **A4** `EventPipeline.handleBatch` unit tests: add optional `channelFactories` param to
+    `EventPipeline` (defaults to `channelRegistry`) so tests can inject mock channels. Cover:
+    multi-detector union routing → one send, `trigger_type='merged'`, `triggerTypes`, max score,
+    snapshot saved once; single-trigger → own type, empty `triggerTypes`; empty routes → all
+    enabled channels; missing detector config → log-only fallback; channel failure (500) →
+    status `failed`, event still recorded.
+  - **A7** Live verification via `flutter run`: merged `Motion + Baby crying` event with visible
+    snapshot thumbnail, cooldown tweak to 0, no paint exceptions.
+  - **Deferred to Phase 1**: A5 snapshot retention purge, A6 `flutter_secure_storage` for the
+    Telegram token. **Next steps after**: B8 desktop dev sources (Appendix D), B9 mobile Phase 0
+    (native `camera_service` module, YAMNet swap, real mic).
 - **Trigger merging (implemented)**: prevent bursts of notifications by merging triggers that
   fire within a short window.
   - `TriggerBatcher` between `pipeline.triggers` and `EventPipeline`: opens a batch on the first
