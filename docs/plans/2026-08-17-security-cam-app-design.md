@@ -502,7 +502,7 @@ with simulated camera/audio so the full pipeline is exercised without hardware.
 | Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
 | Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
 | UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
-| Verification | ✅ | `flutter analyze` clean; 35 tests pass (detectors incl. loud-noise, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring runs producing motion+baby_cry events and a loud_noise event + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
+| Verification | ✅ | `flutter analyze` clean; 38 tests pass (detectors incl. loud-noise, pipeline/cooldown, trigger batcher, classifier scenes, Telegram via MockClient, settings round-trip incl. merge window, full MonitorController monitoring runs producing **merged** events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
 
 Deviations / notes captured during implementation:
 
@@ -533,8 +533,8 @@ Deviations / notes captured during implementation:
   noise in the mock); a real classifier differentiates later.
 - **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
   (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
-- **Planned next (agreed, not yet implemented) — trigger merging**: prevent bursts of
-  notifications by merging triggers that fire within a short window.
+- **Trigger merging (implemented)**: prevent bursts of notifications by merging triggers that
+  fire within a short window.
   - `TriggerBatcher` between `pipeline.triggers` and `EventPipeline`: opens a batch on the first
     trigger, captures the snapshot immediately (moment of interest), then flushes after a fixed
     `notificationMergeWindow` (single `Timer`, no extending → notification delay bounded at the
@@ -544,14 +544,14 @@ Deviations / notes captured during implementation:
     (`Motion + Baby crying detected in Hallway …`), `score` = max of the batch.
   - **DB v2 migration**: `ALTER TABLE events ADD COLUMN trigger_types TEXT` (nullable, JSON array
     of the individual types, only for merged rows). `trigger_type` stays a **single type** — the
-    type for normal events, or the new `TriggerType.merged = 'merged'` constant for merged rows
-    (never comma-joined). `RecordedEvent`/`RecordedEventRow` gain `triggerTypes: List<String>`.
+    type for normal events, or `TriggerType.merged = 'merged'` for merged rows (never
+    comma-joined). `RecordedEvent`/`RecordedEventRow` carry `triggerTypes: List<String>`.
   - `AppSettings.notificationMergeWindow` (Duration, default 3 s, 0 = off), JSON round-trip,
     Settings screen slider 0–30 s under a Notifications section. Events screen pretty-prints the
     `triggerTypes` list and uses the first type's icon.
-  - Integration-test impact: the existing monitor runs (motion ≈0.5 s + baby_cry ≈1 s) merge into
-    one `merged` row with `triggerTypes = {motion, baby_cry}` and a single snapshot file; waits
-    bumped past the flush time.
+  - Tests: batcher unit tests (merge, window expiry, capture failure); integration runs now expect
+    one `merged` row with `triggerTypes = {motion, baby_cry}` / `{motion, loud_noise}` and a
+    single snapshot file.
 
 ## Appendix D — Desktop dev sources: live camera & audio (planned, Aug 17 2026)
 

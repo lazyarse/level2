@@ -5,6 +5,7 @@ class RecordedEvent {
   final double score;
   final String? snapshotName;
   final Map<String, String> channelStatuses;
+  final List<String> triggerTypes;
 
   RecordedEvent({
     required this.timestamp,
@@ -13,6 +14,7 @@ class RecordedEvent {
     required this.score,
     this.snapshotName,
     this.channelStatuses = const {},
+    this.triggerTypes = const [],
   });
 }
 

@@ -85,6 +85,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Channels', style: Theme.of(context).textTheme.titleMedium),
           for (final c in _draft.channelConfigs) _channelCard(c),
           const SizedBox(height: 24),
+          Text('Notifications', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Merge window: ${_mergeLabel(_draft.notificationMergeWindow)}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          Slider(
+            value: _draft.notificationMergeWindow.inSeconds
+                .clamp(0, 30)
+                .toDouble(),
+            min: 0,
+            max: 30,
+            divisions: 30,
+            label: _mergeLabel(_draft.notificationMergeWindow),
+            onChanged: (v) => setState(() {
+              _draft = _draft.copyWith(
+                notificationMergeWindow: Duration(seconds: v.round()),
+              );
+            }),
+          ),
+          const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save),
@@ -93,6 +113,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _mergeLabel(Duration window) {
+    return window == Duration.zero ? 'Off' : '${window.inSeconds}s';
   }
 
   Widget _channelCard(ChannelConfig config) {

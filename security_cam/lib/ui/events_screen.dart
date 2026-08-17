@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../event/event_pipeline.dart';
 import '../storage/event_log.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -61,9 +62,16 @@ class _EventsScreenState extends State<EventsScreen> {
                     final statuses = e.channelStatuses.entries
                         .map((s) => '${s.key}=${s.value}')
                         .join(', ');
+                    final typeLabel = e.triggerTypes.isEmpty
+                        ? triggerLabel(e.triggerType)
+                        : e.triggerTypes.map(triggerLabel).join(' + ');
+                    final iconType = e.triggerTypes.isNotEmpty
+                        ? e.triggerTypes.first
+                        : e.triggerType;
                     return ListTile(
-                      leading: Icon(_iconFor(e.triggerType)),
-                      title: Text('${e.triggerType} · score ${e.score.toStringAsFixed(2)}'),
+                      leading: Icon(_iconFor(iconType)),
+                      title: Text(
+                          '$typeLabel · score ${e.score.toStringAsFixed(2)}'),
                       subtitle: Text(
                         '${e.timestamp.toLocal()} — ${e.cameraName}${statuses.isEmpty ? '' : ' — $statuses'}',
                       ),

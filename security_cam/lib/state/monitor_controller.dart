@@ -8,6 +8,7 @@ import '../core/settings.dart';
 import '../detection/audio/audio_classifier.dart';
 import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
+import '../event/trigger_batcher.dart';
 import '../sensors/simulated_audio_source.dart';
 import '../sensors/simulated_camera_session.dart';
 import '../storage/event_recorder.dart';
@@ -28,9 +29,11 @@ class MonitorController extends ChangeNotifier {
   SimulatedCameraSession? _camera;
   SimulatedAudioSource? _audio;
   DetectorPipeline? _pipeline;
+  TriggerBatcher? _batcher;
   StreamSubscription<AnalysisFrame>? _frameSub;
   StreamSubscription<AudioWindow>? _audioSub;
   StreamSubscription<TriggerEvent>? _triggerSub;
+  StreamSubscription<TriggerBatch>? _batchSub;
 
   MonitorController({
     required this.settingsStore,
@@ -89,9 +92,15 @@ class MonitorController extends ChangeNotifier {
         snapshotStore: snapshotStore,
       );
 
-      _triggerSub = pipeline.triggers.listen((event) {
-        unawaited(eventPipeline.handleTrigger(event));
+      final batcher = TriggerBatcher(
+        window: settings.notificationMergeWindow,
+        captureSnapshot: () => camera.takeSnapshot(),
+      );
+      _batcher = batcher;
+      _batchSub = batcher.batches.listen((batch) {
+        unawaited(eventPipeline.handleBatch(batch));
       });
+      _triggerSub = pipeline.triggers.listen(batcher.add);
       _frameSub = camera.analysisFrames.listen(pipeline.processFrame);
       _audioSub = audio.windows.listen((window) {
         unawaited(pipeline.processAudio(window));
@@ -123,15 +132,19 @@ class MonitorController extends ChangeNotifier {
     await _audioSub?.cancel();
     await _frameSub?.cancel();
     await _triggerSub?.cancel();
+    await _batchSub?.cancel();
     _audio?.stop();
     await _pipeline?.dispose();
     await _camera?.dispose();
+    await _batcher?.dispose();
     _audioSub = null;
     _frameSub = null;
     _triggerSub = null;
+    _batchSub = null;
     _audio = null;
     _camera = null;
     _pipeline = null;
+    _batcher = null;
   }
 
   @override

@@ -6,11 +6,13 @@ class AppSettings {
   final String cameraName;
   final Map<String, DetectorConfig> detectorConfigs;
   final List<ChannelConfig> channelConfigs;
+  final Duration notificationMergeWindow;
 
   const AppSettings({
     this.cameraName = 'Hallway',
     this.detectorConfigs = const {},
     this.channelConfigs = const [],
+    this.notificationMergeWindow = const Duration(seconds: 3),
   });
 
   static AppSettings defaults() {
@@ -54,11 +56,13 @@ class AppSettings {
     String? cameraName,
     Map<String, DetectorConfig>? detectorConfigs,
     List<ChannelConfig>? channelConfigs,
+    Duration? notificationMergeWindow,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
       detectorConfigs: detectorConfigs ?? this.detectorConfigs,
       channelConfigs: channelConfigs ?? this.channelConfigs,
+      notificationMergeWindow: notificationMergeWindow ?? this.notificationMergeWindow,
     );
   }
 
@@ -66,6 +70,7 @@ class AppSettings {
         'cameraName': cameraName,
         'detectorConfigs': detectorConfigs.map((k, v) => MapEntry(k, v.toJson())),
         'channelConfigs': channelConfigs.map((c) => c.toJson()).toList(),
+        'notificationMergeWindowMs': notificationMergeWindow.inMilliseconds,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -80,6 +85,10 @@ class AppSettings {
       cameraName: json['cameraName'] as String? ?? defaults.cameraName,
       detectorConfigs: detectors ?? defaults.detectorConfigs,
       channelConfigs: channels ?? defaults.channelConfigs,
+      notificationMergeWindow: Duration(
+        milliseconds: json['notificationMergeWindowMs'] as int? ??
+            defaults.notificationMergeWindow.inMilliseconds,
+      ),
     );
   }
 }

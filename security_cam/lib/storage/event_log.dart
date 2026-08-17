@@ -12,6 +12,7 @@ class RecordedEventRow {
   final double score;
   final String? snapshotName;
   final Map<String, String> channelStatuses;
+  final List<String> triggerTypes;
 
   RecordedEventRow({
     required this.id,
@@ -21,19 +22,21 @@ class RecordedEventRow {
     required this.score,
     this.snapshotName,
     this.channelStatuses = const {},
+    this.triggerTypes = const [],
   });
 }
 
 class SqliteEventLog implements EventRecorder {
   final Database _db;
   static const _table = 'events';
+  static const _version = 2;
 
   SqliteEventLog._(this._db);
 
   static Future<SqliteEventLog> open(String path) async {
     final db = await openDatabase(
       path,
-      version: 1,
+      version: _version,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_table (
@@ -43,9 +46,15 @@ class SqliteEventLog implements EventRecorder {
             trigger_type TEXT NOT NULL,
             score REAL NOT NULL,
             snapshot_name TEXT,
-            channel_statuses TEXT
+            channel_statuses TEXT,
+            trigger_types TEXT
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE $_table ADD COLUMN trigger_types TEXT');
+        }
       },
     );
     return SqliteEventLog._(db);
@@ -60,6 +69,9 @@ class SqliteEventLog implements EventRecorder {
       'score': event.score,
       'snapshot_name': event.snapshotName,
       'channel_statuses': jsonEncode(event.channelStatuses),
+      'trigger_types': event.triggerTypes.isEmpty
+          ? null
+          : jsonEncode(event.triggerTypes),
     });
   }
 
@@ -76,6 +88,13 @@ class SqliteEventLog implements EventRecorder {
         statuses = (jsonDecode(raw) as Map).cast<String, String>();
       } catch (_) {}
     }
+    final triggerTypes = <String>[];
+    final rawTypes = map['trigger_types'] as String?;
+    if (rawTypes != null) {
+      try {
+        triggerTypes.addAll((jsonDecode(rawTypes) as List).cast<String>());
+      } catch (_) {}
+    }
     return RecordedEventRow(
       id: map['id'] as int,
       timestamp: DateTime.parse(map['timestamp'] as String),
@@ -84,6 +103,7 @@ class SqliteEventLog implements EventRecorder {
       score: (map['score'] as num).toDouble(),
       snapshotName: map['snapshot_name'] as String?,
       channelStatuses: statuses,
+      triggerTypes: triggerTypes,
     );
   }
 

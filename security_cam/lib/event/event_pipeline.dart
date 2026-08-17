@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../core/camera_session.dart';
 import '../core/channel.dart';
 import '../core/detector.dart';
@@ -5,6 +7,7 @@ import '../core/models.dart';
 import '../core/registries.dart';
 import '../storage/event_recorder.dart';
 import '../storage/snapshot_store.dart';
+import 'trigger_batcher.dart';
 
 class EventPipeline {
   final CameraSession cameraSession;
@@ -23,30 +26,29 @@ class EventPipeline {
     required this.snapshotStore,
   });
 
-  Future<void> handleTrigger(TriggerEvent event) async {
-    final config = detectorConfigs[event.detectorId];
-    if (config == null) return;
+  Future<void> handleBatch(TriggerBatch batch) async {
+    final types = <String>{
+      for (final t in batch.triggers) t.triggerType,
+    }.toList();
+    final single = types.length == 1;
+    final type = single ? types.first : TriggerType.merged;
 
-    Snapshot? snapshot;
-    try {
-      snapshot = await cameraSession.takeSnapshot();
-      await snapshotStore.save(snapshot);
-    } catch (_) {
-      snapshot = null;
+    final snapshot = batch.snapshot;
+    if (snapshot != null) {
+      try {
+        await snapshotStore.save(snapshot);
+      } catch (_) {}
     }
 
-    final text = _alertText(event, snapshot);
+    final text = _alertText(types, batch.timestamp, snapshot);
     final message = AlertMessage(
-      timestamp: event.timestamp,
-      triggerType: event.triggerType,
+      timestamp: batch.timestamp,
+      triggerType: type,
       text: text,
       snapshot: snapshot,
     );
 
-    final targets = channelConfigs.values
-        .where((c) => c.enabled)
-        .where((c) => config.routeToChannelIds.isEmpty || config.routeToChannelIds.contains(c.id))
-        .toList();
+    final targets = _targetsFor(batch.triggers);
 
     final statuses = <String, String>{};
     for (final target in targets) {
@@ -60,18 +62,37 @@ class EventPipeline {
     }
 
     await recorder.record(RecordedEvent(
-      timestamp: event.timestamp,
+      timestamp: batch.timestamp,
       cameraName: cameraName,
-      triggerType: event.triggerType,
-      score: event.score,
+      triggerType: type,
+      triggerTypes: single ? const [] : types,
+      score: batch.triggers.map((e) => e.score).reduce(max),
       snapshotName: snapshot?.name,
       channelStatuses: statuses,
     ));
   }
 
-  String _alertText(TriggerEvent event, Snapshot? snapshot) {
-    final label = triggerLabel(event.triggerType);
-    final time = event.timestamp.toLocal();
+  List<ChannelConfig> _targetsFor(List<TriggerEvent> triggers) {
+    final anyEmptyRoutes = triggers.any((t) {
+      final config = detectorConfigs[t.detectorId];
+      return config != null && config.routeToChannelIds.isEmpty;
+    });
+    return channelConfigs.values
+        .where((c) => c.enabled)
+        .where((c) =>
+            anyEmptyRoutes ||
+            triggers.any((t) {
+              final config = detectorConfigs[t.detectorId];
+              return config != null && config.routeToChannelIds.contains(c.id);
+            }))
+        .toList();
+  }
+
+  String _alertText(List<String> types, DateTime timestamp, Snapshot? snapshot) {
+    final label = types.length == 1
+        ? triggerLabel(types.first)
+        : types.map(triggerLabel).join(' + ');
+    final time = timestamp.toLocal();
     return '$label detected in $cameraName at ${time.toIso8601String()}';
   }
 }
@@ -86,6 +107,8 @@ String triggerLabel(String triggerType) {
       return 'Glass breaking';
     case TriggerType.loudNoise:
       return 'Loud noise';
+    case TriggerType.merged:
+      return 'Multiple triggers';
     case TriggerType.person:
       return 'Person';
     default:

@@ -35,12 +35,15 @@ void main() {
     await controller.start();
     expect(controller.state, MonitorState.monitoring);
 
-    await Future<void>.delayed(const Duration(seconds: 4));
+    await Future<void>.delayed(const Duration(seconds: 5));
 
     final events = await eventLog.recent();
-    final types = events.map((e) => e.triggerType).toSet();
-    expect(types, contains('motion'), reason: 'events=${events.map((e) => e.triggerType).toList()}');
-    expect(types, contains('baby_cry'));
+    final merged =
+        events.where((e) => e.triggerTypes.contains('motion')).toList();
+    expect(merged, isNotEmpty,
+        reason: 'events=${events.map((e) => e.triggerTypes).toList()}');
+    expect(merged.first.triggerType, 'merged');
+    expect(merged.first.triggerTypes, contains('baby_cry'));
 
     final files = snapDir.listSync().whereType<File>().toList();
     expect(files, isNotEmpty, reason: 'no snapshot files written');
@@ -76,12 +79,13 @@ void main() {
     controller.setAudioScene(AudioScene.bang);
     expect(controller.state, MonitorState.monitoring);
 
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await Future<void>.delayed(const Duration(seconds: 5));
 
     final events = await eventLog.recent();
-    final types = events.map((e) => e.triggerType).toSet();
-    expect(types, contains('loud_noise'),
-        reason: 'events=${events.map((e) => e.triggerType).toList()}');
+    final loud =
+        events.where((e) => e.triggerTypes.contains('loud_noise')).toList();
+    expect(loud, isNotEmpty,
+        reason: 'events=${events.map((e) => e.triggerTypes).toList()}');
 
     await controller.stop();
     expect(controller.state, MonitorState.idle);

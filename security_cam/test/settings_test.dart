@@ -26,6 +26,7 @@ void main() {
       settings.detectorConfigs['motion']!.cooldown,
     );
     expect(restored.channelConfigs.length, settings.channelConfigs.length);
+    expect(restored.notificationMergeWindow, settings.notificationMergeWindow);
   });
 
   test('empty JSON falls back to defaults', () {
