@@ -49,6 +49,15 @@ class MonitorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Stream<AnalysisFrame>? get analysisFrames => _camera?.analysisFrames;
+
+  AudioScene get audioScene => _audio?.scene ?? AudioScene.babyCry;
+
+  void setAudioScene(AudioScene scene) {
+    if (_audio != null) _audio!.scene = scene;
+    notifyListeners();
+  }
+
   Future<void> start() async {
     if (state == MonitorState.monitoring) return;
     state = MonitorState.starting;

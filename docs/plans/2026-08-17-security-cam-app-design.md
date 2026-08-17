@@ -485,3 +485,34 @@ Mac).
 Phase 0 setup step: pin the JDK (21), confirm a clean `flutter create` + Android debug build
 on pixel_34, then scaffold the `camera_service` native module and verify a screen-off
 monitoring smoke test before any app code.
+## Appendix C — Implementation status (Aug 17 2026)
+
+Phase 0 core (desktop-first dev model) is implemented and unit-tested; the app runs on Linux
+with simulated camera/audio so the full pipeline is exercised without hardware.
+
+| Area | Status | Notes |
+|---|---|---|
+| Core contracts | ✅ | `DetectorConfig`/`Detector`/`FrameDetector`/`AudioDetector`, `Channel`/`ChannelConfig`/`ChannelSettings`, `CameraSession`, `AppSettings` — all JSON round-trip; registry maps detector/channel types to factories |
+| Detectors v1 | ✅ | Pixel-diff `MotionDetector` (tolerance 30, threshold ratio, persistence, cooldown), per-type `BabyCryDetector` / `GlassBreakDetector` reading shared per-window `AudioEventScores` |
+| Audio | ✅ (mock) | `AudioEventClassifier` interface; `MockAudioEventClassifier` (RMS + zero-crossing → baby_cry/glass). YAMNet/tflite swap later on mobile (Appendix A1 notes) |
+| Pipeline | ✅ | `DetectorPipeline`: multi-trigger, per-detector cooldown, sync broadcast bus. Frames at 160×120 @ 4fps, audio windows @ 1s |
+| Event pipeline | ✅ | Trigger → snapshot → route = enabled ∩ `routeToChannelIds` (log-only if none) → per-channel send → SQLite record with per-channel statuses. Delivery retry/backoff (3 attempts) is **not yet implemented** (Phase 1). Worker-isolate offload for encode/SQLite/HTTP is **not yet implemented** (Phase 1) |
+| Channels | ✅ | Log + Telegram (bot token/chat ID, `sendPhoto` w/ text fallback, injectable `http.Client`, validation). Email SMTP, Discord, Webhook presets, Pushover, MQTT → later phases per roadmap |
+| Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
+| Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
+| UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar |
+| Verification | ✅ | `flutter analyze` clean; 27 tests pass (detectors, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring run producing motion+baby_cry events + snapshot files); Linux debug build + launch smoke-tested |
+
+Deviations / notes captured during implementation:
+
+- **Motion default threshold lowered 0.08 → 0.03**: at 160×120 a moving 40×40 sim object
+  changes only ~4.7% of pixels/frame, below the 8% design default, so motion never fired.
+  Sensitivity is user-tunable in Settings.
+- **`http_parser` added as a direct dependency** (was transitive) so Telegram photos use the
+  real `MediaType`.
+- **Pipeline event bus is `sync`** broadcast so deterministic tests don't race microtasks.
+- `flutter build linux` requires `lld`; installed `lld` on the dev host (GNU `ld` alone isn't
+  found by the Dart native build).
+- Verified at runtime: app launches with no exceptions; `events.db` created under
+  `~/.local/share/io.securitycam.security_cam/`; monitoring run writes snapshot PNGs and
+  records events.

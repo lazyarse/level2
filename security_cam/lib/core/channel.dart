@@ -21,6 +21,18 @@ class ChannelConfig {
     this.settingsJson = const {},
   });
 
+  ChannelConfig copyWith({
+    bool? enabled,
+    Map<String, dynamic>? settingsJson,
+  }) {
+    return ChannelConfig(
+      id: id,
+      type: type,
+      enabled: enabled ?? this.enabled,
+      settingsJson: settingsJson ?? this.settingsJson,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'type': type,

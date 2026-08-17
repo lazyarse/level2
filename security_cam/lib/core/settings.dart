@@ -19,7 +19,7 @@ class AppSettings {
       detectorConfigs: {
         TriggerType.motion: const DetectorConfig(
           type: TriggerType.motion,
-          threshold: 0.08,
+          threshold: 0.03,
           persistenceFrames: 2,
           routeToChannelIds: ['telegram'],
         ),
