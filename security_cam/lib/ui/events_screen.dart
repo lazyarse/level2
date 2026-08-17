@@ -83,6 +83,7 @@ class _EventsScreenState extends State<EventsScreen> {
       'motion' => Icons.directions_run,
       'baby_cry' => Icons.child_care,
       'glass_break' => Icons.broken_image,
+      'loud_noise' => Icons.volume_up,
       _ => Icons.notification_important,
     };
   }

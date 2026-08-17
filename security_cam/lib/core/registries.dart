@@ -5,6 +5,7 @@ import '../core/detector.dart';
 import '../core/models.dart';
 import '../detection/baby_cry_detector.dart';
 import '../detection/glass_break_detector.dart';
+import '../detection/loud_noise_detector.dart';
 import '../detection/motion_detector.dart';
 
 typedef DetectorFactory = Detector Function(DetectorConfig config);
@@ -13,6 +14,7 @@ final Map<String, DetectorFactory> detectorRegistry = {
   TriggerType.motion: (c) => MotionDetector(c),
   TriggerType.babyCry: (c) => BabyCryDetector(c),
   TriggerType.glassBreak: (c) => GlassBreakDetector(c),
+  TriggerType.loudNoise: (c) => LoudNoiseDetector(c),
 };
 
 typedef ChannelFactory = Channel Function(ChannelConfig config);

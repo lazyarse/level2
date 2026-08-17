@@ -84,6 +84,8 @@ String triggerLabel(String triggerType) {
       return 'Baby crying';
     case TriggerType.glassBreak:
       return 'Glass breaking';
+    case TriggerType.loudNoise:
+      return 'Loud noise';
     case TriggerType.person:
       return 'Person';
     default:

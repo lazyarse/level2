@@ -104,6 +104,7 @@ class MonitorScreen extends StatelessWidget {
     return switch (scene) {
       AudioScene.babyCry => 'Baby crying',
       AudioScene.glassBreak => 'Glass breaking',
+      AudioScene.bang => 'Loud noise',
       AudioScene.silence => 'Silence',
     };
   }

@@ -248,6 +248,7 @@ class _DetectorCard extends StatelessWidget {
       TriggerType.motion => 'Motion',
       TriggerType.babyCry => 'Baby cry',
       TriggerType.glassBreak => 'Glass break',
+      TriggerType.loudNoise => 'Loud noise',
       _ => type,
     };
   }

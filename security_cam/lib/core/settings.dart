@@ -36,6 +36,13 @@ class AppSettings {
           enabled: false,
           routeToChannelIds: ['telegram'],
         ),
+        TriggerType.loudNoise: const DetectorConfig(
+          type: TriggerType.loudNoise,
+          threshold: 0.5,
+          persistenceFrames: 1,
+          enabled: false,
+          routeToChannelIds: ['telegram'],
+        ),
       },
       channelConfigs: const [
         ChannelConfig(id: 'log', type: 'log', enabled: true),

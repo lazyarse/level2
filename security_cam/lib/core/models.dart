@@ -47,6 +47,7 @@ class TriggerType {
   static const motion = 'motion';
   static const babyCry = 'baby_cry';
   static const glassBreak = 'glass_break';
+  static const loudNoise = 'loud_noise';
   static const person = 'person';
 
   const TriggerType._();

@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import '../core/models.dart';
 
-enum AudioScene { silence, babyCry, glassBreak }
+enum AudioScene { silence, babyCry, glassBreak, bang }
 
 class SimulatedAudioSource {
   static const sampleRate = 16000;
@@ -51,6 +51,10 @@ class SimulatedAudioSource {
         for (var i = 0; i < windowSamples; i++) {
           final envelope = exp(-1 * (i / windowSamples));
           samples[i] = 0.8 * envelope * (rng.nextDouble() * 2 - 1);
+        }
+      case AudioScene.bang:
+        for (var i = 0; i < windowSamples; i++) {
+          samples[i] = rng.nextDouble() * 2 - 1;
         }
     }
     return samples;

@@ -494,15 +494,15 @@ with simulated camera/audio so the full pipeline is exercised without hardware.
 | Area | Status | Notes |
 |---|---|---|
 | Core contracts | ✅ | `DetectorConfig`/`Detector`/`FrameDetector`/`AudioDetector`, `Channel`/`ChannelConfig`/`ChannelSettings`, `CameraSession`, `AppSettings` — all JSON round-trip; registry maps detector/channel types to factories |
-| Detectors v1 | ✅ | Pixel-diff `MotionDetector` (tolerance 30, threshold ratio, persistence, cooldown), per-type `BabyCryDetector` / `GlassBreakDetector` reading shared per-window `AudioEventScores` |
-| Audio | ✅ (mock) | `AudioEventClassifier` interface; `MockAudioEventClassifier` (RMS + zero-crossing → baby_cry/glass). YAMNet/tflite swap later on mobile (Appendix A1 notes) |
+| Detectors v1 | ✅ | Pixel-diff `MotionDetector` (tolerance 30, threshold ratio, persistence, cooldown), per-type `BabyCryDetector` / `GlassBreakDetector` / `LoudNoiseDetector` reading shared per-window `AudioEventScores` |
+| Audio | ✅ (mock) | `AudioEventClassifier` interface; `MockAudioEventClassifier` (RMS + zero-crossing → baby_cry / glass / loud_noise). YAMNet/tflite swap later on mobile (Appendix A1 notes) |
 | Pipeline | ✅ | `DetectorPipeline`: multi-trigger, per-detector cooldown, sync broadcast bus. Frames at 160×120 @ 4fps, audio windows @ 1s |
 | Event pipeline | ✅ | Trigger → snapshot → route = enabled ∩ `routeToChannelIds` (log-only if none) → per-channel send → SQLite record with per-channel statuses. Delivery retry/backoff (3 attempts) is **not yet implemented** (Phase 1). Worker-isolate offload for encode/SQLite/HTTP is **not yet implemented** (Phase 1) |
 | Channels | ✅ | Log + Telegram (bot token/chat ID, `sendPhoto` w/ text fallback, injectable `http.Client`, validation). Email SMTP, Discord, Webhook presets, Pushover, MQTT → later phases per roadmap |
 | Storage | ✅ | `SettingsStore` (shared_preferences), `SqliteEventLog` (events + channel statuses), `FileSnapshotStore` (documents dir `snapshots/`, retention purge not yet wired) |
 | Simulated sensors | ✅ | `SimulatedCameraSession` (moving-rect scene, PNG snapshots), `SimulatedAudioSource` (silence / baby-cry / glass scenes) — desktop dev stand-ins; real camera + mic come with the native module |
 | UI | ✅ | Monitor screen (live view, start/stop, audio-scene demo control), Settings (camera name, per-detector tuning, channel setup incl. Telegram), Event log list. Material 3 shell w/ nav bar. On desktop the preview shows the **simulated** camera scene (moving object), not the on-device camera — real feeds arrive with the mobile `CameraSession` implementations (Android native module / iOS plugin) |
-| Verification | ✅ | `flutter analyze` clean; 30 tests pass (detectors, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring run producing motion+baby_cry events + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
+| Verification | ✅ | `flutter analyze` clean; 35 tests pass (detectors incl. loud-noise, pipeline/cooldown, classifier scenes, Telegram via MockClient, settings round-trip, full MonitorController monitoring runs producing motion+baby_cry events and a loud_noise event + snapshot files, grayscaleToRGBA + CameraView widget tests); Linux debug build + launch smoke-tested, monitoring run live-verified via `flutter run` |
 
 Deviations / notes captured during implementation:
 
@@ -525,6 +525,12 @@ Deviations / notes captured during implementation:
   `ui.decodeImageFromPixels`, caching the `ui.Image`, disposing only the replaced image
   (generation counter drops stale decodes), and reporting decode errors via `FlutterError`
   instead of throwing in `paint`. Covered by CameraView widget tests.
+- **Loud-noise trigger (v1)**: `TriggerType.loudNoise`, off by default (like glass_break),
+  `persistenceFrames: 1` (a bang is brief). Mock classifier adds a `loud_noise` class gated by
+  `rms > 0.45 && zcr > 0.35` — the RMS floor separates it from the sim scenes (glass ≈ 0.37,
+  baby-cry ≈ 0.3, silence ≈ 0; `AudioScene.bang` = full-window broadband noise, rms ≈ 0.58 →
+  score ≈ 0.85). Sim quirk: a loud bang also scores high on `glass` (both are loud broadband
+  noise in the mock); a real classifier differentiates later.
 - **Planned next (not yet implemented — see Appendix D)**: desktop dev camera/audio sources
   (live webcam + video-file playback + mic + audio-file playback, switchable in Settings).
 

@@ -38,11 +38,13 @@ class MockAudioEventClassifier implements AudioEventClassifier {
     final zcr = _zeroCrossingRate(window.samples);
     final babyCry = (rms > 0.02 && zcr < 0.08) ? _scale(rms, 0.02, 0.3) : 0.0;
     final glass = (rms > 0.08 && zcr > 0.25) ? _scale(rms, 0.08, 0.5) : 0.0;
+    final loudNoise = (rms > 0.45 && zcr > 0.35) ? _scale(rms, 0.45, 0.6) : 0.0;
     return AudioEventScores(
       timestamp: window.timestamp,
       classScores: {
         'baby_cry': babyCry,
         'glass': glass,
+        'loud_noise': loudNoise,
       },
     );
   }
