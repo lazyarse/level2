@@ -63,7 +63,7 @@ void main() {
     await store.save(_withTelegram('', '42'));
 
     final loaded = await store.load();
-    final tg = loaded.channelConfigs.single;
+    final tg = loaded.channelConfigs.firstWhere((c) => c.id == 'telegram');
     expect(tg.settingsJson['botToken'], '123:ABC');
     expect(tg.settingsJson['chatId'], '42');
   });
@@ -76,7 +76,7 @@ void main() {
     final store = await SettingsStore.open(secrets: secrets);
 
     final loaded = await store.load();
-    final tg = loaded.channelConfigs.single;
+    final tg = loaded.channelConfigs.firstWhere((c) => c.id == 'telegram');
     expect(tg.settingsJson['botToken'], 'legacy:token',
         reason: 'token still usable in memory');
     expect(secrets.all['channel.telegram.botToken'], 'legacy:token',

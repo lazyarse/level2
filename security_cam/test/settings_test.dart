@@ -61,6 +61,46 @@ void main() {
     expect(restored.audioSourcePath, isNull);
   });
 
+  test('legacy JSON with only the log channel merges in default channels', () {
+    final restored = AppSettings.fromJson(const {
+      'channelConfigs': [
+        {'id': 'log', 'type': 'log', 'enabled': true},
+      ],
+    });
+    expect(restored.channelConfigs.map((c) => c.id).toList(),
+        ['log', 'telegram', 'email', 'discord']);
+    expect(restored.channelConfigs.firstWhere((c) => c.id == 'log').enabled,
+        isTrue);
+    for (final c in restored.channelConfigs.where((c) => c.id != 'log')) {
+      expect(c.enabled, isFalse, reason: 'merged channels default to disabled');
+    }
+  });
+
+  test('stored channel settings are preserved, not clobbered by defaults', () {
+    final restored = AppSettings.fromJson(const {
+      'channelConfigs': [
+        {
+          'id': 'log',
+          'type': 'log',
+          'enabled': true,
+          'settings': <String, dynamic>{},
+        },
+        {
+          'id': 'email',
+          'type': 'email',
+          'enabled': true,
+          'settings': {'host': 'smtp.example.com', 'port': 587},
+        },
+      ],
+    });
+    final email = restored.channelConfigs.firstWhere((c) => c.id == 'email');
+    expect(email.enabled, isTrue);
+    expect(email.settingsJson['host'], 'smtp.example.com');
+    expect(restored.channelConfigs.map((c) => c.id),
+        containsAll(['log', 'telegram', 'email', 'discord']));
+    expect(restored.channelConfigs, hasLength(4));
+  });
+
   test('copyWith updates only provided fields', () {
     final settings = AppSettings.defaults();
     final updated = settings.copyWith(cameraName: 'Nursery');

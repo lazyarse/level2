@@ -132,9 +132,15 @@ class AppSettings {
     final detectors = (json['detectorConfigs'] as Map?)
         ?.map((k, v) => MapEntry(
             k as String, DetectorConfig.fromJson(v as Map<String, dynamic>)));
-    final channels = (json['channelConfigs'] as List?)
+    final stored = (json['channelConfigs'] as List?)
         ?.map((e) => ChannelConfig.fromJson(e as Map<String, dynamic>))
-        .toList();
+        .toList() ??
+    const <ChannelConfig>[];
+    final channels = [
+      ...stored,
+      for (final d in defaults.channelConfigs)
+        if (!stored.any((c) => c.id == d.id)) d,
+    ];
     return AppSettings(
       cameraName: json['cameraName'] as String? ?? defaults.cameraName,
       cameraSource:
@@ -143,7 +149,7 @@ class AppSettings {
       audioSource: json['audioSource'] as String? ?? defaults.audioSource,
       audioSourcePath: json['audioSourcePath'] as String?,
       detectorConfigs: detectors ?? defaults.detectorConfigs,
-      channelConfigs: channels ?? defaults.channelConfigs,
+      channelConfigs: channels,
       notificationMergeWindow: Duration(
         milliseconds: json['notificationMergeWindowMs'] as int? ??
             defaults.notificationMergeWindow.inMilliseconds,
