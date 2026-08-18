@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:security_cam/core/settings.dart';
 import 'package:security_cam/sensors/ffmpeg_audio_source.dart';
+import 'package:security_cam/sensors/permissions_service.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
 import 'package:security_cam/storage/settings_store.dart';
@@ -43,6 +44,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
     await controller.updateSettings(controller.settings.copyWith(
@@ -91,6 +93,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
     await controller.updateSettings(controller.settings.copyWith(

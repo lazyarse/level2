@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:security_cam/sensors/permissions_service.dart';
 import 'package:security_cam/sensors/simulated_audio_source.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
@@ -29,6 +30,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
     expect(controller.settings.detectorConfigs, isNotEmpty);
@@ -65,6 +67,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
 
@@ -124,6 +127,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
     await controller.updateSettings(
@@ -161,6 +165,7 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
     await controller.updateSettings(
@@ -174,4 +179,71 @@ void main() {
     await eventLog.close();
     snapDir.deleteSync(recursive: true);
   });
+
+  test('start fails cleanly when camera permission is denied', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsStore = await SettingsStore.open();
+    final eventLog = await SqliteEventLog.open(inMemoryDatabasePath);
+    final snapDir = await Directory.systemTemp.createTemp('scam_deny');
+    final snapshotStore = FileSnapshotStore(snapDir.path);
+
+    final controller = MonitorController(
+      settingsStore: settingsStore,
+      eventRecorder: eventLog,
+      snapshotStore: snapshotStore,
+      purgeInterval: null,
+      permissionsService: const _FakePermissionsService(
+        cameraGranted: false,
+        microphoneGranted: true,
+      ),
+    );
+    await controller.init();
+
+    await controller.start();
+    expect(controller.state, MonitorState.error);
+    expect(controller.error, contains('permissions'));
+    expect(controller.state, isNot(MonitorState.monitoring));
+    await eventLog.close();
+    snapDir.deleteSync(recursive: true);
+  });
+
+  test('start proceeds when permissions are granted', () async {
+    SharedPreferences.setMockInitialValues({});
+    final settingsStore = await SettingsStore.open();
+    final eventLog = await SqliteEventLog.open(inMemoryDatabasePath);
+    final snapDir = await Directory.systemTemp.createTemp('scam_grant');
+    final snapshotStore = FileSnapshotStore(snapDir.path);
+
+    final controller = MonitorController(
+      settingsStore: settingsStore,
+      eventRecorder: eventLog,
+      snapshotStore: snapshotStore,
+      purgeInterval: null,
+      permissionsService: const _FakePermissionsService(),
+    );
+    await controller.init();
+
+    await controller.start();
+    expect(controller.state, MonitorState.monitoring);
+    await controller.stop();
+    await eventLog.close();
+    snapDir.deleteSync(recursive: true);
+  });
+}
+
+class _FakePermissionsService extends PermissionsService {
+  const _FakePermissionsService({
+    this.cameraGranted = true,
+    this.microphoneGranted = true,
+  });
+
+  final bool cameraGranted;
+  final bool microphoneGranted;
+
+  @override
+  Future<PermissionsResult> ensurePermissions() async => PermissionsResult(
+        cameraGranted: cameraGranted,
+        microphoneGranted: microphoneGranted,
+        notificationsGranted: true,
+      );
 }

@@ -50,6 +50,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.core:core-ktx:1.13.1")
+    // CameraX returns Guava `ListenableFuture`s; integration_test's AndroidX
+    // test deps otherwise skew the transitive Guava on the compile classpath
+    // and break ListenableFuture resolution.
+    implementation("com.google.guava:guava:33.3.1-android")
 }
 
 flutter {

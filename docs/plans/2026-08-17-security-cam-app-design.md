@@ -835,3 +835,64 @@ image, plus the desktop suite.)
     newer images (and pixel_34) have the symbol and get real YAMNet; minSdk 24 stays correct.
 - **Known limitation**: the AOSP 7.0 x86_64 image can't run the real YAMNet model (above). This is
   an image/native-lib quirk, not app logic; the fallback keeps the app fully functional there.
+
+### B9.4 — Android hardening: runtime permissions + on-device integration suite — ✅ verified
+
+(Goal: the FGS can only start after the user grants CAMERA + RECORD_AUDIO; declare the FGS
+`microphone` type; verify the event pipeline end-to-end on-device via a Flutter integration suite,
+not just host-side taps.)
+
+- **Runtime permissions**:
+  - Added `permission_handler` (pinned `11.3.1`; its Android impl `12.1.0` compiles under the
+    project's Gradle 8.14/AGP toolchain — `13.0.1`'s impl builds against AGP 9.0.1/Kotlin 2.3.20
+    and fails on `Unresolved reference: compilerOptions`).
+  - New `lib/sensors/permissions_service.dart`: `PermissionsResult` +
+    `PermissionsService` abstraction with a `SystemPermissionsService` (real
+    `Permission.camera/microphone/notification.request()`) and a `NoopPermissionsService`
+    (tests/harness). `buildPermissionsService()` is the default.
+  - `MonitorController.start()` now gates on `ensurePermissions()`: camera or mic denied →
+    clean `MonitorState.error` ("Camera and microphone permissions are required…"), no FGS starts.
+  - Manifest additions: `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_MICROPHONE`, and
+    `foregroundServiceType="camera|microphone"` on the service.
+- **On-device verification**:
+  - **Grant path** (pixel_34 headless + pixel_34_aosp `-gpu host` windowed): in-app permission
+    dialogs appear (camera "While using the app", mic, notifications) → grant → FGS becomes
+    `types=000000C0` (camera|microphone), "Monitoring active" notification in the shade
+    (channel=monitoring), YAMNet ready, screen-off gate **PASS** (frames 60→90 across Asleep).
+  - **Deny path** (pixel_34_aosp): all three denied → clean error state (user-confirmed on
+    screen), no FGS.
+  - **pixel_24_aosp (API 24, minSdk) smoke**: app boots, monitoring starts, FGS
+    `isForeground=true`, frames flow, screen-off gate **PASS** (frames +2 during the asleep
+    window). `foregroundServiceType` is ignored pre-API-29 and `POST_NOTIFICATIONS` pre-33 (no-ops);
+    permission_handler notification returns granted pre-33; YAMNet falls back to the mock classifier
+    (known API-24 image quirk). Note: the pixel_24 AVD on this host is slow/unstable (crash-loops
+    cold-boot; had to relaunch windowed with `-gpu host`); the API-24 integration suite is covered
+    by the pixel_34 runs + this smoke.
+- **Android integration suite** (new):
+  - `integration_test/monitoring_on_device_test.dart` — drives the real CameraX + FGS + mic on the
+    emulator: (1) permission gate blocks start when denied, (2) full run → first motion event →
+    snapshot file → stop.
+  - `integration_test/screen_off_gate_test.dart` — baseline motion event, then a 90s window during
+    which the host toggles the screen off; asserts monitoring survives asleep and records a second
+    motion event (camera kept analyzing).
+  - `tool/run_android_integration_tests.sh` — boots/wait, uninstalls stale install, launches the
+    test, grants CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant` once the fresh install is
+    registered (granting during a streamed install races `cmd package` and breaks the package
+    service), and drives the screen-off handshake via `[itest]` markers (which integration tests
+    emit to the host driver output, not logcat — the runner greps the captured log).
+  - Result on pixel_34: monitoring suite 2/2 green, screen-off gate green (~1:17). 117 unit tests
+    green, analyze clean.
+- **Bugs found & fixed along the way**:
+  - **Guava classpath conflict**: adding `integration_test` pulled AndroidX test deps that skewed
+    the transitive Guava and broke `ListenableFuture` resolution in `MonitoringService.kt`
+    (`Cannot access class 'ListenableFuture'`). Fixed by pinning
+    `com.google.guava:guava:33.3.1-android` in the app Gradle deps.
+  - **Stale single-trigger predicate**: single-type events store the type in `triggerType` with
+    `triggerTypes=[]` (merged events fill `triggerTypes`); the test predicate now checks both.
+  - **Snapshot extension**: the camera snapshot is a JPEG (`snap-….jpg`), the test asserted `.png`.
+  - **`tester.pump()` blocks while the display is asleep** (engine suspends frame production) —
+    the screen-off window loop now uses a real-time `Future.delayed`.
+  - **Wrong APK in the pixel_24 smoke**: an APK built by `flutter test integration_test` has the
+    *test* as its entrypoint (blank screen on direct launch) — the smoke uses the regular
+    `flutter build apk --debug` output.
+- **Deferred (per user directive)**: channel delivery tests including live Telegram (B5.1/B5.2).

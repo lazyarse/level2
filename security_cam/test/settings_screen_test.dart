@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:security_cam/channels/discord_channel.dart';
 import 'package:security_cam/channels/email_channel.dart';
 import 'package:security_cam/core/models.dart';
+import 'package:security_cam/sensors/permissions_service.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_recorder.dart';
 import 'package:security_cam/storage/settings_store.dart';
@@ -38,6 +39,7 @@ Future<MonitorController> _controller() async {
     eventRecorder: _FakeRecorder(),
     snapshotStore: _FakeStore(),
     purgeInterval: null,
+    permissionsService: const NoopPermissionsService(),
   );
   await controller.init();
   return controller;

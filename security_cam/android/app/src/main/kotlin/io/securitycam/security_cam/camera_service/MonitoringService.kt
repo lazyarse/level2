@@ -234,16 +234,19 @@ object MonitoringServiceController {
             callback.onError("camera service not running")
             return
         }
+        Log.i(TAG, "captureStill enter")
         val file = java.io.File(service.cacheDir, "capture-${System.currentTimeMillis()}.jpg")
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         capture.takePicture(options, executor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(results: ImageCapture.OutputFileResults) {
                 val bytes = file.readBytes()
                 file.delete()
+                Log.i(TAG, "captureStill saved ${bytes.size} bytes")
                 callback.onResult(bytes)
             }
 
             override fun onError(exc: ImageCaptureException) {
+                Log.i(TAG, "captureStill error ${exc.message}")
                 callback.onError(exc.message ?: "capture failed")
             }
         })

@@ -15,6 +15,7 @@ import '../sensors/audio_classifier_factory.dart';
 import '../sensors/camera_source_factory.dart';
 import '../sensors/ffmpeg_audio_source.dart';
 import '../sensors/ffmpeg_camera_session.dart';
+import '../sensors/permissions_service.dart';
 import '../sensors/simulated_audio_source.dart';
 import '../storage/event_recorder.dart';
 import '../storage/settings_store.dart';
@@ -32,6 +33,9 @@ class MonitorController extends ChangeNotifier {
   /// Retention purge cadence; `null` disables the periodic timer (tests).
   final Duration? purgeInterval;
 
+  /// Runtime permission gate; injectable for tests (no-op on desktop).
+  final PermissionsService permissionsService;
+
   MonitorState state = MonitorState.idle;
   AppSettings settings = AppSettings.defaults();
   String? error;
@@ -43,7 +47,8 @@ class MonitorController extends ChangeNotifier {
     required this.eventRecorder,
     required this.snapshotStore,
     this.purgeInterval = defaultPurgeInterval,
-  });
+    PermissionsService? permissionsService,
+  }) : permissionsService = permissionsService ?? buildPermissionsService();
 
   CameraSession? _camera;
   AudioSource? _audio;
@@ -119,6 +124,14 @@ class MonitorController extends ChangeNotifier {
 
   Future<void> start() async {
     if (state == MonitorState.monitoring) return;
+    final permissions = await permissionsService.ensurePermissions();
+    if (!permissions.monitorGranted) {
+      state = MonitorState.error;
+      error = 'Camera and microphone permissions are required to monitor — '
+          'grant them in system Settings and try again.';
+      notifyListeners();
+      return;
+    }
     state = MonitorState.starting;
     error = null;
     notifyListeners();
