@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:security_cam/core/models.dart';
 import 'package:security_cam/core/settings.dart';
 
 void main() {
@@ -206,5 +207,14 @@ void main() {
     expect(AnalysisResolution.label(AnalysisResolution.low), 'Low (160x120)');
     expect(AnalysisResolution.label(AnalysisResolution.balanced), 'Balanced (320x240)');
     expect(AnalysisResolution.label(AnalysisResolution.high), 'High (640x480)');
+  });
+
+  test('defaults include a face detector, disabled and motion-gated', () {
+    final s = AppSettings.defaults();
+    final face = s.detectorConfigs[TriggerType.face];
+    expect(face, isNotNull);
+    expect(face!.enabled, false);
+    expect(face.motionGated, true);
+    expect(face.threshold, 0.7);
   });
 }

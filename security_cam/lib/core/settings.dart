@@ -161,6 +161,14 @@ class AppSettings {
           enabled: false,
           routeToChannelIds: ['telegram'],
         ),
+        TriggerType.face: const DetectorConfig(
+          type: TriggerType.face,
+          threshold: 0.7,
+          persistenceFrames: 2,
+          enabled: false,
+          motionGated: true,
+          routeToChannelIds: ['telegram'],
+        ),
       },
       channelConfigs: const [
         ChannelConfig(id: 'log', type: 'log', enabled: true),
