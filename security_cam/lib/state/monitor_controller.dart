@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/audio_source.dart';
 import '../core/camera_session.dart';
+import '../core/media_naming.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
 import '../detection/pipeline.dart';
@@ -20,6 +21,7 @@ import '../sensors/simulated_audio_source.dart';
 import '../storage/event_recorder.dart';
 import '../storage/settings_store.dart';
 import '../storage/snapshot_store.dart';
+import '../storage/video_store.dart';
 
 enum MonitorState { idle, starting, monitoring, error }
 
@@ -29,6 +31,9 @@ class MonitorController extends ChangeNotifier {
   final SettingsStore settingsStore;
   final EventRecorder eventRecorder;
   final SnapshotStore snapshotStore;
+
+  /// Video clip store (no-op on desktop; native MediaStore-backed on Android).
+  final VideoStore videoStore;
 
   /// Retention purge cadence; `null` disables the periodic timer (tests).
   final Duration? purgeInterval;
@@ -46,6 +51,7 @@ class MonitorController extends ChangeNotifier {
     required this.settingsStore,
     required this.eventRecorder,
     required this.snapshotStore,
+    this.videoStore = const NoopVideoStore(),
     this.purgeInterval = defaultPurgeInterval,
     PermissionsService? permissionsService,
   }) : permissionsService = permissionsService ?? buildPermissionsService();
@@ -100,13 +106,21 @@ class MonitorController extends ChangeNotifier {
   }
 
   Future<void> _deleteOlderThan(DateTime? cutoff) async {
-    final names = await eventRecorder.deleteEvents(olderThan: cutoff);
-    for (final name in names) {
+    final deleted = await eventRecorder.deleteEvents(olderThan: cutoff);
+    for (final name in deleted.snapshotNames) {
       try {
         await snapshotStore.delete(name);
       } catch (_) {}
     }
+    for (final name in deleted.videoNames) {
+      try {
+        await videoStore.delete(name);
+      } catch (_) {}
+    }
   }
+
+  /// Opens a recorded clip in the external system player (no-op on desktop).
+  Future<void> openVideo(String name) => videoStore.open(name);
 
   Stream<AnalysisFrame>? get analysisFrames => _camera?.analysisFrames;
 
@@ -176,7 +190,25 @@ class MonitorController extends ChangeNotifier {
 
       final batcher = TriggerBatcher(
         window: settings.notificationMergeWindow,
-        captureSnapshot: () => camera.takeSnapshot(),
+        captureSnapshot: () async {
+          final snap = await camera.takeSnapshot();
+          final ext = snap.mimeType == 'image/png' ? 'png' : 'jpg';
+          return Snapshot(
+            bytes: snap.bytes,
+            mimeType: snap.mimeType,
+            name: mediaFileName(
+              timestamp: DateTime.now(),
+              cameraName: settings.cameraName,
+              extension: ext,
+            ),
+          );
+        },
+        captureVideo: (triggerAt) => videoStore.exportClip(
+          triggerAt: triggerAt,
+          cameraName: settings.cameraName,
+          preRollSeconds: settings.preRollSeconds,
+          postRollSeconds: settings.postRollSeconds,
+        ),
       );
       _batcher = batcher;
       _batchSub = batcher.batches.listen((batch) {

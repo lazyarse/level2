@@ -78,6 +78,7 @@ class EventPipeline {
       triggerTypes: single ? const [] : types,
       score: batch.triggers.map((e) => e.score).reduce(max),
       snapshotName: snapshot?.name,
+      videoName: batch.videoName,
       channelStatuses: statuses,
     ));
   }

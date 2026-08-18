@@ -15,7 +15,8 @@ class _FakeRecorder implements EventRecorder {
   Future<void> record(RecordedEvent event) async {}
 
   @override
-  Future<List<String>> deleteEvents({DateTime? olderThan}) async => const [];
+  Future<DeletedMedia> deleteEvents({DateTime? olderThan}) async =>
+      const DeletedMedia();
 }
 
 class _FakeStore implements SnapshotStore {

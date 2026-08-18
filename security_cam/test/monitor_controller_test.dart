@@ -12,6 +12,7 @@ import 'package:security_cam/storage/event_log.dart';
 import 'package:security_cam/storage/event_recorder.dart';
 import 'package:security_cam/storage/settings_store.dart';
 import 'package:security_cam/storage/snapshot_store.dart';
+import 'package:security_cam/storage/video_store.dart';
 
 void main() {
   setUpAll(() {
@@ -50,6 +51,8 @@ void main() {
 
     final files = snapDir.listSync().whereType<File>().toList();
     expect(files, isNotEmpty, reason: 'no snapshot files written');
+    expect(merged.first.snapshotName, matches(RegExp(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}_Hallway\.(jpg|png)$')),
+        reason: 'snapshots follow the date-time-cameraName scheme');
 
     await controller.stop();
     expect(controller.state, MonitorState.idle);
@@ -96,12 +99,14 @@ void main() {
     await eventLog.close();
   });
 
-  test('retention purge deletes old events and their snapshot files', () async {
+  test('retention purge deletes old events, snapshot files, and videos',
+      () async {
     SharedPreferences.setMockInitialValues({});
     final settingsStore = await SettingsStore.open();
     final eventLog = await SqliteEventLog.open(inMemoryDatabasePath);
     final snapDir = await Directory.systemTemp.createTemp('scam_ret');
     final snapshotStore = FileSnapshotStore(snapDir.path);
+    final videoStore = _RecordingVideoStore();
 
     final oldFile = File('${snapDir.path}/old.png');
     oldFile.writeAsBytesSync([1, 2, 3]);
@@ -114,6 +119,7 @@ void main() {
       triggerType: 'motion',
       score: 1.0,
       snapshotName: 'old.png',
+      videoName: 'old.mp4',
     ));
     await eventLog.record(RecordedEvent(
       timestamp: DateTime.now(),
@@ -127,6 +133,8 @@ void main() {
       settingsStore: settingsStore,
       eventRecorder: eventLog,
       snapshotStore: snapshotStore,
+      videoStore: videoStore,
+      purgeInterval: null,
       permissionsService: const NoopPermissionsService(),
     );
     await controller.init();
@@ -139,6 +147,7 @@ void main() {
     expect(events.map((e) => e.snapshotName), ['new.png']);
     expect(oldFile.existsSync(), isFalse);
     expect(newFile.existsSync(), isTrue);
+    expect(videoStore.deleted, ['old.mp4']);
     await eventLog.close();
     snapDir.deleteSync(recursive: true);
   });
@@ -246,4 +255,28 @@ class _FakePermissionsService extends PermissionsService {
         microphoneGranted: microphoneGranted,
         notificationsGranted: true,
       );
+}
+
+class _RecordingVideoStore implements VideoStore {
+  final List<String> deleted = [];
+
+  @override
+  Future<String?> exportClip({
+    required DateTime triggerAt,
+    required String cameraName,
+    required int preRollSeconds,
+    required int postRollSeconds,
+  }) async =>
+      null;
+
+  @override
+  Future<void> delete(String name) async {
+    deleted.add(name);
+  }
+
+  @override
+  Future<void> open(String name) async {}
+
+  @override
+  Future<bool> exists(String name) async => false;
 }

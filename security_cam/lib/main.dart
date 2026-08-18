@@ -10,6 +10,7 @@ import 'state/monitor_controller.dart';
 import 'storage/event_log.dart';
 import 'storage/settings_store.dart';
 import 'storage/snapshot_store.dart';
+import 'storage/video_store.dart';
 import 'ui/app.dart';
 
 Future<void> main() async {
@@ -32,6 +33,7 @@ Future<void> main() async {
     settingsStore: settingsStore,
     eventRecorder: eventLog,
     snapshotStore: snapshotStore,
+    videoStore: Platform.isAndroid ? PlatformVideoStore() : const NoopVideoStore(),
   );
   await controller.init();
 

@@ -40,6 +40,25 @@ void main() {
     );
     expect(restored.channelConfigs.length, settings.channelConfigs.length);
     expect(restored.notificationMergeWindow, settings.notificationMergeWindow);
+    expect(restored.preRollSeconds, settings.preRollSeconds);
+    expect(restored.postRollSeconds, settings.postRollSeconds);
+  });
+
+  test('video clip settings round-trip and default to 5/5', () {
+    final defaults = AppSettings.defaults();
+    expect(defaults.preRollSeconds, 5);
+    expect(defaults.postRollSeconds, 5);
+
+    final custom = defaults.copyWith(preRollSeconds: 8, postRollSeconds: 12);
+    final restored = AppSettings.fromJson(custom.toJson());
+    expect(restored.preRollSeconds, 8);
+    expect(restored.postRollSeconds, 12);
+  });
+
+  test('old JSON without clip fields falls back to 5/5', () {
+    final restored = AppSettings.fromJson(const {'cameraName': 'Nursery'});
+    expect(restored.preRollSeconds, 5);
+    expect(restored.postRollSeconds, 5);
   });
 
   test('empty JSON falls back to defaults', () {

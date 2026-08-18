@@ -33,6 +33,11 @@ class AppSettings {
   final Duration notificationMergeWindow;
   final int retentionDays;
 
+  /// Seconds of footage kept before a trigger and captured after it (Android
+  /// only; the ring buffer and post-roll tail are sized from these).
+  final int preRollSeconds;
+  final int postRollSeconds;
+
   const AppSettings({
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
@@ -43,6 +48,8 @@ class AppSettings {
     this.channelConfigs = const [],
     this.notificationMergeWindow = const Duration(seconds: 3),
     this.retentionDays = 7,
+    this.preRollSeconds = 5,
+    this.postRollSeconds = 5,
   });
 
   static AppSettings defaults() {
@@ -97,6 +104,8 @@ class AppSettings {
     List<ChannelConfig>? channelConfigs,
     Duration? notificationMergeWindow,
     int? retentionDays,
+    int? preRollSeconds,
+    int? postRollSeconds,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
@@ -112,6 +121,8 @@ class AppSettings {
       channelConfigs: channelConfigs ?? this.channelConfigs,
       notificationMergeWindow: notificationMergeWindow ?? this.notificationMergeWindow,
       retentionDays: retentionDays ?? this.retentionDays,
+      preRollSeconds: preRollSeconds ?? this.preRollSeconds,
+      postRollSeconds: postRollSeconds ?? this.postRollSeconds,
     );
   }
 
@@ -125,6 +136,8 @@ class AppSettings {
         'channelConfigs': channelConfigs.map((c) => c.toJson()).toList(),
         'notificationMergeWindowMs': notificationMergeWindow.inMilliseconds,
         'retentionDays': retentionDays,
+        'preRollSeconds': preRollSeconds,
+        'postRollSeconds': postRollSeconds,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -155,6 +168,10 @@ class AppSettings {
             defaults.notificationMergeWindow.inMilliseconds,
       ),
       retentionDays: json['retentionDays'] as int? ?? defaults.retentionDays,
+      preRollSeconds:
+          json['preRollSeconds'] as int? ?? defaults.preRollSeconds,
+      postRollSeconds:
+          json['postRollSeconds'] as int? ?? defaults.postRollSeconds,
     );
   }
 }

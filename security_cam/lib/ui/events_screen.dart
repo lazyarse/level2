@@ -10,11 +10,16 @@ class EventsScreen extends StatefulWidget {
   final SnapshotStore snapshotStore;
   final int reloadTick;
 
+  /// Opens a recorded clip in the external player (Android); null hides the
+  /// per-row video button (e.g. desktop).
+  final Future<void> Function(String name)? openVideo;
+
   const EventsScreen({
     super.key,
     required this.loader,
     required this.snapshotStore,
     this.reloadTick = 0,
+    this.openVideo,
   });
 
   @override
@@ -101,6 +106,13 @@ class _EventsScreenState extends State<EventsScreen> {
                       subtitle: Text(
                         '${e.timestamp.toLocal()} — ${e.cameraName}${statuses.isEmpty ? '' : ' — $statuses'}',
                       ),
+                      trailing: e.videoName != null && widget.openVideo != null
+                          ? IconButton(
+                              tooltip: 'Play video',
+                              icon: const Icon(Icons.play_circle_outline),
+                              onPressed: () => widget.openVideo!(e.videoName!),
+                            )
+                          : null,
                     );
                   },
                 );

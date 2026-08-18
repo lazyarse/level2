@@ -60,6 +60,7 @@ class _ShellState extends State<_Shell> {
         loader: widget.eventLoader,
         snapshotStore: widget.snapshotStore,
         reloadTick: _eventsTick,
+        openVideo: widget.controller.openVideo,
       ),
       SettingsScreen(controller: widget.controller),
     ];

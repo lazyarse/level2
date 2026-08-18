@@ -21,8 +21,18 @@ class AndroidCameraSession implements CameraSession {
   @override
   final String cameraId;
 
+  /// Clip configuration forwarded to the native ring buffer (see
+  /// `startMonitoring`); snapshots get the same naming scheme via
+  /// [cameraName].
+  final String cameraName;
+  final int preRollSeconds;
+  final int postRollSeconds;
+
   AndroidCameraSession({
     this.cameraId = 'back',
+    this.cameraName = 'Hallway',
+    this.preRollSeconds = 5,
+    this.postRollSeconds = 5,
     MethodChannel? method,
     EventChannel? events,
   })  : _method = method ?? const MethodChannel(_cameraChannel),
@@ -58,6 +68,9 @@ class AndroidCameraSession implements CameraSession {
     try {
       await _method.invokeMethod<void>('startMonitoring', {
         'cameraId': cameraId,
+        'cameraName': cameraName,
+        'preRollSeconds': preRollSeconds,
+        'postRollSeconds': postRollSeconds,
       });
       _started = true;
     } on PlatformException catch (e) {

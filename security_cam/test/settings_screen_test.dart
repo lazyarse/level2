@@ -17,7 +17,8 @@ class _FakeRecorder implements EventRecorder {
   Future<void> record(RecordedEvent event) async {}
 
   @override
-  Future<List<String>> deleteEvents({DateTime? olderThan}) async => const [];
+  Future<DeletedMedia> deleteEvents({DateTime? olderThan}) async =>
+      const DeletedMedia();
 }
 
 class _FakeStore implements SnapshotStore {
@@ -46,6 +47,9 @@ Future<MonitorController> _controller() async {
 }
 
 Future<void> _pump(WidgetTester tester, MonitorController controller) async {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(body: SettingsScreen(controller: controller)),
   ));

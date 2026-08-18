@@ -42,7 +42,8 @@ class _FakeRecorder implements EventRecorder {
   }
 
   @override
-  Future<List<String>> deleteEvents({DateTime? olderThan}) async => const [];
+  Future<DeletedMedia> deleteEvents({DateTime? olderThan}) async =>
+      const DeletedMedia();
 }
 
 class _FakeSnapshotStore implements SnapshotStore {
@@ -100,11 +101,13 @@ void main() {
         name: 'snap.png',
       );
 
-  TriggerBatch batch(List<TriggerEvent> triggers, {Snapshot? snapshot}) {
+  TriggerBatch batch(List<TriggerEvent> triggers,
+      {Snapshot? snapshot, String? videoName}) {
     return TriggerBatch(
       timestamp: base,
       triggers: triggers,
       snapshot: snapshot,
+      videoName: videoName,
     );
   }
 
@@ -162,6 +165,24 @@ void main() {
     expect(recorder.recorded.single.snapshotName, 'snap.png');
     expect(snapshots.saved, hasLength(1));
     expect(requests, hasLength(1));
+  });
+
+  test('records the batch videoName on the event', () async {
+    final recorder = _FakeRecorder();
+    final p = pipeline(
+      recorder: recorder,
+      snapshots: _FakeSnapshotStore(),
+      channels: {'log': logConfig()},
+      factories: {
+        'log': (c) => LogChannel(id: 'log'),
+      },
+    );
+
+    await p.handleBatch(batch([trigger('motion', 'motion')],
+        videoName: '2026-01-01_12-00-00-000_Hallway.mp4'));
+
+    expect(recorder.recorded.single.videoName,
+        '2026-01-01_12-00-00-000_Hallway.mp4');
   });
 
   test('single-trigger batch records its own type with empty triggerTypes',

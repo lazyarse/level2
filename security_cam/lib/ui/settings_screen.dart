@@ -217,6 +217,36 @@ TextEditingController _field(String key, [String? text]) =>
             }),
           ),
           const SizedBox(height: 24),
+          Text('Video clips', style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Android only: each event captures footage before and after the '
+            'trigger and saves it to your gallery.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text('Pre-roll: ${_draft.preRollSeconds}s'),
+          Slider(
+            value: _draft.preRollSeconds.clamp(0, 30).toDouble(),
+            min: 0,
+            max: 30,
+            divisions: 30,
+            label: '${_draft.preRollSeconds}s',
+            onChanged: (v) => setState(() {
+              _draft = _draft.copyWith(preRollSeconds: v.round());
+            }),
+          ),
+          Text('Post-roll: ${_draft.postRollSeconds}s'),
+          Slider(
+            value: _draft.postRollSeconds.clamp(0, 30).toDouble(),
+            min: 0,
+            max: 30,
+            divisions: 30,
+            label: '${_draft.postRollSeconds}s',
+            onChanged: (v) => setState(() {
+              _draft = _draft.copyWith(postRollSeconds: v.round());
+            }),
+          ),
+          const SizedBox(height: 24),
           Text('Events', style: Theme.of(context).textTheme.titleMedium),
           Text(
             'Automatic retention: '
@@ -263,8 +293,9 @@ TextEditingController _field(String key, [String? text]) =>
       builder: (context) => AlertDialog(
         title: const Text('Clear events'),
         content: Text(olderThan == null
-            ? 'Delete ALL recorded events and their snapshots?'
-            : 'Delete events older than ${olderThan.inHours}h and their snapshots?'),
+            ? 'Delete ALL recorded events and their snapshots and videos?'
+            : 'Delete events older than ${olderThan.inHours}h and their '
+                'snapshots and videos?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),

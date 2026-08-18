@@ -14,7 +14,12 @@ import 'simulated_camera_session.dart';
 /// `webcam`/`file` → [FfmpegCameraSession].
 CameraSession buildCameraSession(AppSettings settings) {
   if (Platform.isAndroid) {
-    return AndroidCameraSession(cameraId: 'back');
+    return AndroidCameraSession(
+      cameraId: 'back',
+      cameraName: settings.cameraName,
+      preRollSeconds: settings.preRollSeconds,
+      postRollSeconds: settings.postRollSeconds,
+    );
   }
   switch (settings.cameraSource) {
     case CameraSource.webcam:

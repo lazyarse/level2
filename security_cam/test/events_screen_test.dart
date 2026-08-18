@@ -27,13 +27,15 @@ class _MemoryStore implements SnapshotStore {
 }
 
 void main() {
-  RecordedEventRow row({String? snapshotName}) => RecordedEventRow(
+  RecordedEventRow row({String? snapshotName, String? videoName}) =>
+      RecordedEventRow(
         id: 1,
         timestamp: DateTime(2026, 1, 1, 12),
         cameraName: 'Hallway',
         triggerType: 'motion',
         score: 0.8,
         snapshotName: snapshotName,
+        videoName: videoName,
       );
 
   Uint8List tinyPng() {
@@ -83,5 +85,49 @@ void main() {
 
     expect(find.byType(Image), findsNothing);
     expect(find.byIcon(Icons.directions_run), findsOneWidget);
+  });
+
+  testWidgets('shows a video button only when a video is attached and an opener '
+      'is provided', (tester) async {
+    final store = _MemoryStore();
+    final opened = <String>[];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: EventsScreen(
+          loader: () async => [
+            row(videoName: 'clip.mp4'),
+            row(videoName: null),
+          ],
+          snapshotStore: store,
+          openVideo: (name) async => opened.add(name),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.play_circle_outline), findsOneWidget,
+        reason: 'only the event with a video gets the play button');
+
+    await tester.tap(find.byIcon(Icons.play_circle_outline));
+    await tester.pumpAndSettle();
+    expect(opened, ['clip.mp4']);
+  });
+
+  testWidgets('no play button when openVideo is not provided (desktop)',
+      (tester) async {
+    final store = _MemoryStore();
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: EventsScreen(
+          loader: () async => [row(videoName: 'clip.mp4')],
+          snapshotStore: store,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.play_circle_outline), findsNothing);
   });
 }
