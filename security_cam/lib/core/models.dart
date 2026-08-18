@@ -11,11 +11,28 @@ class GrayscaleBitmap {
   int pixel(int x, int y) => gray[y * width + x];
 }
 
+/// Raw interleaved BGR pixel buffer (as produced by ffmpeg `bgr24`, CameraX
+/// YUV→BGR and the simulated camera). Fed directly to BlazeFace via
+/// `detectFacesFromMatBytes` (which expects BGR).
+class ColorBitmap {
+  final int width;
+  final int height;
+  final Uint8List bgr;
+
+  ColorBitmap(this.width, this.height, this.bgr)
+      : assert(bgr.length == width * height * 3, 'bgr length must be width*height*3');
+
+  int b(int x, int y) => bgr[(y * width + x) * 3];
+  int g(int x, int y) => bgr[(y * width + x) * 3 + 1];
+  int r(int x, int y) => bgr[(y * width + x) * 3 + 2];
+}
+
 class AnalysisFrame {
   final DateTime timestamp;
   final GrayscaleBitmap bitmap;
+  final ColorBitmap? color;
 
-  AnalysisFrame({required this.timestamp, required this.bitmap});
+  AnalysisFrame({required this.timestamp, required this.bitmap, this.color});
 }
 
 class AudioWindow {
