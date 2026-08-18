@@ -181,4 +181,30 @@ void main() {
     expect(json.containsKey('cameraSourcePath'), isFalse);
     expect(json.containsKey('audioSourcePath'), isFalse);
   });
+
+  test('analysis resolution defaults to balanced (320x240)', () {
+    final s = AppSettings.defaults();
+    expect(s.analysisResolution, AnalysisResolution.balanced);
+    final (w, h) = AnalysisResolution.size(s.analysisResolution);
+    expect((w, h), (320, 240));
+  });
+
+  test('analysis resolution JSON round-trips', () {
+    final s = AppSettings.defaults().copyWith(
+      analysisResolution: AnalysisResolution.high,
+    );
+    final back = AppSettings.fromJson(s.toJson());
+    expect(back.analysisResolution, AnalysisResolution.high);
+  });
+
+  test('missing analysisResolution falls back to balanced', () {
+    final back = AppSettings.fromJson(const {});
+    expect(back.analysisResolution, AnalysisResolution.balanced);
+  });
+
+  test('preset labels', () {
+    expect(AnalysisResolution.label(AnalysisResolution.low), 'Low (160x120)');
+    expect(AnalysisResolution.label(AnalysisResolution.balanced), 'Balanced (320x240)');
+    expect(AnalysisResolution.label(AnalysisResolution.high), 'High (640x480)');
+  });
 }

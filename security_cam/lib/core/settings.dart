@@ -58,6 +58,35 @@ class VideoQuality {
   const VideoQuality._();
 }
 
+/// Analysis stream resolution presets (single stream used for both motion and
+/// face/person detection). Higher = better far-face recall, more CPU/battery.
+class AnalysisResolution {
+  static const low = 'low';
+  static const balanced = 'balanced';
+  static const high = 'high';
+
+  static const values = [low, balanced, high];
+
+  static (int, int) size(String value) {
+    return switch (value) {
+      low => (160, 120),
+      high => (640, 480),
+      _ => (320, 240),
+    };
+  }
+
+  static String label(String value) {
+    return switch (value) {
+      low => 'Low (160x120)',
+      balanced => 'Balanced (320x240)',
+      high => 'High (640x480)',
+      _ => 'Balanced (320x240)',
+    };
+  }
+
+  const AnalysisResolution._();
+}
+
 class AppSettings {
   final String cameraName;
   final String cameraSource;
@@ -82,6 +111,9 @@ class AppSettings {
   /// camera actually supports is used.
   final String videoQuality;
 
+  /// Analysis stream resolution preset (see [AnalysisResolution]).
+  final String analysisResolution;
+
   const AppSettings({
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
@@ -96,6 +128,7 @@ class AppSettings {
     this.postRollSeconds = 5,
     this.recordVideo = true,
     this.videoQuality = VideoQuality.lowest,
+    this.analysisResolution = AnalysisResolution.balanced,
   });
 
   static AppSettings defaults() {
@@ -154,6 +187,7 @@ class AppSettings {
     int? postRollSeconds,
     bool? recordVideo,
     String? videoQuality,
+    String? analysisResolution,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
@@ -173,6 +207,7 @@ class AppSettings {
       postRollSeconds: postRollSeconds ?? this.postRollSeconds,
       recordVideo: recordVideo ?? this.recordVideo,
       videoQuality: videoQuality ?? this.videoQuality,
+      analysisResolution: analysisResolution ?? this.analysisResolution,
     );
   }
 
@@ -190,6 +225,7 @@ class AppSettings {
         'postRollSeconds': postRollSeconds,
         'recordVideo': recordVideo,
         'videoQuality': videoQuality,
+        'analysisResolution': analysisResolution,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -226,6 +262,8 @@ class AppSettings {
           json['postRollSeconds'] as int? ?? defaults.postRollSeconds,
       recordVideo: json['recordVideo'] as bool? ?? defaults.recordVideo,
       videoQuality: json['videoQuality'] as String? ?? defaults.videoQuality,
+      analysisResolution:
+          json['analysisResolution'] as String? ?? defaults.analysisResolution,
     );
   }
 }
