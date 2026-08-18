@@ -8,6 +8,7 @@ class DetectorConfig {
   final int persistenceFrames;
   final Duration cooldown;
   final List<String> routeToChannelIds;
+  final bool motionGated;
 
   const DetectorConfig({
     required this.type,
@@ -16,6 +17,7 @@ class DetectorConfig {
     this.persistenceFrames = 2,
     this.cooldown = const Duration(seconds: 60),
     this.routeToChannelIds = const [],
+    this.motionGated = false,
   });
 
   DetectorConfig copyWith({
@@ -25,6 +27,7 @@ class DetectorConfig {
     int? persistenceFrames,
     Duration? cooldown,
     List<String>? routeToChannelIds,
+    bool? motionGated,
   }) {
     return DetectorConfig(
       type: type ?? this.type,
@@ -33,6 +36,7 @@ class DetectorConfig {
       persistenceFrames: persistenceFrames ?? this.persistenceFrames,
       cooldown: cooldown ?? this.cooldown,
       routeToChannelIds: routeToChannelIds ?? this.routeToChannelIds,
+      motionGated: motionGated ?? this.motionGated,
     );
   }
 
@@ -43,6 +47,7 @@ class DetectorConfig {
         'persistenceFrames': persistenceFrames,
         'cooldownMs': cooldown.inMilliseconds,
         'routeToChannelIds': routeToChannelIds,
+        'motionGated': motionGated,
       };
 
   factory DetectorConfig.fromJson(Map<String, dynamic> json) => DetectorConfig(
@@ -53,6 +58,7 @@ class DetectorConfig {
         cooldown: Duration(milliseconds: json['cooldownMs'] as int? ?? 60000),
         routeToChannelIds:
             (json['routeToChannelIds'] as List?)?.cast<String>() ?? const [],
+        motionGated: json['motionGated'] as bool? ?? false,
       );
 }
 
