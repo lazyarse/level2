@@ -896,3 +896,56 @@ not just host-side taps.)
     *test* as its entrypoint (blank screen on direct launch) — the smoke uses the regular
     `flutter build apk --debug` output.
 - **Deferred (per user directive)**: channel delivery tests including live Telegram (B5.1/B5.2).
+
+### B9.5 — Video clips per event + open-from-events (planned)
+
+(Planned, not yet implemented. Decisions confirmed with user: pre-roll + post-roll clip per
+trigger with durations configurable in Settings; video opened in the external system player;
+Android-only recording this pass; clips stored in **MediaStore** so users can browse/share them
+freely; snapshot + video filenames unified to `date-time-cameraName`.)
+
+- **Settings** (`lib/core/settings.dart` + `lib/ui/settings_screen.dart`):
+  - `AppSettings.preRollSeconds` (default 5) + `postRollSeconds` (default 5), JSON round-trip +
+    copyWith; a "Video clips" section in the Settings screen with steppers for both.
+- **Native recording (Android only, `MonitoringService.kt` + `CameraServiceChannels.kt`)**:
+  - Bind a CameraX `VideoCapture<Recorder>` use case alongside the existing `ImageAnalysis` +
+    `ImageCapture` while monitoring (screen-off safe via the existing FGS).
+  - **Pre-roll ring buffer**: write `preRoll`-second segments to `cacheDir/video_segments/`,
+    keep the last `preRoll` worth; `exportVideoClip({triggerTimestampMs})` freezes the ring,
+    records `postRoll` more, concatenates segments with `MediaExtractor` + `MediaMuxer`
+    (framework only) into MediaStore `Movies/SecurityCam/`, returns the display name.
+  - `deleteVideo(name)` via `ContentResolver` (retention purge; available without the FGS) and
+    `openVideo(name)` → MediaStore content URI → `ACTION_VIEW` +
+    `FLAG_GRANT_READ_URI_PERMISSION` (external player).
+  - `startMonitoring` gains a `cameraName` arg for filenames.
+  - MediaStore API split: `RELATIVE_PATH` on API 29+, `DATA` + `DIRECTORY_MOVIES` on 24–28,
+    `IS_PENDING` while writing.
+  - **Filename**: `2026-08-18_10-30-00_Hallway.mp4` (colon-free, sanitized camera name,
+    ms-suffix for uniqueness).
+  - **Risks**: MP4 segment concat (timestamp/keyframe alignment) is the trickiest part —
+    validate on the emulator; fallback is post-roll-only clips. Audio track deferred to avoid
+    concurrent-mic risk with the analysis path (video-only this pass).
+- **Snapshot naming unification**: the batcher's `captureSnapshot` is wrapped in
+  `MonitorController.start()` so stills are named `2026-08-18_10-30-00_Hallway.jpg`
+  (shared date-time-cameraName helper, all platforms).
+- **Event row → video link**:
+  - Schema **v3**: `ALTER TABLE events ADD COLUMN video_name TEXT`; `RecordedEvent` /
+    `RecordedEventRow` gain `videoName`; `deleteEvents` returns both `snapshot_name` and
+    `video_name` so purge cleans both media types.
+  - `TriggerBatcher` fires a `captureVideo` on the first trigger (mirrors the snapshot hook);
+    the batch carries the video name and `EventPipeline.handleBatch` records it.
+  - `EventsScreen` row: leading thumbnail (tap → full image) + event name + date/time · camera
+    unchanged, plus a **trailing video `IconButton`** (shown only when `videoName != null`) →
+    `openVideo`.
+  - Purge (`MonitorController._deleteOlderThan`) also deletes video files; Settings "clear
+    events" copy updated to mention videos.
+- **gitignore**: add `build/` to `security_cam/android/.gitignore` (removes the untracked
+  `android/build/reports/` lint artifact).
+- **Verification**: unit tests (settings round-trip, schema v2→v3 migration, videoName in
+  record/recent/delete, batcher video flow, filename helper, row shows the video button only
+  when present + taps the opener); extend `integration_test/monitoring_on_device_test.dart` to
+  assert the motion event carries a `video_name` and the MediaStore file exists (query by
+  DISPLAY_NAME) and that `deleteVideo` removes it; manual: video button launches the player.
+  Full suite + analyze + desktop unit suite green; docs + commit in the established style.
+- **Deferred**: audio track in clips; desktop/ffmpeg video recording (Android-only this pass);
+  channel delivery tests including live Telegram (B5.1/B5.2).
