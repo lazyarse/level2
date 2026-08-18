@@ -237,27 +237,56 @@ TextEditingController _field(String key, [String? text]) =>
               _draft = _draft.copyWith(recordVideo: v);
             }),
           ),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('videoQualityDropdown'),
+            initialValue: _draft.videoQuality,
+            decoration: const InputDecoration(
+              labelText: 'Resolution',
+              helperText: 'Uses the closest resolution your camera supports; '
+                  'higher resolution = larger clips.',
+            ),
+            items: [
+              for (final q in VideoQuality.values)
+                DropdownMenuItem(
+                  value: q,
+                  child: Text(VideoQuality.label(q)),
+                ),
+            ],
+            onChanged: _draft.recordVideo
+                ? (v) => setState(() {
+                      if (v != null) {
+                        _draft = _draft.copyWith(videoQuality: v);
+                      }
+                    })
+                : null,
+          ),
           Text('Pre-roll: ${_draft.preRollSeconds}s'),
           Slider(
+            key: const ValueKey('preRollSlider'),
             value: _draft.preRollSeconds.clamp(0, 30).toDouble(),
             min: 0,
             max: 30,
             divisions: 30,
             label: '${_draft.preRollSeconds}s',
-            onChanged: (v) => setState(() {
-              _draft = _draft.copyWith(preRollSeconds: v.round());
-            }),
+            onChanged: _draft.recordVideo
+                ? (v) => setState(() {
+                      _draft = _draft.copyWith(preRollSeconds: v.round());
+                    })
+                : null,
           ),
           Text('Post-roll: ${_draft.postRollSeconds}s'),
           Slider(
+            key: const ValueKey('postRollSlider'),
             value: _draft.postRollSeconds.clamp(0, 30).toDouble(),
             min: 0,
             max: 30,
             divisions: 30,
             label: '${_draft.postRollSeconds}s',
-            onChanged: (v) => setState(() {
-              _draft = _draft.copyWith(postRollSeconds: v.round());
-            }),
+            onChanged: _draft.recordVideo
+                ? (v) => setState(() {
+                      _draft = _draft.copyWith(postRollSeconds: v.round());
+                    })
+                : null,
           ),
           const SizedBox(height: 24),
           Text('Events', style: Theme.of(context).textTheme.titleMedium),

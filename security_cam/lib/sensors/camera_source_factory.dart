@@ -20,6 +20,7 @@ CameraSession buildCameraSession(AppSettings settings) {
       preRollSeconds: settings.preRollSeconds,
       postRollSeconds: settings.postRollSeconds,
       recordVideo: settings.recordVideo,
+      videoQuality: settings.videoQuality,
     );
   }
   switch (settings.cameraSource) {

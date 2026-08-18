@@ -25,6 +25,18 @@ abstract class VideoStore {
 
   /// Whether a clip with this display name is present in the media store.
   Future<bool> exists(String name);
+
+  /// Dimensions of the stored clip (read from its headers), or null when the
+  /// clip is missing or the platform doesn't expose it.
+  Future<VideoClipInfo?> videoInfo(String name);
+}
+
+/// Dimensions of a stored video clip.
+class VideoClipInfo {
+  const VideoClipInfo({required this.width, required this.height});
+
+  final int width;
+  final int height;
 }
 
 class NoopVideoStore implements VideoStore {
@@ -47,6 +59,9 @@ class NoopVideoStore implements VideoStore {
 
   @override
   Future<bool> exists(String name) async => false;
+
+  @override
+  Future<VideoClipInfo?> videoInfo(String name) async => null;
 }
 
 /// Android implementation backed by the native `camera_service` module.
@@ -89,6 +104,19 @@ class PlatformVideoStore implements VideoStore {
       'name': name,
     });
     return result ?? false;
+  }
+
+  @override
+  Future<VideoClipInfo?> videoInfo(String name) async {
+    final result = await _method.invokeMethod<Map<dynamic, dynamic>?>(
+      'videoInfo',
+      {'name': name},
+    );
+    if (result == null) return null;
+    final width = result['width'] as int?;
+    final height = result['height'] as int?;
+    if (width == null || height == null) return null;
+    return VideoClipInfo(width: width, height: height);
   }
 }
 

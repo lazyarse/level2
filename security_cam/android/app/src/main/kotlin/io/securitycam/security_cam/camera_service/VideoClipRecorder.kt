@@ -13,6 +13,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.video.PendingRecording
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -54,6 +55,7 @@ object VideoClipRecorder {
     private var segmentMs = 5_000L
     private var postRollMs = 5_000L
     private var cameraName = "Hallway"
+    private var videoQuality = "lowest"
 
     @Volatile private var active = false
     @Volatile private var exporting = false
@@ -74,21 +76,37 @@ object VideoClipRecorder {
         camName: String,
         preRollSeconds: Int,
         postRollSeconds: Int,
+        videoQuality: String,
     ) {
         context = ctx.applicationContext
         cameraName = camName
         segmentMs = preRollSeconds.coerceAtLeast(1) * 1000L
         postRollMs = postRollSeconds.coerceAtLeast(1) * 1000L
+        this.videoQuality = videoQuality
         val dir = File(ctx.applicationContext.cacheDir, "video_segments")
         if (!dir.exists()) dir.mkdirs()
         ringDir = dir
     }
 
+    private fun mapQuality(value: String): Quality = when (value) {
+        "sd" -> Quality.SD
+        "hd" -> Quality.HD
+        "fhd" -> Quality.FHD
+        "uhd" -> Quality.UHD
+        "highest" -> Quality.HIGHEST
+        else -> Quality.LOWEST
+    }
+
     /** Builds the video use case for the CameraX bind. */
     fun buildVideoCapture(): VideoCapture<Recorder> {
+        val quality = mapQuality(videoQuality)
+        val selector = QualitySelector.from(
+            quality,
+            FallbackStrategy.lowerQualityOrHigherThan(quality),
+        )
         val r = Recorder.Builder()
             .setExecutor(executor)
-            .setQualitySelector(QualitySelector.from(Quality.LOWEST))
+            .setQualitySelector(selector)
             .build()
         recorder = r
         videoCapture = VideoCapture.withOutput(r)
@@ -489,6 +507,38 @@ object VideoClipRecorder {
         val appContext = context ?: return false
         if (queryUriByName(name) != null) return true
         return File(appContext.filesDir, "videos/$name").exists()
+    }
+
+    /**
+     * Dimensions of the stored clip (width x height), or null when the clip is
+     * missing or its headers can't be read. Pure read — works without the FGS.
+     */
+    fun videoInfo(name: String): Map<String, Int>? {
+        val appContext = context ?: return null
+        val uri = queryUriByName(name)
+        val fallback = File(appContext.filesDir, "videos/$name")
+        val retriever = MediaMetadataRetriever()
+        return try {
+            if (uri != null) {
+                retriever.setDataSource(appContext, uri)
+            } else if (fallback.exists()) {
+                retriever.setDataSource(fallback.path)
+            } else {
+                return null
+            }
+            val width = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
+            )?.toIntOrNull() ?: return null
+            val height = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
+            )?.toIntOrNull() ?: return null
+            mapOf("width" to width, "height" to height)
+        } catch (e: Exception) {
+            Log.w(TAG, "videoInfo failed for $name", e)
+            null
+        } finally {
+            retriever.release()
+        }
     }
 
     fun open(name: String) {

@@ -211,6 +211,12 @@ void main() {
         expect(videoName, endsWith('.mp4'));
         expect(await harness.videoStore.exists(videoName), isTrue,
             reason: 'clip not found in MediaStore: $videoName');
+        // pixel_34 only supports 720p video, so whatever tier the settings
+        // request, the recorded clip resolves to HD (the quality fallback).
+        final info = await harness.videoStore.videoInfo(videoName);
+        expect(info, isNotNull, reason: 'videoInfo returned null for $videoName');
+        expect(info!.width, 1280);
+        expect(info.height, 720);
         await harness.videoStore.delete(videoName);
         expect(await harness.videoStore.exists(videoName), isFalse,
             reason: 'deleteVideo did not remove the clip');

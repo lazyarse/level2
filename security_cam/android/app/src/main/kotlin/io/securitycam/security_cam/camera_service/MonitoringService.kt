@@ -42,6 +42,7 @@ class MonitoringService : LifecycleService() {
             intent?.getIntExtra(EXTRA_PRE_ROLL, 5) ?: 5,
             intent?.getIntExtra(EXTRA_POST_ROLL, 5) ?: 5,
             intent?.getBooleanExtra(EXTRA_RECORD_VIDEO, true) ?: true,
+            intent?.getStringExtra(EXTRA_VIDEO_QUALITY) ?: "lowest",
         )
         return START_STICKY
     }
@@ -57,6 +58,7 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_PRE_ROLL = "preRollSeconds"
         const val EXTRA_POST_ROLL = "postRollSeconds"
         const val EXTRA_RECORD_VIDEO = "recordVideo"
+        const val EXTRA_VIDEO_QUALITY = "videoQuality"
 
         fun start(
             context: Context,
@@ -65,6 +67,7 @@ class MonitoringService : LifecycleService() {
             preRollSeconds: Int,
             postRollSeconds: Int,
             recordVideo: Boolean,
+            videoQuality: String,
         ) {
             val intent = Intent(context, MonitoringService::class.java)
                 .putExtra(EXTRA_CAMERA_ID, cameraId)
@@ -72,6 +75,7 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_PRE_ROLL, preRollSeconds)
                 .putExtra(EXTRA_POST_ROLL, postRollSeconds)
                 .putExtra(EXTRA_RECORD_VIDEO, recordVideo)
+                .putExtra(EXTRA_VIDEO_QUALITY, videoQuality)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -107,6 +111,7 @@ object MonitoringServiceController {
         preRollSeconds: Int,
         postRollSeconds: Int,
         recordVideo: Boolean,
+        videoQuality: String,
     ) {
         if (active) return
         active = true
@@ -114,7 +119,9 @@ object MonitoringServiceController {
         this.recordVideo = recordVideo
         startForeground(service)
         acquireWakeLock(service)
-        VideoClipRecorder.configure(service, cameraName, preRollSeconds, postRollSeconds)
+        VideoClipRecorder.configure(
+            service, cameraName, preRollSeconds, postRollSeconds, videoQuality
+        )
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {

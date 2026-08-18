@@ -32,12 +32,16 @@ class AndroidCameraSession implements CameraSession {
   /// `startMonitoring`).
   final bool recordVideo;
 
+  /// Recording resolution tier (see `VideoQuality` in `core/settings.dart`).
+  final String videoQuality;
+
   AndroidCameraSession({
     this.cameraId = 'back',
     this.cameraName = 'Hallway',
     this.preRollSeconds = 5,
     this.postRollSeconds = 5,
     this.recordVideo = true,
+    this.videoQuality = 'lowest',
     MethodChannel? method,
     EventChannel? events,
   })  : _method = method ?? const MethodChannel(_cameraChannel),
@@ -77,6 +81,7 @@ class AndroidCameraSession implements CameraSession {
         'preRollSeconds': preRollSeconds,
         'postRollSeconds': postRollSeconds,
         'recordVideo': recordVideo,
+        'videoQuality': videoQuality,
       });
       _started = true;
     } on PlatformException catch (e) {

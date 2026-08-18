@@ -80,6 +80,7 @@ class CameraServiceChannels private constructor() {
                             call.argument<Number>("preRollSeconds")?.toInt() ?: 5,
                             call.argument<Number>("postRollSeconds")?.toInt() ?: 5,
                             call.argument<Boolean>("recordVideo") ?: true,
+                            call.argument<String>("videoQuality") ?: "lowest",
                         )
                         result.success(null)
                     } catch (e: Exception) {
@@ -121,6 +122,11 @@ class CameraServiceChannels private constructor() {
                 }
                 "videoExists" -> {
                     result.success(VideoClipRecorder.exists(call.argument<String>("name") ?: ""))
+                }
+                "videoInfo" -> {
+                    result.success(
+                        VideoClipRecorder.videoInfo(call.argument<String>("name") ?: "")
+                    )
                 }
                 else -> result.notImplemented()
             }

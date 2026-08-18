@@ -49,16 +49,19 @@ void main() {
     expect(defaults.preRollSeconds, 5);
     expect(defaults.postRollSeconds, 5);
     expect(defaults.recordVideo, isTrue);
+    expect(defaults.videoQuality, VideoQuality.lowest);
 
     final custom = defaults.copyWith(
       preRollSeconds: 8,
       postRollSeconds: 12,
       recordVideo: false,
+      videoQuality: VideoQuality.fhd,
     );
     final restored = AppSettings.fromJson(custom.toJson());
     expect(restored.preRollSeconds, 8);
     expect(restored.postRollSeconds, 12);
     expect(restored.recordVideo, isFalse);
+    expect(restored.videoQuality, VideoQuality.fhd);
   });
 
   test('old JSON without clip fields falls back to 5/5, record on', () {
@@ -66,6 +69,18 @@ void main() {
     expect(restored.preRollSeconds, 5);
     expect(restored.postRollSeconds, 5);
     expect(restored.recordVideo, isTrue);
+    expect(restored.videoQuality, VideoQuality.lowest);
+  });
+
+  test('video quality labels quantify each tier', () {
+    expect(VideoQuality.values, ['lowest', 'sd', 'hd', 'fhd', 'uhd', 'highest']);
+    expect(VideoQuality.label('lowest'), 'Lowest (device minimum)');
+    expect(VideoQuality.label('sd'), 'SD (480p)');
+    expect(VideoQuality.label('hd'), 'HD (720p)');
+    expect(VideoQuality.label('fhd'), 'Full HD (1080p)');
+    expect(VideoQuality.label('uhd'), 'UHD (4K)');
+    expect(VideoQuality.label('highest'), 'Highest (device maximum)');
+    expect(VideoQuality.label('bogus'), 'Lowest (device minimum)');
   });
 
   test('empty JSON falls back to defaults', () {

@@ -872,9 +872,14 @@ not just host-side taps.)
   - `integration_test/monitoring_on_device_test.dart` — drives the real CameraX + FGS + mic on the
     emulator: (1) permission gate blocks start when denied, (2) full run → first motion event →
     snapshot file → stop.
-  - `integration_test/screen_off_gate_test.dart` — baseline motion event, then a 90s window during
-    which the host toggles the screen off; asserts monitoring survives asleep and records a second
-    motion event (camera kept analyzing).
+  - `integration_test/screen_off_gate_test.dart` — baseline motion event, then a window during
+    which the host toggles the screen off (`[itest]` markers); asserts monitoring survives the
+    asleep window (no error, state stays monitoring) and records a second motion event once the
+    display returns (camera kept analyzing). Runs with **`recordVideo=false`** (analysis-only):
+    with the video use case bound, the software AVC encoder starves the swiftshader camera and
+    analysis collapses to <1 fps within ~2 min — fine on a real device, unreliable for a long
+    gate on the headless AOSP image. Clip recording/export/resolution are covered by
+    `monitoring_on_device_test.dart`.
   - `tool/run_android_integration_tests.sh` — boots/wait, uninstalls stale install, launches the
     test, grants CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant` once the fresh install is
     registered (granting during a streamed install races `cmd package` and breaks the package
@@ -908,6 +913,13 @@ video locally"** setting (default on) — off skips the video use case entirely 
 - **Settings** (`lib/core/settings.dart` + `lib/ui/settings_screen.dart`):
   - `AppSettings.preRollSeconds` (default 5) + `postRollSeconds` (default 5), JSON round-trip +
     copyWith; a "Video clips" section in the Settings screen with steppers for both.
+  - `AppSettings.videoQuality` (default `lowest`) — recording resolution tier, one of
+    `lowest | sd | hd | fhd | uhd | highest`, mapped 1:1 to CameraX `Quality`. Dropdown labels
+    quantify each tier ("Lowest (device minimum) / SD (480p) / HD (720p) / Full HD (1080p) /
+    UHD (4K) / Highest (device maximum)"); the native `QualitySelector` uses
+    `FALLBACK_RULE_LOWER_OR_HIGHER_THAN` so the closest supported resolution is picked and bind
+    never fails on a device lacking the requested tier. Higher tiers = larger clips. Disabled
+    (grayed out) alongside the pre/post sliders when "Record video locally" is off.
 - **Native recording (Android only, `MonitoringService.kt` + `CameraServiceChannels.kt`)**:
   - Bind a CameraX `VideoCapture<Recorder>` use case alongside the existing `ImageAnalysis` +
     `ImageCapture` while monitoring (screen-off safe via the existing FGS).
@@ -919,6 +931,9 @@ video locally"** setting (default on) — off skips the video use case entirely 
     `openVideo(name)` → MediaStore content URI → `ACTION_VIEW` +
     `FLAG_GRANT_READ_URI_PERMISSION` (external player).
   - `startMonitoring` gains a `cameraName` arg for filenames.
+  - `videoInfo(name)` channel → `MediaMetadataRetriever` (width/height) so the on-device test can
+    assert the exported clip's resolution matches the selected tier (pixel_34 only supports 720p,
+    so every tier resolves to 1280×720 via the fallback).
   - MediaStore API split: `RELATIVE_PATH` on API 29+, `DATA` + `DIRECTORY_MOVIES` on 24–28,
     `IS_PENDING` while writing.
   - **Filename**: `2026-08-18_10-30-00_Hallway.mp4` (colon-free, sanitized camera name,
@@ -942,12 +957,16 @@ video locally"** setting (default on) — off skips the video use case entirely 
     events" copy updated to mention videos.
 - **gitignore**: add `build/` to `security_cam/android/.gitignore` (removes the untracked
   `android/build/reports/` lint artifact).
-- **Verification**: unit tests (settings round-trip incl. `recordVideo`, schema v2→v3 migration,
-  videoName in record/recent/delete, batcher video flow, filename helper, row shows the video
-  button only when present + taps the opener, Settings toggle saves); extend
+- **Verification**: unit tests (settings round-trip incl. `recordVideo` + `videoQuality`, schema
+  v2→v3 migration, videoName in record/recent/delete, batcher video flow, filename helper, row
+  shows the video button only when present + taps the opener, Settings toggle + resolution
+  dropdown save, dropdown/sliders disabled when recording off); extend
   `integration_test/monitoring_on_device_test.dart` to assert the motion event carries a
-  `video_name`, the MediaStore file exists (query by DISPLAY_NAME), and `deleteVideo` removes it;
-  `screen_off_gate_test` re-verified with the video use case bound. Full suite + analyze + desktop
+  `video_name`, the MediaStore file exists (query by DISPLAY_NAME), its dimensions match the
+  selected tier via `videoInfo` (1280×720 on pixel_34), and `deleteVideo` removes it;
+  `screen_off_gate_test` re-verified on the headless AOSP image running analysis-only
+  (`recordVideo=false` — the software AVC encoder starves the swiftshader camera over time, so the
+  long gate drops the video use case; see B9.4). Full suite + analyze + desktop
   unit suite green; docs + commit in the established style.
 - **On-device findings (pixel_34, swiftshader)** — three bugs found & fixed:
   - **Analysis stalls when the video use case is bound**: binding `VideoCapture` made the camera
@@ -965,6 +984,16 @@ video locally"** setting (default on) — off skips the video use case entirely 
     (errCode 10) ~0.7s in. The `postRecording` field now holds it until `Finalize` — post-roll
     records the full configured duration (verified: 4.96s).
   - Result on pixel_34: monitoring suite 2/2 green (motion → snapshot → clip → exists/delete →
-    stop), screen-off gate green, 134 unit tests green, analyze clean.
+    stop), screen-off gate green, 137 unit tests green, analyze clean.
+- **`videoQuality` resolution tier (Settings → Video clips → Resolution)**: `lowest | sd | hd |
+  fhd | uhd | highest` → CameraX `Quality` via `QualitySelector.from(quality,
+  FallbackStrategy.lowerQualityOrHigherThan(quality))` — never fails to bind, uses the closest
+  supported tier (on pixel_34 every tier resolves to 1280×720, verified through the new
+  `videoInfo` channel + `MediaMetadataRetriever`). Quantified dropdown labels ("Lowest (device
+  minimum) / SD (480p) / HD (720p) / Full HD (1080p) / UHD (4K) / Highest (device maximum)");
+  disabled alongside the pre/post sliders when recording is off.
+- **Emulator image: AOSP, not google_apis** (AGENTS.md): the Google-APIs `pixel_34` System UI
+  ANRs under load (package service dies → streamed install fails with "Broken pipe"). The AOSP
+  `pixel_34_aosp` image boots faster and stays responsive headless.
 - **Deferred**: audio track in clips; desktop/ffmpeg video recording (Android-only this pass);
   channel delivery tests including live Telegram (B5.1/B5.2).

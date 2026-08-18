@@ -22,6 +22,42 @@ class AudioInput {
   const AudioInput._();
 }
 
+/// Video clip recording resolution tiers (Android only). Values map 1:1 to
+/// CameraX `Quality`; the native side falls back to the closest supported tier,
+/// so the actual resolution can be coarser than the label on small devices.
+class VideoQuality {
+  static const lowest = 'lowest';
+  static const sd = 'sd';
+  static const hd = 'hd';
+  static const fhd = 'fhd';
+  static const uhd = 'uhd';
+  static const highest = 'highest';
+
+  /// Ordered (coarsest → finest) for the Settings dropdown.
+  static const values = [lowest, sd, hd, fhd, uhd, highest];
+
+  /// Quantified label for a tier; lowest/highest are device-relative.
+  static String label(String value) {
+    switch (value) {
+      case sd:
+        return 'SD (480p)';
+      case hd:
+        return 'HD (720p)';
+      case fhd:
+        return 'Full HD (1080p)';
+      case uhd:
+        return 'UHD (4K)';
+      case highest:
+        return 'Highest (device maximum)';
+      case lowest:
+      default:
+        return 'Lowest (device minimum)';
+    }
+  }
+
+  const VideoQuality._();
+}
+
 class AppSettings {
   final String cameraName;
   final String cameraSource;
@@ -42,6 +78,10 @@ class AppSettings {
   /// off saves storage and battery).
   final bool recordVideo;
 
+  /// Recording resolution tier (see [VideoQuality]); the closest tier the
+  /// camera actually supports is used.
+  final String videoQuality;
+
   const AppSettings({
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
@@ -55,6 +95,7 @@ class AppSettings {
     this.preRollSeconds = 5,
     this.postRollSeconds = 5,
     this.recordVideo = true,
+    this.videoQuality = VideoQuality.lowest,
   });
 
   static AppSettings defaults() {
@@ -112,6 +153,7 @@ class AppSettings {
     int? preRollSeconds,
     int? postRollSeconds,
     bool? recordVideo,
+    String? videoQuality,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
@@ -130,6 +172,7 @@ class AppSettings {
       preRollSeconds: preRollSeconds ?? this.preRollSeconds,
       postRollSeconds: postRollSeconds ?? this.postRollSeconds,
       recordVideo: recordVideo ?? this.recordVideo,
+      videoQuality: videoQuality ?? this.videoQuality,
     );
   }
 
@@ -146,6 +189,7 @@ class AppSettings {
         'preRollSeconds': preRollSeconds,
         'postRollSeconds': postRollSeconds,
         'recordVideo': recordVideo,
+        'videoQuality': videoQuality,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -181,6 +225,7 @@ class AppSettings {
       postRollSeconds:
           json['postRollSeconds'] as int? ?? defaults.postRollSeconds,
       recordVideo: json['recordVideo'] as bool? ?? defaults.recordVideo,
+      videoQuality: json['videoQuality'] as String? ?? defaults.videoQuality,
     );
   }
 }

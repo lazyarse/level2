@@ -158,4 +158,58 @@ void main() {
 
     expect(controller.settings.recordVideo, isFalse);
   });
+
+  testWidgets('resolution dropdown saves the recording quality',
+      (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    final dropdown = find.widgetWithText(DropdownButtonFormField<String>,
+        'Lowest (device minimum)');
+    await tester.scrollUntilVisible(dropdown, 300, scrollable: _listScrollable);
+    expect(controller.settings.videoQuality, 'lowest');
+
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Full HD (1080p)').last);
+    await tester.pumpAndSettle();
+
+    final save = find.text('Save settings');
+    await tester.scrollUntilVisible(save, 300, scrollable: _listScrollable);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.videoQuality, 'fhd');
+  });
+
+  testWidgets('resolution dropdown and roll sliders disable when recording off',
+      (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    final toggle = find.widgetWithText(SwitchListTile, 'Record video locally');
+    await tester.scrollUntilVisible(toggle, 300, scrollable: _listScrollable);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    final dropdown = find.byKey(const ValueKey('videoQualityDropdown'));
+    expect(
+      tester.widget<DropdownButtonFormField<String>>(dropdown).onChanged,
+      isNull,
+      reason: 'resolution dropdown should be disabled when recording is off',
+    );
+    for (final key in const [
+      ValueKey('preRollSlider'),
+      ValueKey('postRollSlider'),
+    ]) {
+      final slider = find.byKey(key);
+      expect(
+        tester.widget<Slider>(slider).onChanged,
+        isNull,
+        reason: '$key should be disabled when recording is off',
+      );
+    }
+  });
 }
