@@ -67,6 +67,7 @@ class TriggerType {
   static const loudNoise = 'loud_noise';
   static const merged = 'merged';
   static const person = 'person';
+  static const face = 'face';
 
   const TriggerType._();
 }

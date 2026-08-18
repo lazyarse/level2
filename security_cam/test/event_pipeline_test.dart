@@ -335,6 +335,10 @@ void main() {
     expect(sleeps, [const Duration(seconds: 1), const Duration(seconds: 2)]);
   });
 
+  test('triggerLabel maps face', () {
+    expect(triggerLabel(TriggerType.face), 'Face');
+  });
+
   test('exhausted retries back off 1s then 2s and record failed', () async {
     final recorder = _FakeRecorder();
     var attempts = 0;

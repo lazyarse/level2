@@ -137,6 +137,8 @@ String triggerLabel(String triggerType) {
       return 'Multiple triggers';
     case TriggerType.person:
       return 'Person';
+    case TriggerType.face:
+      return 'Face';
     default:
       return 'Activity';
   }
