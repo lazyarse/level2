@@ -38,6 +38,10 @@ class AppSettings {
   final int preRollSeconds;
   final int postRollSeconds;
 
+  /// Whether to record pre/post-roll video clips for triggers (Android only;
+  /// off saves storage and battery).
+  final bool recordVideo;
+
   const AppSettings({
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
@@ -50,6 +54,7 @@ class AppSettings {
     this.retentionDays = 7,
     this.preRollSeconds = 5,
     this.postRollSeconds = 5,
+    this.recordVideo = true,
   });
 
   static AppSettings defaults() {
@@ -106,6 +111,7 @@ class AppSettings {
     int? retentionDays,
     int? preRollSeconds,
     int? postRollSeconds,
+    bool? recordVideo,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
@@ -123,6 +129,7 @@ class AppSettings {
       retentionDays: retentionDays ?? this.retentionDays,
       preRollSeconds: preRollSeconds ?? this.preRollSeconds,
       postRollSeconds: postRollSeconds ?? this.postRollSeconds,
+      recordVideo: recordVideo ?? this.recordVideo,
     );
   }
 
@@ -138,6 +145,7 @@ class AppSettings {
         'retentionDays': retentionDays,
         'preRollSeconds': preRollSeconds,
         'postRollSeconds': postRollSeconds,
+        'recordVideo': recordVideo,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -172,6 +180,7 @@ class AppSettings {
           json['preRollSeconds'] as int? ?? defaults.preRollSeconds,
       postRollSeconds:
           json['postRollSeconds'] as int? ?? defaults.postRollSeconds,
+      recordVideo: json['recordVideo'] as bool? ?? defaults.recordVideo,
     );
   }
 }

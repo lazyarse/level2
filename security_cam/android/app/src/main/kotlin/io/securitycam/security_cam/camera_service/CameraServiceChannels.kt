@@ -74,7 +74,12 @@ class CameraServiceChannels private constructor() {
                     }
                     try {
                         MonitoringService.start(
-                            appContext, call.argument<String>("cameraId") ?: "0"
+                            appContext,
+                            call.argument<String>("cameraId") ?: "0",
+                            call.argument<String>("cameraName") ?: "Hallway",
+                            call.argument<Number>("preRollSeconds")?.toInt() ?: 5,
+                            call.argument<Number>("postRollSeconds")?.toInt() ?: 5,
+                            call.argument<Boolean>("recordVideo") ?: true,
                         )
                         result.success(null)
                     } catch (e: Exception) {
@@ -92,6 +97,30 @@ class CameraServiceChannels private constructor() {
                         override fun onError(message: String) =
                             result.error("capture_failed", message, null)
                     })
+                }
+                "exportVideoClip" -> {
+                    val triggerAtMs = call.argument<Number>("triggerTimestampMs")?.toLong()
+                    if (triggerAtMs == null) {
+                        result.error("video_export_failed", "triggerTimestampMs required", null)
+                        return
+                    }
+                    VideoClipRecorder.exportClip(
+                        triggerAtMs,
+                        call.argument<Number>("preRollSeconds")?.toInt() ?: 5,
+                        call.argument<Number>("postRollSeconds")?.toInt() ?: 5,
+                        call.argument<String>("cameraName") ?: "Hallway",
+                    ) { name -> result.success(name) }
+                }
+                "deleteVideo" -> {
+                    VideoClipRecorder.delete(call.argument<String>("name") ?: "")
+                    result.success(null)
+                }
+                "openVideo" -> {
+                    VideoClipRecorder.open(call.argument<String>("name") ?: "")
+                    result.success(null)
+                }
+                "videoExists" -> {
+                    result.success(VideoClipRecorder.exists(call.argument<String>("name") ?: ""))
                 }
                 else -> result.notImplemented()
             }

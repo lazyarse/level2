@@ -35,7 +35,14 @@ class MonitoringService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        MonitoringServiceController.onStart(this, intent?.getStringExtra(EXTRA_CAMERA_ID) ?: "0")
+        MonitoringServiceController.onStart(
+            this,
+            intent?.getStringExtra(EXTRA_CAMERA_ID) ?: "0",
+            intent?.getStringExtra(EXTRA_CAMERA_NAME) ?: "Hallway",
+            intent?.getIntExtra(EXTRA_PRE_ROLL, 5) ?: 5,
+            intent?.getIntExtra(EXTRA_POST_ROLL, 5) ?: 5,
+            intent?.getBooleanExtra(EXTRA_RECORD_VIDEO, true) ?: true,
+        )
         return START_STICKY
     }
 
@@ -46,10 +53,25 @@ class MonitoringService : LifecycleService() {
 
     companion object {
         const val EXTRA_CAMERA_ID = "cameraId"
+        const val EXTRA_CAMERA_NAME = "cameraName"
+        const val EXTRA_PRE_ROLL = "preRollSeconds"
+        const val EXTRA_POST_ROLL = "postRollSeconds"
+        const val EXTRA_RECORD_VIDEO = "recordVideo"
 
-        fun start(context: Context, cameraId: String) {
+        fun start(
+            context: Context,
+            cameraId: String,
+            cameraName: String,
+            preRollSeconds: Int,
+            postRollSeconds: Int,
+            recordVideo: Boolean,
+        ) {
             val intent = Intent(context, MonitoringService::class.java)
                 .putExtra(EXTRA_CAMERA_ID, cameraId)
+                .putExtra(EXTRA_CAMERA_NAME, cameraName)
+                .putExtra(EXTRA_PRE_ROLL, preRollSeconds)
+                .putExtra(EXTRA_POST_ROLL, postRollSeconds)
+                .putExtra(EXTRA_RECORD_VIDEO, recordVideo)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -76,13 +98,23 @@ object MonitoringServiceController {
     private var active = false
     private var frameCount = 0L
     private var lastPublishMs = 0L
+    private var recordVideo = true
 
-    fun onStart(service: LifecycleService, cameraId: String) {
+    fun onStart(
+        service: LifecycleService,
+        cameraId: String,
+        cameraName: String,
+        preRollSeconds: Int,
+        postRollSeconds: Int,
+        recordVideo: Boolean,
+    ) {
         if (active) return
         active = true
         frameCount = 0
+        this.recordVideo = recordVideo
         startForeground(service)
         acquireWakeLock(service)
+        VideoClipRecorder.configure(service, cameraName, preRollSeconds, postRollSeconds)
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -98,6 +130,7 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
     }
 
@@ -106,6 +139,7 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
         val service = activeService
         if (service != null) {
@@ -170,7 +204,7 @@ object MonitoringServiceController {
                 ?: CameraSelector.DEFAULT_FRONT_CAMERA
             try {
                 val analysis = ImageAnalysis.Builder()
-                    .setTargetResolution(android.util.Size(160, 120))
+                    .setTargetResolution(android.util.Size(320, 180))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
@@ -188,15 +222,21 @@ object MonitoringServiceController {
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
+                val videoCapture = VideoClipRecorder.buildVideoCapture()
                 imageAnalysis = analysis
                 imageCapture = capture
                 provider.unbindAll()
                 val lifecycleOwner: LifecycleOwner = service
-                val group = UseCaseGroup.Builder()
+                val groupBuilder = UseCaseGroup.Builder()
                     .addUseCase(analysis)
                     .addUseCase(capture)
-                    .build()
-                provider.bindToLifecycle(lifecycleOwner, selector, group)
+                if (recordVideo) {
+                    groupBuilder.addUseCase(videoCapture)
+                }
+                provider.bindToLifecycle(lifecycleOwner, selector, groupBuilder.build())
+                if (recordVideo) {
+                    VideoClipRecorder.onMonitoringStarted()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "camera bind failed", e)
             }

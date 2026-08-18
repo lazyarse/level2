@@ -897,12 +897,13 @@ not just host-side taps.)
     `flutter build apk --debug` output.
 - **Deferred (per user directive)**: channel delivery tests including live Telegram (B5.1/B5.2).
 
-### B9.5 — Video clips per event + open-from-events (planned)
+### B9.5 — Video clips per event + open-from-events — ✅ verified
 
-(Planned, not yet implemented. Decisions confirmed with user: pre-roll + post-roll clip per
+(Implemented + verified on-device. Decisions confirmed with user: pre-roll + post-roll clip per
 trigger with durations configurable in Settings; video opened in the external system player;
 Android-only recording this pass; clips stored in **MediaStore** so users can browse/share them
-freely; snapshot + video filenames unified to `date-time-cameraName`.)
+freely; snapshot + video filenames unified to `date-time-cameraName`; new persisted **"Record
+video locally"** setting (default on) — off skips the video use case entirely to save storage.)
 
 - **Settings** (`lib/core/settings.dart` + `lib/ui/settings_screen.dart`):
   - `AppSettings.preRollSeconds` (default 5) + `postRollSeconds` (default 5), JSON round-trip +
@@ -941,11 +942,29 @@ freely; snapshot + video filenames unified to `date-time-cameraName`.)
     events" copy updated to mention videos.
 - **gitignore**: add `build/` to `security_cam/android/.gitignore` (removes the untracked
   `android/build/reports/` lint artifact).
-- **Verification**: unit tests (settings round-trip, schema v2→v3 migration, videoName in
-  record/recent/delete, batcher video flow, filename helper, row shows the video button only
-  when present + taps the opener); extend `integration_test/monitoring_on_device_test.dart` to
-  assert the motion event carries a `video_name` and the MediaStore file exists (query by
-  DISPLAY_NAME) and that `deleteVideo` removes it; manual: video button launches the player.
-  Full suite + analyze + desktop unit suite green; docs + commit in the established style.
+- **Verification**: unit tests (settings round-trip incl. `recordVideo`, schema v2→v3 migration,
+  videoName in record/recent/delete, batcher video flow, filename helper, row shows the video
+  button only when present + taps the opener, Settings toggle saves); extend
+  `integration_test/monitoring_on_device_test.dart` to assert the motion event carries a
+  `video_name`, the MediaStore file exists (query by DISPLAY_NAME), and `deleteVideo` removes it;
+  `screen_off_gate_test` re-verified with the video use case bound. Full suite + analyze + desktop
+  unit suite green; docs + commit in the established style.
+- **On-device findings (pixel_34, swiftshader)** — three bugs found & fixed:
+  - **Analysis stalls when the video use case is bound**: binding `VideoCapture` made the camera
+    serve a 720p stream and derive the analysis surface from it; downscaling to 176×144 averaged
+    the emulator scene's small moving element under the 3% motion threshold (consecutive-diff
+    ratio dropped 4.4% → ~0.8%; verified with native frame-variance logging). Raised the analysis
+    target to **320×180** (≈640×480 delivered) — restores detection (5.3%) with negligible cost.
+    A dedicated **"Record video locally"** setting also lets users drop the use case entirely.
+  - **`ERROR_CAMERA_CLOSED` on every duration-limit stop**: a `Finalize` with
+    `ERROR_DURATION_LIMIT_REACHED` (errCode 9) was being treated as a failure, deleting valid
+    segments and failing exports. Finalize is now accepted whenever the file is non-empty
+    (ring, export-tail, and post-roll paths); only empty/missing files fail.
+  - **Post-roll garbage-collected**: the `Recording` returned by `prepareRecording().start()` in
+    the post-roll path was not retained, so CameraX emitted `ERROR_RECORDING_GARBAGE_COLLECTED`
+    (errCode 10) ~0.7s in. The `postRecording` field now holds it until `Finalize` — post-roll
+    records the full configured duration (verified: 4.96s).
+  - Result on pixel_34: monitoring suite 2/2 green (motion → snapshot → clip → exists/delete →
+    stop), screen-off gate green, 134 unit tests green, analyze clean.
 - **Deferred**: audio track in clips; desktop/ffmpeg video recording (Android-only this pass);
   channel delivery tests including live Telegram (B5.1/B5.2).

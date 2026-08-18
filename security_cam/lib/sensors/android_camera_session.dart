@@ -28,11 +28,16 @@ class AndroidCameraSession implements CameraSession {
   final int preRollSeconds;
   final int postRollSeconds;
 
+  /// Whether the native ring buffer records pre/post-roll clips (see
+  /// `startMonitoring`).
+  final bool recordVideo;
+
   AndroidCameraSession({
     this.cameraId = 'back',
     this.cameraName = 'Hallway',
     this.preRollSeconds = 5,
     this.postRollSeconds = 5,
+    this.recordVideo = true,
     MethodChannel? method,
     EventChannel? events,
   })  : _method = method ?? const MethodChannel(_cameraChannel),
@@ -71,6 +76,7 @@ class AndroidCameraSession implements CameraSession {
         'cameraName': cameraName,
         'preRollSeconds': preRollSeconds,
         'postRollSeconds': postRollSeconds,
+        'recordVideo': recordVideo,
       });
       _started = true;
     } on PlatformException catch (e) {

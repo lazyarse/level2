@@ -137,4 +137,25 @@ void main() {
 
     expect(controller.settings.retentionDays, greaterThanOrEqualTo(0));
   });
+
+  testWidgets('record video toggle saves the video clip preference',
+      (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    final toggle = find.widgetWithText(SwitchListTile, 'Record video locally');
+    await tester.scrollUntilVisible(toggle, 300, scrollable: _listScrollable);
+    expect(controller.settings.recordVideo, isTrue);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    final save = find.text('Save settings');
+    await tester.scrollUntilVisible(save, 300, scrollable: _listScrollable);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.recordVideo, isFalse);
+  });
 }

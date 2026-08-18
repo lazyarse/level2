@@ -12,6 +12,7 @@ import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
 import 'package:security_cam/storage/settings_store.dart';
 import 'package:security_cam/storage/snapshot_store.dart';
+import 'package:security_cam/storage/video_store.dart';
 import 'package:security_cam/ui/app.dart';
 
 /// Shared on-device harness for the Android integration suite.
@@ -33,6 +34,7 @@ class DeviceHarness {
   late final SqliteEventLog eventLog;
   late final Directory snapDir;
   late final FileSnapshotStore snapshotStore;
+  late final PlatformVideoStore videoStore;
   late final MonitorController controller;
   late final Future<List<RecordedEventRow>> Function() eventLoader;
 
@@ -56,10 +58,12 @@ class DeviceHarness {
     harness.snapDir =
         await Directory.systemTemp.createTemp('scam_itest_snaps');
     harness.snapshotStore = FileSnapshotStore(harness.snapDir.path);
+    harness.videoStore = PlatformVideoStore();
     harness.controller = MonitorController(
       settingsStore: harness.settingsStore,
       eventRecorder: harness.eventLog,
       snapshotStore: harness.snapshotStore,
+      videoStore: harness.videoStore,
       purgeInterval: null,
       permissionsService: permissions ?? const NoopPermissionsService(),
     );
@@ -188,7 +192,8 @@ void main() {
               row.triggerTypes.contains('motion'),
         );
         expect(motion, isNotNull, reason: 'no motion event on the device');
-        expect(motion!.snapshotName, isNotNull,
+        final event = motion!;
+        expect(event.snapshotName, isNotNull,
             reason: 'event has no snapshot reference');
 
         final files = harness.snapDir
@@ -197,6 +202,18 @@ void main() {
             .where((f) => f.path.endsWith('.png') || f.path.endsWith('.jpg'))
             .toList();
         expect(files, isNotEmpty, reason: 'no snapshot PNG written');
+
+        // Pre/post-roll clip: the batch flush awaits the export, so the event
+        // row only appears once the clip (trigger + post-roll) is in MediaStore.
+        expect(event.videoName, isNotNull,
+            reason: 'event has no video clip reference');
+        final videoName = event.videoName!;
+        expect(videoName, endsWith('.mp4'));
+        expect(await harness.videoStore.exists(videoName), isTrue,
+            reason: 'clip not found in MediaStore: $videoName');
+        await harness.videoStore.delete(videoName);
+        expect(await harness.videoStore.exists(videoName), isFalse,
+            reason: 'deleteVideo did not remove the clip');
         mark('EVENT_RECORDED');
 
         await tapMonitorButtonAndAwait(

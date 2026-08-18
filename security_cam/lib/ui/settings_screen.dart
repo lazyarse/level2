@@ -224,6 +224,19 @@ TextEditingController _field(String key, [String? text]) =>
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Record video locally'),
+            subtitle: const Text(
+              'Save a clip to your gallery for each event. Off saves '
+              'storage and battery.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _draft.recordVideo,
+            onChanged: (v) => setState(() {
+              _draft = _draft.copyWith(recordVideo: v);
+            }),
+          ),
           Text('Pre-roll: ${_draft.preRollSeconds}s'),
           Slider(
             value: _draft.preRollSeconds.clamp(0, 30).toDouble(),

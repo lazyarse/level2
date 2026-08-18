@@ -44,21 +44,28 @@ void main() {
     expect(restored.postRollSeconds, settings.postRollSeconds);
   });
 
-  test('video clip settings round-trip and default to 5/5', () {
+  test('video clip settings round-trip and default to 5/5, record on', () {
     final defaults = AppSettings.defaults();
     expect(defaults.preRollSeconds, 5);
     expect(defaults.postRollSeconds, 5);
+    expect(defaults.recordVideo, isTrue);
 
-    final custom = defaults.copyWith(preRollSeconds: 8, postRollSeconds: 12);
+    final custom = defaults.copyWith(
+      preRollSeconds: 8,
+      postRollSeconds: 12,
+      recordVideo: false,
+    );
     final restored = AppSettings.fromJson(custom.toJson());
     expect(restored.preRollSeconds, 8);
     expect(restored.postRollSeconds, 12);
+    expect(restored.recordVideo, isFalse);
   });
 
-  test('old JSON without clip fields falls back to 5/5', () {
+  test('old JSON without clip fields falls back to 5/5, record on', () {
     final restored = AppSettings.fromJson(const {'cameraName': 'Nursery'});
     expect(restored.preRollSeconds, 5);
     expect(restored.postRollSeconds, 5);
+    expect(restored.recordVideo, isTrue);
   });
 
   test('empty JSON falls back to defaults', () {
