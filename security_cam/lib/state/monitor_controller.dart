@@ -215,7 +215,9 @@ class MonitorController extends ChangeNotifier {
         unawaited(eventPipeline.handleBatch(batch));
       });
       _triggerSub = pipeline.triggers.listen(batcher.add);
-      _frameSub = camera.analysisFrames.listen(pipeline.processFrame);
+      _frameSub = camera.analysisFrames.listen((frame) {
+        unawaited(pipeline.processFrame(frame));
+      });
       _audioSub = audio.windows.listen((window) {
         unawaited(pipeline.processAudio(window));
       });

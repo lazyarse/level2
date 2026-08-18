@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/detector.dart';
 import '../core/models.dart';
 import '../core/registries.dart';
@@ -12,6 +14,12 @@ class DetectorPipeline {
   final Map<String, DateTime> _lastTriggerAt = {};
   final StreamController<TriggerEvent> _triggers =
       StreamController<TriggerEvent>.broadcast(sync: true);
+
+  /// Test seam: injects an extra frame detector after construction.
+  @visibleForTesting
+  void debugAddFrameDetector(FrameDetector detector) {
+    _frameDetectors.add(detector);
+  }
 
   DetectorPipeline({
     required this.classifier,
@@ -53,9 +61,20 @@ class DetectorPipeline {
     }
   }
 
-  void processFrame(AnalysisFrame frame) {
+  Future<void> processFrame(AnalysisFrame frame) async {
+    var motionFired = false;
     for (final d in _frameDetectors) {
+      if (d.config.motionGated) continue;
       final result = d.analyzeFrame(frame);
+      if (result.triggered) {
+        if (d.triggerType == TriggerType.motion) motionFired = true;
+        _maybeEmit(d, result);
+      }
+    }
+    if (!motionFired) return;
+    for (final d in _frameDetectors) {
+      if (!d.config.motionGated) continue;
+      final result = await d.analyzeFrameAsync(frame);
       if (result.triggered) _maybeEmit(d, result);
     }
   }

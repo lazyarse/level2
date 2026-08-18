@@ -44,11 +44,11 @@ void main() {
     final events = <TriggerEvent>[];
     final sub = pipeline.triggers.listen(events.add);
     // First frame primes the motion detector.
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base,
       bitmap: GrayscaleBitmap(16, 16, buildFrame(16, 16, 140)),
     ));
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base.add(const Duration(seconds: 1)),
       bitmap: GrayscaleBitmap(16, 16, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30)),
     ));
@@ -67,25 +67,25 @@ void main() {
         buildFrameWithRect(16, 16, 140, x, y, 4, 4, 30);
 
     // Prime, then trigger at t0.
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base,
       bitmap: GrayscaleBitmap(16, 16, buildFrame(16, 16, 140)),
     ));
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base,
       bitmap: GrayscaleBitmap(16, 16, rect(2, 2)),
     ));
     expect(events, hasLength(1));
 
     // Within cooldown: next motion frame must not re-trigger.
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base.add(const Duration(seconds: 30)),
       bitmap: GrayscaleBitmap(16, 16, rect(6, 6)),
     ));
     expect(events, hasLength(1));
 
     // Outside cooldown: triggers again.
-    pipeline.processFrame(AnalysisFrame(
+    await pipeline.processFrame(AnalysisFrame(
       timestamp: base.add(const Duration(seconds: 61)),
       bitmap: GrayscaleBitmap(16, 16, rect(8, 8)),
     ));
@@ -124,4 +124,83 @@ void main() {
     expect(pipeline.audioDetectors, hasLength(0));
     await pipeline.dispose();
   });
+
+  test('gated detectors run only when motion fires', () async {
+    final stub = _GatedStubDetector(const DetectorConfig(
+      type: 'gated', enabled: true, motionGated: true, persistenceFrames: 1));
+    final pipeline = DetectorPipeline(
+      classifier: MockAudioEventClassifier(),
+      configs: [
+        const DetectorConfig(
+          type: TriggerType.motion, enabled: true, threshold: 0.01,
+          persistenceFrames: 1),
+      ],
+    );
+    await pipeline.init();
+    pipeline.debugAddFrameDetector(stub); // injected before subscribing
+    final events = <TriggerEvent>[];
+    final sub = pipeline.triggers.listen(events.add);
+
+    // Prime the motion detector (no motion on frame 1).
+    await pipeline.processFrame(AnalysisFrame(
+      timestamp: base,
+      bitmap: GrayscaleBitmap(16, 16, buildFrame(16, 16, 140)),
+    ));
+    expect(stub.asyncCalls, 0);
+    expect(events, hasLength(0));
+
+    // Motion fires on frame 2 → gated detector runs.
+    await pipeline.processFrame(AnalysisFrame(
+      timestamp: base.add(const Duration(seconds: 1)),
+      bitmap: GrayscaleBitmap(16, 16, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30)),
+    ));
+    expect(stub.asyncCalls, 1);
+    expect(events.map((e) => e.triggerType), contains('gated'));
+
+    // No motion on frame 3 (identical to frame 2) → gated detector does not
+    // run again.
+    await pipeline.processFrame(AnalysisFrame(
+      timestamp: base.add(const Duration(seconds: 2)),
+      bitmap: GrayscaleBitmap(16, 16, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30)),
+    ));
+    expect(stub.asyncCalls, 1);
+
+    await sub.cancel();
+    await pipeline.dispose();
+  });
+}
+
+/// Gated stub detector: counts how often its async path is invoked.
+class _GatedStubDetector extends FrameDetector {
+  _GatedStubDetector(this._config);
+  final DetectorConfig _config;
+  int asyncCalls = 0;
+
+  @override
+  DetectorConfig get config => _config;
+
+  @override
+  String get id => 'gated-stub';
+
+  @override
+  String get triggerType => 'gated';
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  void reset() {}
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  DetectionResult analyzeFrame(AnalysisFrame frame) =>
+      DetectionResult(timestamp: frame.timestamp, triggerType: triggerType, score: 0, triggered: false);
+
+  @override
+  Future<DetectionResult> analyzeFrameAsync(AnalysisFrame frame) async {
+    asyncCalls++;
+    return DetectionResult(timestamp: frame.timestamp, triggerType: triggerType, score: 1, triggered: true);
+  }
 }

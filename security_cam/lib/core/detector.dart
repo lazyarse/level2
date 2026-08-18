@@ -78,6 +78,11 @@ abstract class Detector {
 
 abstract class FrameDetector extends Detector {
   DetectionResult analyzeFrame(AnalysisFrame frame);
+
+  /// Async analysis path for gated/heavy detectors (runs off the pipeline's
+  /// sync per-frame loop). Defaults to the sync path wrapped in a Future.
+  Future<DetectionResult> analyzeFrameAsync(AnalysisFrame frame) async =>
+      analyzeFrame(frame);
 }
 
 abstract class AudioDetector extends Detector {
