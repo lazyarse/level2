@@ -321,4 +321,31 @@ void main() {
     expect(person.threshold, 0.3);
     expect(person.persistenceFrames, 3);
   });
+
+  test('detection regions default to empty', () {
+    final s = AppSettings.defaults();
+    expect(s.detectionRegions, isEmpty);
+  });
+
+  test('detection regions JSON round-trip (rect + poly)', () {
+    final s = AppSettings.defaults().copyWith(detectionRegions: const [
+      DetectionRegion(
+          id: 'r1', shape: 'rect', label: 'doorway', points: [0.1, 0.2, 0.5, 0.8]),
+      DetectionRegion(
+          id: 'p1',
+          shape: 'poly',
+          label: 'driveway',
+          points: [0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8]),
+    ]);
+    final back = AppSettings.fromJson(s.toJson());
+    expect(back.detectionRegions, hasLength(2));
+    expect(back.detectionRegions[0].label, 'doorway');
+    expect(back.detectionRegions[1].points,
+        [0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8]);
+  });
+
+  test('old JSON without detection regions falls back to empty', () {
+    final back = AppSettings.fromJson(const {});
+    expect(back.detectionRegions, isEmpty);
+  });
 }

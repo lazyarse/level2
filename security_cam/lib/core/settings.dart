@@ -114,6 +114,10 @@ class AppSettings {
   /// Analysis stream resolution preset (see [AnalysisResolution]).
   final String analysisResolution;
 
+  /// Inclusion regions (normalized 0..1 on the analysis frame). Empty = detect
+  /// everywhere (whole frame).
+  final List<DetectionRegion> detectionRegions;
+
   const AppSettings({
     this.cameraName = 'Hallway',
     this.cameraSource = CameraSource.simulated,
@@ -129,6 +133,7 @@ class AppSettings {
     this.recordVideo = true,
     this.videoQuality = VideoQuality.lowest,
     this.analysisResolution = AnalysisResolution.balanced,
+    this.detectionRegions = const [],
   });
 
   static AppSettings defaults() {
@@ -206,6 +211,7 @@ class AppSettings {
     bool? recordVideo,
     String? videoQuality,
     String? analysisResolution,
+    List<DetectionRegion>? detectionRegions,
   }) {
     return AppSettings(
       cameraName: cameraName ?? this.cameraName,
@@ -226,6 +232,7 @@ class AppSettings {
       recordVideo: recordVideo ?? this.recordVideo,
       videoQuality: videoQuality ?? this.videoQuality,
       analysisResolution: analysisResolution ?? this.analysisResolution,
+      detectionRegions: detectionRegions ?? this.detectionRegions,
     );
   }
 
@@ -244,6 +251,7 @@ class AppSettings {
         'recordVideo': recordVideo,
         'videoQuality': videoQuality,
         'analysisResolution': analysisResolution,
+        'detectionRegions': detectionRegions.map((r) => r.toJson()).toList(),
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -291,6 +299,11 @@ class AppSettings {
       videoQuality: json['videoQuality'] as String? ?? defaults.videoQuality,
       analysisResolution:
           json['analysisResolution'] as String? ?? defaults.analysisResolution,
+      detectionRegions: (json['detectionRegions'] as List?)
+              ?.map((e) =>
+                  DetectionRegion.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
     );
   }
 }
