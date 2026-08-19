@@ -51,7 +51,7 @@
 - [x] **Step 4: AAC encode + mux** — `encodeAac` (AAC-LC 16 kHz mono @ 48 kbps, non-blocking batch feed/drain, csd-0 captured) and `muxClip` (video concat + audio track, PTS from 0); export offloaded to a dedicated executor so the CameraX executor is never starved.
 - [x] **Step 5: hasAudio plumbing** — `videoHasAudio` channel + `VideoStore.hasAudio` (abstract/Noop/Platform) + test double.
 - [x] **Step 6: On-device audio-track assertion** — `EXPECT_CLIP_AUDIO` (const) in the full-monitoring test; the test waits for a motion event that carries a clip reference (overlapping batches can drop an export).
-- [x] **Step 7: On-device verification** — `pixel_24_aosp` (4/4) verified; audio track present (`hasAudio` true), export ~2.9 s. `pixel_34_aosp` pending (host resources permitting).
+- [x] **Step 7: On-device verification** — `pixel_24_aosp` (4/4) and `pixel_34_aosp` (4/4); audio track present (`hasAudio` true), export ~2.5–2.9 s.
 - [x] **Step 8: Commit** — `feat: mux native mic audio track into recorded clips` (`ca1308c`).
 
 ---

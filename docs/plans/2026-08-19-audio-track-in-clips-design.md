@@ -102,7 +102,8 @@ No new toggle: audio is **always included** when the mic is running. (A future
   runner can still assert video-only via `--dart-define`.
 - YAMNet regression: native mic analysis stream still fires (no-crash gate).
 - Full monitoring suite + screen-off gate green on both images.
-- Verified on `pixel_24_aosp` (4/4). `pixel_34_aosp` run pending (host resources permitting).
+- Verified on `pixel_24_aosp` (4/4) and `pixel_34_aosp` (4/4); API 34 stores straight to MediaStore
+  `Movies/SecurityCam` (no app-private fallback), export ~2.6 s.
 
 ## Risks
 
