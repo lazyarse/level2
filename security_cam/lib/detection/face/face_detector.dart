@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/detector.dart';
 import '../../core/models.dart';
+import '../regions/region_filter.dart';
 import 'face_engine.dart';
 import 'mock_face_engine.dart';
 import 'tflite_face_engine.dart';
@@ -62,6 +63,19 @@ class FaceDetector extends FrameDetector {
       return _result(frame.timestamp, 0, false);
     }
     final faces = await _engine.detectFaces(color);
+    if (regions.isNotEmpty) {
+      faces = [
+        for (final f in faces)
+          if (rectOverlapsAny(
+            regions,
+            f.box.$1 / color.width,
+            f.box.$2 / color.height,
+            (f.box.$3 - f.box.$1) / color.width,
+            (f.box.$4 - f.box.$2) / color.height,
+          ))
+            f,
+      ];
+    }
     if (faces.isEmpty) {
       _persistenceCount = 0;
       return _result(frame.timestamp, 0, false);

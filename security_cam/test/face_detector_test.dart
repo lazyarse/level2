@@ -87,4 +87,55 @@ void main() {
     expect((await d.analyzeFrameAsync(frame(base.add(const Duration(seconds: 1)), c: color(140)))).triggered, false);
     await d.dispose();
   });
+
+  // Rect region covering the left half of the frame.
+  const halfRegion = DetectionRegion(
+      id: 'r1', shape: 'rect', label: 'left', points: [0.0, 0.0, 0.5, 1.0]);
+
+  test('face outside all regions does not trigger', () async {
+    // Frame is 3x3 px. Box (1.7,0.4)-(2.8,0.6) -> normalized x 0.567..0.933,
+    // outside the left-half region [0,0.5]x[0,1].
+    final engine = MockFaceEngine()
+      ..faces.add(const FaceDetection(
+          box: (1.7, 0.4, 2.8, 0.6), score: 0.9));
+    final d = FaceDetector(
+      const DetectorConfig(type: TriggerType.face, threshold: 0.5, persistenceFrames: 1),
+      engine: engine,
+    );
+    d.regions = const [halfRegion];
+    await d.init();
+    final r = await d.analyzeFrameAsync(frame(base, c: color(140)));
+    expect(r.triggered, isFalse);
+    await d.dispose();
+  });
+
+  test('face overlapping a region triggers', () async {
+    // Box (1.2,0.4)-(2.4,0.6) -> normalized x 0.4..0.8, crosses the x=0.5 edge.
+    final engine = MockFaceEngine()
+      ..faces.add(const FaceDetection(
+          box: (1.2, 0.4, 2.4, 0.6), score: 0.9));
+    final d = FaceDetector(
+      const DetectorConfig(type: TriggerType.face, threshold: 0.5, persistenceFrames: 1),
+      engine: engine,
+    );
+    d.regions = const [halfRegion];
+    await d.init();
+    final r = await d.analyzeFrameAsync(frame(base, c: color(140)));
+    expect(r.triggered, isTrue);
+    await d.dispose();
+  });
+
+  test('empty regions = all faces pass', () async {
+    final engine = MockFaceEngine()
+      ..faces.add(const FaceDetection(
+          box: (0.9, 0.1, 0.95, 0.2), score: 0.9));
+    final d = FaceDetector(
+      const DetectorConfig(type: TriggerType.face, threshold: 0.5, persistenceFrames: 1),
+      engine: engine,
+    );
+    await d.init();
+    final r = await d.analyzeFrameAsync(frame(base, c: color(140)));
+    expect(r.triggered, isTrue);
+    await d.dispose();
+  });
 }
