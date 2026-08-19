@@ -15,7 +15,7 @@ void main() {
       '-framerate', '4',
       '-i', '/dev/video0',
       '-vf', 'scale=160:120',
-      '-pix_fmt', 'gray',
+      '-pix_fmt', 'bgr24',
       '-f', 'rawvideo',
       'pipe:1',
     ]);
@@ -34,7 +34,7 @@ void main() {
       '-stream_loop', '-1',
       '-i', '/tmp/clip.mp4',
       '-vf', 'scale=160:120',
-      '-pix_fmt', 'gray',
+      '-pix_fmt', 'bgr24',
       '-f', 'rawvideo',
       'pipe:1',
     ]);

@@ -25,6 +25,18 @@ class ColorBitmap {
   int b(int x, int y) => bgr[(y * width + x) * 3];
   int g(int x, int y) => bgr[(y * width + x) * 3 + 1];
   int r(int x, int y) => bgr[(y * width + x) * 3 + 2];
+
+  /// Derives a luminance bitmap (BT.601) from the interleaved BGR bytes.
+  GrayscaleBitmap toGrayscale() {
+    final gray = Uint8List(width * height);
+    for (var i = 0; i < width * height; i++) {
+      final b = bgr[i * 3];
+      final g = bgr[i * 3 + 1];
+      final r = bgr[i * 3 + 2];
+      gray[i] = (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0, 255);
+    }
+    return GrayscaleBitmap(width, height, gray);
+  }
 }
 
 class AnalysisFrame {

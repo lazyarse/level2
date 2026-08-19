@@ -6,7 +6,7 @@ import 'package:image/image.dart' as img;
 
 import '../core/camera_session.dart';
 import '../core/models.dart';
-import 'gray_frame_assembler.dart';
+import 'bgr_frame_assembler.dart';
 
 /// Dev-time-only camera source for desktop: feeds [ffmpeg] stdout into the
 /// pipeline as raw grayscale frames.
@@ -30,7 +30,7 @@ class FfmpegCameraSession implements CameraSession {
   StreamController<AnalysisFrame>? _controller;
   StreamController<String>? _failures;
   StreamSubscription<List<int>>? _stdoutSub;
-  GrayFrameAssembler? _assembler;
+  BgrFrameAssembler? _colorAssembler;
   GrayscaleBitmap? _latest;
   final StringBuffer _stderrTail = StringBuffer();
   bool _disposed = false;
@@ -49,7 +49,7 @@ class FfmpegCameraSession implements CameraSession {
     required int fps,
   }) {
     final scale = 'scale=$width:$height';
-    final encode = ['-vf', scale, '-pix_fmt', 'gray', '-f', 'rawvideo', 'pipe:1'];
+    final encode = ['-vf', scale, '-pix_fmt', 'bgr24', '-f', 'rawvideo', 'pipe:1'];
     return switch (source) {
       'webcam' => [
           '-f', 'v4l2',
@@ -72,7 +72,7 @@ class FfmpegCameraSession implements CameraSession {
     _config = config;
     _controller?.close();
     _failures?.close();
-    _assembler = GrayFrameAssembler(config.analysisWidth, config.analysisHeight);
+    _colorAssembler = BgrFrameAssembler(config.analysisWidth, config.analysisHeight);
     final controller = StreamController<AnalysisFrame>.broadcast();
     final failures = StreamController<String>.broadcast();
     _controller = controller;
@@ -108,12 +108,14 @@ class FfmpegCameraSession implements CameraSession {
     }, onError: (_) {});
 
     _stdoutSub = process.stdout.listen((chunk) {
-      final frames = _assembler!.add(Uint8List.fromList(chunk));
-      for (final frame in frames) {
-        _latest = frame;
+      final colorFrames = _colorAssembler!.add(Uint8List.fromList(chunk));
+      for (final color in colorFrames) {
+        final gray = color.toGrayscale();
+        _latest = gray;
         controller.add(AnalysisFrame(
           timestamp: DateTime.now(),
-          bitmap: frame,
+          bitmap: gray,
+          color: color,
         ));
       }
     }, onError: (_) {}, onDone: () {

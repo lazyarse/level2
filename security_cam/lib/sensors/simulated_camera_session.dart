@@ -24,9 +24,18 @@ class SimulatedCameraSession implements CameraSession {
     _controller = controller;
     final period = Duration(microseconds: (1000000 / config.analysisFps).round());
     _timer = Timer.periodic(period, (_) {
+      final gray = generateFrame(_step++, config.analysisWidth, config.analysisHeight, animate);
+      final bgr = Uint8List(gray.width * gray.height * 3);
+      for (var i = 0; i < gray.gray.length; i++) {
+        final v = gray.gray[i];
+        bgr[i * 3] = v;
+        bgr[i * 3 + 1] = v;
+        bgr[i * 3 + 2] = v;
+      }
       final frame = AnalysisFrame(
         timestamp: DateTime.now(),
-        bitmap: generateFrame(_step++, config.analysisWidth, config.analysisHeight, animate),
+        bitmap: gray,
+        color: ColorBitmap(gray.width, gray.height, bgr),
       );
       controller.add(frame);
     });
