@@ -79,4 +79,53 @@ void main() {
       expect(result.triggered, expected, reason: 'frame $step');
     }
   });
+
+  test('change inside a region triggers; same change outside does not', () {
+    detector.regions = const [
+      DetectionRegion(
+          id: 'r1', shape: 'rect', label: 'doorway', points: [0.0, 0.0, 0.5, 0.5]),
+    ];
+    // Outside case: move a rect only in the bottom-right quadrant (outside the
+    // [0,0.5]x[0,0.5] region). Region-relative ratio stays 0 -> never triggers.
+    detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16));
+    detector.analyzeFrame(
+        frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16));
+    detector.analyzeFrame(
+        frame(2, buildFrameWithRect(16, 16, 140, 10, 10, 8, 8, 30), 16, 16));
+    expect(detector.analyzeFrame(
+            frame(3, buildFrameWithRect(16, 16, 140, 12, 12, 8, 8, 30), 16, 16))
+        .triggered, isFalse);
+
+    // Inside case: move a rect within the top-left quadrant (inside the region).
+    // Two consecutive above-threshold diffs (4x4=16 px / 64 region px = 0.25) arm
+    // the persistence counter.
+    detector.reset();
+    detector.analyzeFrame(frame(4, buildFrame(16, 16, 140), 16, 16));
+    detector.analyzeFrame(
+        frame(5, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16));
+    expect(detector.analyzeFrame(
+            frame(6, buildFrameWithRect(16, 16, 140, 4, 4, 4, 4, 30), 16, 16))
+        .triggered, isTrue);
+  });
+
+  test('small region denominator keeps thresholds meaningful', () {
+    detector = MotionDetector(config(threshold: 0.2, persistence: 2));
+    detector.regions = const [
+      DetectionRegion(
+          id: 'r1', shape: 'rect', label: 'q1', points: [0.0, 0.0, 0.5, 0.5]),
+    ];
+    detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16));
+    detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 1, 1, 4, 4, 30), 16, 16));
+    expect(detector.analyzeFrame(frame(2, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16))
+        .triggered, isTrue);
+  });
+
+  test('empty regions = legacy whole-frame behavior', () {
+    expect(
+        detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered,
+        isFalse);
+    detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16));
+    expect(detector.analyzeFrame(frame(2, buildFrameWithRect(16, 16, 140, 4, 4, 4, 4, 30), 16, 16))
+        .triggered, isTrue);
+  });
 }

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../core/detector.dart';
 import '../core/models.dart';
+import 'regions/region_filter.dart';
 
 class MotionDetector extends FrameDetector {
   @override
@@ -10,6 +11,11 @@ class MotionDetector extends FrameDetector {
 
   GrayscaleBitmap? _previous;
   int _persistenceCount = 0;
+  Uint8List? _mask;
+  int _maskCount = 0;
+  int _maskWidth = 0;
+  int _maskHeight = 0;
+  List<DetectionRegion>? _maskRegions;
 
   MotionDetector(this.config);
 
@@ -26,6 +32,7 @@ class MotionDetector extends FrameDetector {
   void reset() {
     _previous = null;
     _persistenceCount = 0;
+    _mask = null;
   }
 
   @override
@@ -33,6 +40,12 @@ class MotionDetector extends FrameDetector {
 
   @override
   DetectionResult analyzeFrame(AnalysisFrame frame) {
+    if (_mask == null ||
+        !identical(_maskRegions, regions) ||
+        _maskWidth != frame.bitmap.width ||
+        _maskHeight != frame.bitmap.height) {
+      _rebuildMask(frame.bitmap.width, frame.bitmap.height);
+    }
     final bitmap = frame.bitmap;
     final prev = _previous;
     _previous = bitmap;
@@ -42,6 +55,15 @@ class MotionDetector extends FrameDetector {
     final ratio = _diffRatio(prev, bitmap);
     final triggered = _updatePersistence(ratio, frame.timestamp);
     return _result(frame.timestamp, ratio, triggered);
+  }
+
+  void _rebuildMask(int width, int height) {
+    final (mask, count) = pixelMask(regions, width, height);
+    _mask = mask;
+    _maskCount = count;
+    _maskRegions = regions;
+    _maskWidth = width;
+    _maskHeight = height;
   }
 
   bool _updatePersistence(double ratio, DateTime timestamp) {
@@ -55,18 +77,20 @@ class MotionDetector extends FrameDetector {
   }
 
   double _diffRatio(GrayscaleBitmap a, GrayscaleBitmap b) {
-    final width = a.width;
-    final height = a.height;
+    final mask = _mask!;
+    final count = _maskCount;
     var changed = 0;
-    for (var y = 0; y < height; y++) {
-      final rowA = y * width;
-      final rowB = y * width;
-      for (var x = 0; x < width; x++) {
-        final diff = (a.gray[rowA + x] - b.gray[rowB + x]).abs();
+    for (var y = 0; y < a.height; y++) {
+      final rowA = y * a.width;
+      final rowB = y * a.width;
+      for (var x = 0; x < a.width; x++) {
+        final idx = rowA + x;
+        if (mask[idx] == 0) continue;
+        final diff = (a.gray[idx] - b.gray[idx]).abs();
         if (diff > _pixelDiffTolerance) changed++;
       }
     }
-    return changed / (width * height);
+    return count == 0 ? 0.0 : changed / count;
   }
 
   DetectionResult _result(DateTime ts, double score, bool triggered) {
