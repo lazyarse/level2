@@ -169,6 +169,14 @@ class AppSettings {
           motionGated: true,
           routeToChannelIds: ['telegram'],
         ),
+        TriggerType.person: const DetectorConfig(
+          type: TriggerType.person,
+          threshold: 0.5,
+          persistenceFrames: 2,
+          enabled: false,
+          motionGated: true,
+          routeToChannelIds: ['telegram'],
+        ),
       },
       channelConfigs: const [
         ChannelConfig(id: 'log', type: 'log', enabled: true),

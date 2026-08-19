@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:security_cam/core/detector.dart';
 import 'package:security_cam/core/models.dart';
 import 'package:security_cam/core/settings.dart';
 
@@ -216,5 +217,37 @@ void main() {
     expect(face!.enabled, false);
     expect(face.motionGated, true);
     expect(face.threshold, 0.7);
+  });
+
+  test('defaults include a person detector, disabled and motion-gated', () {
+    final s = AppSettings.defaults();
+    final person = s.detectorConfigs[TriggerType.person];
+    expect(person, isNotNull);
+    expect(person!.enabled, false);
+    expect(person.motionGated, true);
+    expect(person.threshold, 0.5);
+    expect(s.detectorConfigs.keys, contains(TriggerType.person));
+  });
+
+  test('person config JSON round-trips', () {
+    final settings = AppSettings.defaults().copyWith(
+      detectorConfigs: {
+        ...AppSettings.defaults().detectorConfigs,
+        TriggerType.person: const DetectorConfig(
+          type: TriggerType.person,
+          threshold: 0.3,
+          persistenceFrames: 3,
+          enabled: true,
+          motionGated: true,
+          routeToChannelIds: ['telegram'],
+        ),
+      },
+    );
+    final restored = AppSettings.fromJson(settings.toJson());
+    final person = restored.detectorConfigs[TriggerType.person]!;
+    expect(person.enabled, true);
+    expect(person.motionGated, true);
+    expect(person.threshold, 0.3);
+    expect(person.persistenceFrames, 3);
   });
 }

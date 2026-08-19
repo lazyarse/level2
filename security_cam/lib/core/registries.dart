@@ -10,6 +10,7 @@ import '../detection/face/face_detector.dart';
 import '../detection/glass_break_detector.dart';
 import '../detection/loud_noise_detector.dart';
 import '../detection/motion_detector.dart';
+import '../detection/person/person_detector.dart';
 
 typedef DetectorFactory = Detector Function(DetectorConfig config);
 
@@ -19,6 +20,7 @@ final Map<String, DetectorFactory> detectorRegistry = {
   TriggerType.glassBreak: (c) => GlassBreakDetector(c),
   TriggerType.loudNoise: (c) => LoudNoiseDetector(c),
   TriggerType.face: (c) => FaceDetector(c),
+  TriggerType.person: (c) => PersonDetector(c),
 };
 
 typedef ChannelFactory = Channel Function(ChannelConfig config);
