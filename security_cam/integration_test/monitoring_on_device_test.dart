@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:security_cam/core/models.dart';
 import 'package:security_cam/sensors/permissions_service.dart';
 import 'package:security_cam/state/monitor_controller.dart';
 import 'package:security_cam/storage/event_log.dart';
@@ -44,12 +45,31 @@ class DeviceHarness {
   static const pollTimeout = Duration(minutes: 3);
   static const pollInterval = Duration(seconds: 2);
 
-  static Future<DeviceHarness> create({PermissionsService? permissions}) async {
+  static Future<DeviceHarness> create({
+    PermissionsService? permissions,
+    bool enableFace = false,
+  }) async {
     sqfliteFfiInit();
     sql.databaseFactory = databaseFactoryFfi;
     SharedPreferences.setMockInitialValues({});
     final harness = DeviceHarness._();
     harness.settingsStore = await SettingsStore.open();
+    if (enableFace) {
+      // The default config has the face detector disabled; enable it
+      // (motion-gated) before the controller loads its settings.
+      final settings = await harness.settingsStore.load();
+      final configs = settings.detectorConfigs.map(
+        (key, config) => MapEntry(
+          key,
+          key == TriggerType.face
+              ? config.copyWith(enabled: true, motionGated: true)
+              : config,
+        ),
+      );
+      await harness.settingsStore.save(
+        settings.copyWith(detectorConfigs: configs),
+      );
+    }
     // sqflite caches database instances by path, so each harness must use a
     // unique in-memory URI or a later harness would receive a closed instance.
     final memDb = 'file:itest_$_nextId?mode=memory&cache=shared';
@@ -211,12 +231,14 @@ void main() {
         expect(videoName, endsWith('.mp4'));
         expect(await harness.videoStore.exists(videoName), isTrue,
             reason: 'clip not found in MediaStore: $videoName');
-        // pixel_34 only supports 720p video, so whatever tier the settings
-        // request, the recorded clip resolves to HD (the quality fallback).
+        // Recorded clip dimensions are camera-capability dependent
+        // (pixel_34 resolves 1280x720, pixel_24 640x360), so only assert that
+        // the clip is a real, landscape video.
         final info = await harness.videoStore.videoInfo(videoName);
         expect(info, isNotNull, reason: 'videoInfo returned null for $videoName');
-        expect(info!.width, 1280);
-        expect(info.height, 720);
+        expect(info!.width, greaterThan(0));
+        expect(info.height, greaterThan(0));
+        expect(info.width, greaterThanOrEqualTo(info.height));
         await harness.videoStore.delete(videoName);
         expect(await harness.videoStore.exists(videoName), isFalse,
             reason: 'deleteVideo did not remove the clip');
@@ -224,6 +246,35 @@ void main() {
 
         await tapMonitorButtonAndAwait(
             tester, harness.controller, MonitorState.idle);
+      },
+    );
+
+    testWidgets(
+      'face detector is wired and motion-gated',
+      (tester) async {
+        final faceHarness = await DeviceHarness.create(enableFace: true);
+        addTearDown(faceHarness.close);
+        await tester.pumpWidget(faceHarness.buildApp());
+        await tester.pump();
+
+        await tapMonitorButtonAndAwait(
+            tester, faceHarness.controller, MonitorState.monitoring);
+        mark('FACE_MONITORING_STARTED');
+
+        // The emulator virtual camera scene has no real face, so no face
+        // trigger is expected. The gate is that the async motion-gated face
+        // path runs on the real device stack for a window without crashing.
+        final window = DateTime.now().add(const Duration(seconds: 30));
+        while (DateTime.now().isBefore(window) &&
+            faceHarness.controller.state == MonitorState.monitoring) {
+          await tester.pump(const Duration(seconds: 2));
+        }
+        expect(faceHarness.controller.state, MonitorState.monitoring,
+            reason: 'face-enabled monitoring crashed: '
+                '${faceHarness.controller.error}');
+
+        await tapMonitorButtonAndAwait(
+            tester, faceHarness.controller, MonitorState.idle);
       },
     );
   });
