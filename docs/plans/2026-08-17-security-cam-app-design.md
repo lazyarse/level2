@@ -939,8 +939,9 @@ video locally"** setting (default on) — off skips the video use case entirely 
   - **Filename**: `2026-08-18_10-30-00_Hallway.mp4` (colon-free, sanitized camera name,
     ms-suffix for uniqueness).
   - **Risks**: MP4 segment concat (timestamp/keyframe alignment) is the trickiest part —
-    validate on the emulator; fallback is post-roll-only clips. Audio track deferred to avoid
-    concurrent-mic risk with the analysis path (video-only this pass).
+    validate on the emulator; fallback is post-roll-only clips. Audio track is implemented
+    (see `2026-08-19-audio-track-in-clips-design.md`): the native mic's PCM is AAC-muxed
+    into clips at export (post-hoc mux; single AudioRecord, no concurrency risk).
 - **Snapshot naming unification**: the batcher's `captureSnapshot` is wrapped in
   `MonitorController.start()` so stills are named `2026-08-18_10-30-00_Hallway.jpg`
   (shared date-time-cameraName helper, all platforms).
