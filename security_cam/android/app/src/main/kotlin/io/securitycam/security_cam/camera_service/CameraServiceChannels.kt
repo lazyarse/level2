@@ -15,7 +15,7 @@ import io.flutter.plugin.common.StandardMethodCodec
  * MethodChannel `io.securitycam.security_cam/camera`:
  *   startMonitoring(cameraId) / stopMonitoring / captureStill -> JPEG bytes
  * EventChannel `io.securitycam.security_cam/frames`:
- *   {width, height, gray} grayscale analysis frames @ ~4 fps
+ *   {width, height, bgr} BGR analysis frames @ ~4 fps
  */
 class CameraServiceChannels private constructor() {
     companion object {
@@ -58,9 +58,9 @@ class CameraServiceChannels private constructor() {
             context = null
         }
 
-        private fun publishFrame(gray: ByteArray, width: Int, height: Int) {
+        private fun publishFrame(bgr: ByteArray, width: Int, height: Int) {
             mainHandler.post {
-                frameSink?.success(mapOf("width" to width, "height" to height, "gray" to gray))
+                frameSink?.success(mapOf("width" to width, "height" to height, "bgr" to bgr))
             }
         }
 
@@ -81,6 +81,8 @@ class CameraServiceChannels private constructor() {
                             call.argument<Number>("postRollSeconds")?.toInt() ?: 5,
                             call.argument<Boolean>("recordVideo") ?: true,
                             call.argument<String>("videoQuality") ?: "lowest",
+                            call.argument<Number>("analysisWidth")?.toInt() ?: 320,
+                            call.argument<Number>("analysisHeight")?.toInt() ?: 240,
                         )
                         result.success(null)
                     } catch (e: Exception) {

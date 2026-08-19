@@ -28,8 +28,8 @@ import java.util.concurrent.Executors
 
 /**
  * Foreground service owning the CameraX session so the camera keeps streaming
- * with the screen off / Activity stopped. Analysis frames (160x120 grayscale,
- * ~4 fps) are published on [CameraFrameBus]; stills are captured on demand.
+ * with the screen off / Activity stopped. Analysis frames (preset resolution
+ * BGR, ~4 fps) are published on [CameraFrameBus]; stills are captured on demand.
  */
 class MonitoringService : LifecycleService() {
 
@@ -43,6 +43,8 @@ class MonitoringService : LifecycleService() {
             intent?.getIntExtra(EXTRA_POST_ROLL, 5) ?: 5,
             intent?.getBooleanExtra(EXTRA_RECORD_VIDEO, true) ?: true,
             intent?.getStringExtra(EXTRA_VIDEO_QUALITY) ?: "lowest",
+            intent?.getIntExtra(EXTRA_ANALYSIS_WIDTH, 320) ?: 320,
+            intent?.getIntExtra(EXTRA_ANALYSIS_HEIGHT, 240) ?: 240,
         )
         return START_STICKY
     }
@@ -59,6 +61,8 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_POST_ROLL = "postRollSeconds"
         const val EXTRA_RECORD_VIDEO = "recordVideo"
         const val EXTRA_VIDEO_QUALITY = "videoQuality"
+        const val EXTRA_ANALYSIS_WIDTH = "analysisWidth"
+        const val EXTRA_ANALYSIS_HEIGHT = "analysisHeight"
 
         fun start(
             context: Context,
@@ -68,6 +72,8 @@ class MonitoringService : LifecycleService() {
             postRollSeconds: Int,
             recordVideo: Boolean,
             videoQuality: String,
+            analysisWidth: Int = 320,
+            analysisHeight: Int = 240,
         ) {
             val intent = Intent(context, MonitoringService::class.java)
                 .putExtra(EXTRA_CAMERA_ID, cameraId)
@@ -76,6 +82,8 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_POST_ROLL, postRollSeconds)
                 .putExtra(EXTRA_RECORD_VIDEO, recordVideo)
                 .putExtra(EXTRA_VIDEO_QUALITY, videoQuality)
+                .putExtra(EXTRA_ANALYSIS_WIDTH, analysisWidth)
+                .putExtra(EXTRA_ANALYSIS_HEIGHT, analysisHeight)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -103,6 +111,8 @@ object MonitoringServiceController {
     private var frameCount = 0L
     private var lastPublishMs = 0L
     private var recordVideo = true
+    private var analysisWidth = 320
+    private var analysisHeight = 240
 
     fun onStart(
         service: LifecycleService,
@@ -112,11 +122,15 @@ object MonitoringServiceController {
         postRollSeconds: Int,
         recordVideo: Boolean,
         videoQuality: String,
+        analysisWidth: Int = 320,
+        analysisHeight: Int = 240,
     ) {
         if (active) return
         active = true
         frameCount = 0
         this.recordVideo = recordVideo
+        this.analysisWidth = analysisWidth
+        this.analysisHeight = analysisHeight
         startForeground(service)
         acquireWakeLock(service)
         VideoClipRecorder.configure(
@@ -211,8 +225,9 @@ object MonitoringServiceController {
                 ?: CameraSelector.DEFAULT_FRONT_CAMERA
             try {
                 val analysis = ImageAnalysis.Builder()
-                    .setTargetResolution(android.util.Size(320, 180))
+                    .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     val now = System.currentTimeMillis()
@@ -222,7 +237,7 @@ object MonitoringServiceController {
                         if (frameCount % 30 == 0L) {
                             Log.i(TAG, "frames=$frameCount (screen-on/off gate)")
                         }
-                        CameraFrameBus.publish(toGray(image), image.width, image.height)
+                        CameraFrameBus.publish(toBgr(image), image.width, image.height)
                     }
                     image.close()
                 }
@@ -250,19 +265,36 @@ object MonitoringServiceController {
         }, ContextCompat.getMainExecutor(service))
     }
 
-    /** Extracts the grayscale Y plane, handling row/pixel strides. */
-    private fun toGray(image: ImageProxy): ByteArray {
-        val plane = image.planes[0]
-        val buffer = plane.buffer
-        val rowStride = plane.rowStride
+    /** Converts a CameraX YUV_420_888 frame to interleaved BGR. */
+    private fun toBgr(image: ImageProxy): ByteArray {
+        val yPlane = image.planes[0]
+        val uPlane = image.planes[1]
+        val vPlane = image.planes[2]
         val width = image.width
         val height = image.height
-        val out = ByteArray(width * height)
-        val row = ByteArray(width)
-        for (rowIndex in 0 until height) {
-            buffer.position(rowIndex * rowStride)
-            buffer.get(row, 0, width)
-            System.arraycopy(row, 0, out, rowIndex * width, width)
+        val yRowStride = yPlane.rowStride
+        val uvRowStride = uPlane.rowStride
+        val uvPixelStride = uPlane.pixelStride
+        val yBuf = yPlane.buffer
+        val uBuf = uPlane.buffer
+        val vBuf = vPlane.buffer
+        val out = ByteArray(width * height * 3)
+        var outIdx = 0
+        for (row in 0 until height) {
+            val yRow = row * yRowStride
+            val uvRow = (row shr 1) * uvRowStride
+            for (col in 0 until width) {
+                val y = yBuf.get(yRow + col).toInt() and 0xFF
+                val uvIdx = uvRow + (col shr 1) * uvPixelStride
+                val u = (uBuf.get(uvIdx).toInt() and 0xFF) - 128
+                val v = (vBuf.get(uvIdx).toInt() and 0xFF) - 128
+                val r = (y + (v * 1436 / 1024)).coerceIn(0, 255)
+                val g = (y - (u * 352 / 1024) - (v * 731 / 1024)).coerceIn(0, 255)
+                val b = (y + (u * 1814 / 1024)).coerceIn(0, 255)
+                out[outIdx++] = b.toByte()
+                out[outIdx++] = g.toByte()
+                out[outIdx++] = r.toByte()
+            }
         }
         return out
     }

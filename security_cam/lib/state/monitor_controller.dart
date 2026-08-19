@@ -164,8 +164,8 @@ class MonitorController extends ChangeNotifier {
       await pipeline.init();
       await camera.init(CameraConfig(
         cameraId: camera.cameraId,
-        analysisWidth: 160,
-        analysisHeight: 120,
+        analysisWidth: AnalysisResolution.size(settings.analysisResolution).$1,
+        analysisHeight: AnalysisResolution.size(settings.analysisResolution).$2,
         analysisFps: 4,
       ));
       final cameraFailures = camera is FfmpegCameraSession

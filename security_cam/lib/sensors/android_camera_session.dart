@@ -82,6 +82,8 @@ class AndroidCameraSession implements CameraSession {
         'postRollSeconds': postRollSeconds,
         'recordVideo': recordVideo,
         'videoQuality': videoQuality,
+        'analysisWidth': config.analysisWidth,
+        'analysisHeight': config.analysisHeight,
       });
       _started = true;
     } on PlatformException catch (e) {
@@ -129,12 +131,14 @@ class AndroidCameraSession implements CameraSession {
     if (event is! Map) return null;
     final width = event['width'];
     final height = event['height'];
-    final gray = event['gray'];
-    if (width is! int || height is! int || gray is! List<int>) return null;
-    if (gray.length != width * height) return null;
+    final bgr = event['bgr'];
+    if (width is! int || height is! int || bgr is! List<int>) return null;
+    if (bgr.length != width * height * 3) return null;
+    final bgrBytes = Uint8List.fromList(bgr);
     return AnalysisFrame(
       timestamp: DateTime.now(),
-      bitmap: GrayscaleBitmap(width, height, Uint8List.fromList(gray)),
+      bitmap: ColorBitmap(width, height, bgrBytes).toGrayscale(),
+      color: ColorBitmap(width, height, bgrBytes),
     );
   }
 }
