@@ -156,7 +156,7 @@ packages:
     source: hosted
     version: "6.0.0"
   flutter_litert:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: flutter_litert
       sha256: "5428e65455b1f8ea01b4b874f39e0e434e9167e052a1218edb8a2e0ec2c7244a"
