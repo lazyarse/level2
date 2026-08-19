@@ -82,7 +82,6 @@ class MotionDetector extends FrameDetector {
     var changed = 0;
     for (var y = 0; y < a.height; y++) {
       final rowA = y * a.width;
-      final rowB = y * a.width;
       for (var x = 0; x < a.width; x++) {
         final idx = rowA + x;
         if (mask[idx] == 0) continue;

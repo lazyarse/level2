@@ -665,6 +665,10 @@ TextEditingController _field(String key, [String? text]) =>
       analysisHeight: h,
       analysisFps: 4,
     ));
+    if (!mounted) {
+      await camera.dispose();
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (context) => RegionEditorScreen(

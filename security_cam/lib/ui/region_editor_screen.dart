@@ -164,7 +164,7 @@ class _RegionEditorScreenState extends State<RegionEditorScreen> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: _regions.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const Divider(height: 1),
                         itemBuilder: (context, i) => ListTile(
                           dense: true,
