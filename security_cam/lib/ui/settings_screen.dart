@@ -319,6 +319,32 @@ TextEditingController _field(String key, [String? text]) =>
             label: const Text('Clear all events'),
           ),
           const SizedBox(height: 24),
+          Text('Advanced', style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Analysis stream resolution: higher = better far-face detection '
+            'but more battery. Balanced is a good default.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('analysisResolutionDropdown'),
+            initialValue: _draft.analysisResolution,
+            decoration: const InputDecoration(
+              labelText: 'Analysis resolution',
+            ),
+            items: [
+              for (final r in AnalysisResolution.values)
+                DropdownMenuItem(
+                  value: r,
+                  child: Text(AnalysisResolution.label(r)),
+                ),
+            ],
+            onChanged: (v) => setState(() {
+              if (v != null) {
+                _draft = _draft.copyWith(analysisResolution: v);
+              }
+            }),
+          ),
           FilledButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save),
@@ -546,6 +572,16 @@ class _DetectorCard extends StatelessWidget {
               onChanged: (v) => onChanged(config.copyWith(enabled: v)),
             ),
             if (config.enabled) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Motion-gated'),
+                subtitle: const Text(
+                  'Only check for this after motion is detected (saves battery).',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: config.motionGated,
+                onChanged: (v) => onChanged(config.copyWith(motionGated: v)),
+              ),
               Text('Threshold: ${config.threshold.toStringAsFixed(2)}'),
               Slider(
                 value: config.threshold.clamp(0.0, 1.0),
@@ -623,6 +659,7 @@ class _DetectorCard extends StatelessWidget {
       TriggerType.babyCry => 'Baby cry',
       TriggerType.glassBreak => 'Glass break',
       TriggerType.loudNoise => 'Loud noise',
+      TriggerType.face => 'Face',
       _ => type,
     };
   }

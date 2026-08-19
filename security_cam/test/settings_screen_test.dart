@@ -212,4 +212,29 @@ void main() {
       );
     }
   });
+
+  testWidgets('face detector card shows motion-gated toggle', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    await tester.scrollUntilVisible(
+        find.text('Face'), 300, scrollable: _listScrollable);
+    await tester.tap(find.text('Face'));
+    await tester.pumpAndSettle();
+    expect(find.text('Motion-gated'), findsOneWidget);
+  });
+
+  testWidgets('advanced section exposes analysis resolution', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    await tester.scrollUntilVisible(
+        find.text('Advanced'), 300, scrollable: _listScrollable);
+    expect(find.text('Advanced'), findsOneWidget);
+    await tester.scrollUntilVisible(
+        find.text('Balanced (320x240)'), 300, scrollable: _listScrollable);
+    expect(find.text('Balanced (320x240)'), findsOneWidget);
+  });
 }
