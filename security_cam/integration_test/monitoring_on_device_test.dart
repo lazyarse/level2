@@ -47,21 +47,21 @@ class DeviceHarness {
 
   static Future<DeviceHarness> create({
     PermissionsService? permissions,
-    bool enableFace = false,
+    Set<String> enabledTriggers = const {},
   }) async {
     sqfliteFfiInit();
     sql.databaseFactory = databaseFactoryFfi;
     SharedPreferences.setMockInitialValues({});
     final harness = DeviceHarness._();
     harness.settingsStore = await SettingsStore.open();
-    if (enableFace) {
-      // The default config has the face detector disabled; enable it
+    if (enabledTriggers.isNotEmpty) {
+      // Detectors default to disabled; enable the requested ones
       // (motion-gated) before the controller loads its settings.
       final settings = await harness.settingsStore.load();
       final configs = settings.detectorConfigs.map(
         (key, config) => MapEntry(
           key,
-          key == TriggerType.face
+          enabledTriggers.contains(key)
               ? config.copyWith(enabled: true, motionGated: true)
               : config,
         ),
@@ -252,7 +252,8 @@ void main() {
     testWidgets(
       'face detector is wired and motion-gated',
       (tester) async {
-        final faceHarness = await DeviceHarness.create(enableFace: true);
+        final faceHarness =
+            await DeviceHarness.create(enabledTriggers: {TriggerType.face});
         addTearDown(faceHarness.close);
         await tester.pumpWidget(faceHarness.buildApp());
         await tester.pump();
@@ -275,6 +276,38 @@ void main() {
 
         await tapMonitorButtonAndAwait(
             tester, faceHarness.controller, MonitorState.idle);
+      },
+    );
+
+    testWidgets(
+      'person detector is wired and motion-gated',
+      (tester) async {
+        final personHarness = await DeviceHarness.create(
+          enabledTriggers: {TriggerType.person},
+        );
+        addTearDown(personHarness.close);
+        await tester.pumpWidget(personHarness.buildApp());
+        await tester.pump();
+
+        await tapMonitorButtonAndAwait(
+            tester, personHarness.controller, MonitorState.monitoring);
+        mark('PERSON_MONITORING_STARTED');
+
+        // The emulator virtual camera scene may or may not register a person,
+        // so no person trigger is asserted. The gate is that the async
+        // motion-gated YOLO26n (LiteRT Next CompiledModel) path runs on the
+        // real device stack for a window without crashing.
+        final window = DateTime.now().add(const Duration(seconds: 30));
+        while (DateTime.now().isBefore(window) &&
+            personHarness.controller.state == MonitorState.monitoring) {
+          await tester.pump(const Duration(seconds: 2));
+        }
+        expect(personHarness.controller.state, MonitorState.monitoring,
+            reason: 'person-enabled monitoring crashed: '
+                '${personHarness.controller.error}');
+
+        await tapMonitorButtonAndAwait(
+            tester, personHarness.controller, MonitorState.idle);
       },
     );
   });
