@@ -48,6 +48,7 @@ dependencies:
   tflite_flutter: ^0.12.1
   permission_handler: 11.3.1
   face_detection_tflite: ^6.8.0
+  flutter_litert: ^3.8.0
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +77,7 @@ flutter:
   assets:
     - assets/yamnet.tflite
     - assets/yamnet_labels.txt
+    - assets/yolo26n_w8a32.tflite
     - integration_test/assets/
 
   # To add assets to your application, add an assets section, like this:
