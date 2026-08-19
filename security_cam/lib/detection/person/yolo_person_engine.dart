@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 
 import '../../core/models.dart';
@@ -94,9 +95,12 @@ double iouOf(PersonBox a, PersonBox b) {
 
 double _clamp(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
 
-/// YOLO26n (`yolo26n_w8a32.tflite`) via flutter_litert's LiteRT Interpreter.
-/// Preprocesses the BGR [ColorBitmap] to a 640x640 RGB NCHW float32 tensor,
-/// runs inference, and decodes + NMSes person boxes (pure Dart helpers above).
+/// YOLO26n (`yolo26n_w8a32.tflite`) via flutter_litert's LiteRT Next
+/// [CompiledModel]. The `format=litert` export targets the Next runtime (the
+/// classic [Interpreter] loads it but fails at invoke), so we run it through
+/// [CompiledModel]. Preprocesses the BGR [ColorBitmap] to a 640x640 RGB NCHW
+/// float32 tensor, runs inference, and decodes + NMSes person boxes (pure Dart
+/// helpers above).
 class YoloPersonEngine implements PersonEngine {
   YoloPersonEngine({
     this.confThreshold = 0.25,
@@ -105,32 +109,30 @@ class YoloPersonEngine implements PersonEngine {
   });
 
   static const _inputSize = 640;
-  static const _anchors = 8400;
-  static const _classes = 80;
   static const _modelAsset = 'assets/yolo26n_w8a32.tflite';
 
   final double confThreshold;
   final double iouThreshold;
   final int maxDetections;
 
-  Interpreter? _interpreter;
+  CompiledModel? _model;
 
   @override
   Future<void> init() async {
-    _interpreter = await Interpreter.fromAsset(_modelAsset);
+    final bytes = await rootBundle.load(_modelAsset);
+    final modelBytes =
+        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+    _model = CompiledModel.fromBuffer(modelBytes);
   }
 
   @override
   Future<List<PersonBox>> detectPersons(ColorBitmap frame) async {
-    final interpreter = _interpreter;
-    if (interpreter == null) return const [];
+    final model = _model;
+    if (model == null) return const [];
 
     final input = _buildInput(frame);
-    interpreter.runInference([input]);
-
-    final outputTensor = interpreter.getOutputTensor(0);
-    final output = Float32List(_anchors * (_classes + 4));
-    outputTensor.copyTo(output);
+    final outputs = model.run([input]);
+    final output = outputs[0];
 
     return decodeYolo26(
       output,
@@ -167,7 +169,7 @@ class YoloPersonEngine implements PersonEngine {
 
   @override
   Future<void> dispose() async {
-    _interpreter?.close();
-    _interpreter = null;
+    _model?.close();
+    _model = null;
   }
 }
