@@ -84,6 +84,43 @@ class TriggerType {
   const TriggerType._();
 }
 
+class DetectionRegion {
+  /// Stable id for editing/delete targeting.
+  final String id;
+
+  /// 'rect' | 'poly' (see [DetectionRegionShape]).
+  final String shape;
+
+  /// User-friendly name shown in the editor list.
+  final String label;
+
+  /// Normalized 0..1 relative to the analysis frame, flattened. Rect:
+  /// [x0,y0,x1,y1]. Poly: [x0,y0,x1,y1,...] vertex pairs.
+  final List<double> points;
+
+  const DetectionRegion({
+    required this.id,
+    required this.shape,
+    required this.label,
+    required this.points,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'shape': shape,
+        'label': label,
+        'points': points,
+      };
+
+  factory DetectionRegion.fromJson(Map<String, dynamic> json) =>
+      DetectionRegion(
+        id: json['id'] as String,
+        shape: json['shape'] as String,
+        label: json['label'] as String,
+        points: (json['points'] as List).cast<double>(),
+      );
+}
+
 class DetectionResult {
   final DateTime timestamp;
   final String triggerType;
