@@ -37,12 +37,16 @@ class CameraView extends StatefulWidget {
   final Stream<AnalysisFrame> frames;
   final GrayscaleBitmap? initialFrame;
   final AsyncImageDecoder decoder;
+  final List<DetectionRegion> regions;
+  final bool showRegions;
 
   const CameraView({
     super.key,
     required this.frames,
     this.initialFrame,
     this.decoder = decodeFrame,
+    this.regions = const [],
+    this.showRegions = false,
   });
 
   @override
@@ -116,9 +120,20 @@ class _CameraViewState extends State<CameraView> {
                 key: ValueKey('camera-placeholder'),
                 color: Color(0xFF111111),
               )
-            : CustomPaint(
-                size: Size.infinite,
-                painter: _FramePainter(image),
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: _FramePainter(image),
+                  ),
+                  if (widget.showRegions && widget.regions.isNotEmpty)
+                    CustomPaint(
+                      size: Size.infinite,
+                      painter: _RegionOverlayPainter(
+                          widget.regions, image.width.toDouble(), image.height.toDouble()),
+                    ),
+                ],
               ),
       ),
     );
@@ -144,4 +159,62 @@ class _FramePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_FramePainter oldDelegate) => oldDelegate.image != image;
+}
+
+/// Draws the inclusion regions over the decoded frame. Regions are normalized
+/// 0..1 relative to the analysis frame; the overlay maps them onto the same
+/// 4:3 aspect the frame uses, so the mapping is direct.
+class _RegionOverlayPainter extends CustomPainter {
+  final List<DetectionRegion> regions;
+  final double frameWidth;
+  final double frameHeight;
+
+  _RegionOverlayPainter(this.regions, this.frameWidth, this.frameHeight);
+
+  static const _palette = [
+    Color(0xCC8AB4F8),
+    Color(0xCC81C995),
+    Color(0xCCFDD663),
+    Color(0xCCF28B82),
+    Color(0xCCD7AEFB),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scaleX = size.width / frameWidth;
+    final scaleY = size.height / frameHeight;
+    for (var i = 0; i < regions.length; i++) {
+      final r = regions[i];
+      final stroke = Paint()
+        ..color = _palette[i % _palette.length]
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..isAntiAlias = false;
+      if (r.shape == DetectionRegionShape.rect) {
+        canvas.drawRect(
+          Rect.fromLTRB(
+            r.points[0] * scaleX,
+            r.points[1] * scaleY,
+            r.points[2] * scaleX,
+            r.points[3] * scaleY,
+          ),
+          stroke,
+        );
+      } else {
+        final path = Path();
+        for (var k = 0; k < r.points.length; k += 2) {
+          final p = Offset(r.points[k] * scaleX, r.points[k + 1] * scaleY);
+          k == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+        }
+        path.close();
+        canvas.drawPath(path, stroke);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RegionOverlayPainter oldDelegate) =>
+      oldDelegate.regions != regions ||
+      oldDelegate.frameWidth != frameWidth ||
+      oldDelegate.frameHeight != frameHeight;
 }

@@ -81,5 +81,62 @@ void main() {
       // Falls back to the placeholder rather than throwing during paint.
       expect(find.byKey(const ValueKey('camera-placeholder')), findsOneWidget);
     });
+
+    Finder inCameraView() => find.descendant(
+        of: find.byType(CameraView), matching: find.byType(CustomPaint));
+
+    testWidgets('renders region overlay when showRegions is true', (tester) async {
+      final controller = StreamController<AnalysisFrame>.broadcast();
+      addTearDown(controller.close);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CameraView(
+            frames: controller.stream,
+            regions: const [
+              DetectionRegion(
+                  id: 'r1', shape: 'rect', label: 'doorway', points: [0.0, 0.0, 0.5, 0.5]),
+            ],
+            showRegions: true,
+          ),
+        ),
+      ));
+      controller.add(AnalysisFrame(
+        timestamp: DateTime(2026),
+        bitmap: GrayscaleBitmap(2, 2, Uint8List.fromList([140, 140, 140, 140])),
+      ));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+      expect(inCameraView(), findsNWidgets(2),
+          reason: 'frame paint + region overlay paint');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no overlay paint when showRegions is false', (tester) async {
+      final controller = StreamController<AnalysisFrame>.broadcast();
+      addTearDown(controller.close);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CameraView(
+            frames: controller.stream,
+            regions: const [
+              DetectionRegion(
+                  id: 'r1', shape: 'rect', label: 'doorway', points: [0.0, 0.0, 0.5, 0.5]),
+            ],
+            showRegions: false,
+          ),
+        ),
+      ));
+      controller.add(AnalysisFrame(
+        timestamp: DateTime(2026),
+        bitmap: GrayscaleBitmap(2, 2, Uint8List.fromList([140, 140, 140, 140])),
+      ));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+      expect(inCameraView(), findsOneWidget,
+          reason: 'only the frame paint when overlay is off');
+      expect(tester.takeException(), isNull);
+    });
   });
 }

@@ -4,16 +4,24 @@ import '../sensors/simulated_audio_source.dart';
 import '../state/monitor_controller.dart';
 import 'widgets/camera_view.dart';
 
-class MonitorScreen extends StatelessWidget {
+class MonitorScreen extends StatefulWidget {
   final MonitorController controller;
 
   const MonitorScreen({super.key, required this.controller});
 
   @override
+  State<MonitorScreen> createState() => _MonitorScreenState();
+}
+
+class _MonitorScreenState extends State<MonitorScreen> {
+  bool _showRegions = false;
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: widget.controller,
       builder: (context, _) {
+        final controller = widget.controller;
         final monitoring = controller.state == MonitorState.monitoring;
         return SafeArea(
           child: Column(
@@ -39,6 +47,8 @@ class MonitorScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(8),
                           child: CameraView(
                             frames: controller.analysisFrames!,
+                            regions: controller.settings.detectionRegions,
+                            showRegions: _showRegions,
                           ),
                         ),
                 ),
@@ -53,43 +63,58 @@ class MonitorScreen extends StatelessWidget {
                 ),
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Row(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: monitoring
-                            ? () => controller.stop()
-                            : () => controller.start(),
-                        icon: Icon(monitoring ? Icons.stop : Icons.play_arrow),
-                        label: Text(monitoring ? 'Stop' : 'Start'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Audio scene',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<AudioScene>(
-                            value: controller.audioScene,
-                            isDense: true,
-                            items: AudioScene.values
-                                .map((s) => DropdownMenuItem(
-                                      value: s,
-                                      child: Text(_sceneLabel(s)),
-                                    ))
-                                .toList(),
-                            onChanged: (scene) {
-                              if (scene != null) {
-                                controller.setAudioScene(scene);
-                              }
-                            },
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: monitoring
+                                ? () => controller.stop()
+                                : () => controller.start(),
+                            icon: Icon(monitoring ? Icons.stop : Icons.play_arrow),
+                            label: Text(monitoring ? 'Stop' : 'Start'),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Audio scene',
+                              border: OutlineInputBorder(),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<AudioScene>(
+                                value: controller.audioScene,
+                                isDense: true,
+                                items: AudioScene.values
+                                    .map((s) => DropdownMenuItem(
+                                          value: s,
+                                          child: Text(_sceneLabel(s)),
+                                        ))
+                                    .toList(),
+                                onChanged: (scene) {
+                                  if (scene != null) {
+                                    controller.setAudioScene(scene);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (monitoring)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show regions'),
+                        subtitle: const Text(
+                          'Display the inclusion zones on the live feed.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _showRegions,
+                        onChanged: (v) => setState(() => _showRegions = v),
+                      ),
                   ],
                 ),
               ),
