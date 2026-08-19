@@ -121,6 +121,14 @@ class DetectionRegion {
       );
 }
 
+class DetectionRegionShape {
+  static const rect = 'rect';
+  static const poly = 'poly';
+  static const values = [rect, poly];
+
+  const DetectionRegionShape._();
+}
+
 class DetectionResult {
   final DateTime timestamp;
   final String triggerType;
