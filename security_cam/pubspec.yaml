@@ -76,6 +76,7 @@ flutter:
   assets:
     - assets/yamnet.tflite
     - assets/yamnet_labels.txt
+    - integration_test/assets/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
