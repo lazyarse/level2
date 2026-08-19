@@ -7,6 +7,7 @@ import '../core/camera_session.dart';
 import '../core/media_naming.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
+import '../detection/analysis_dispatcher.dart';
 import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
@@ -66,6 +67,8 @@ class MonitorController extends ChangeNotifier {
   StreamSubscription<TriggerBatch>? _batchSub;
   StreamSubscription<String>? _cameraFailureSub;
   StreamSubscription<String>? _audioFailureSub;
+  AnalysisDispatcher<AnalysisFrame>? _frameDispatcher;
+  AnalysisDispatcher<AudioWindow>? _audioDispatcher;
 
   Future<void> init() async {
     settings = await settingsStore.load();
@@ -216,12 +219,12 @@ class MonitorController extends ChangeNotifier {
         unawaited(eventPipeline.handleBatch(batch));
       });
       _triggerSub = pipeline.triggers.listen(batcher.add);
-      _frameSub = camera.analysisFrames.listen((frame) {
-        unawaited(pipeline.processFrame(frame));
-      });
-      _audioSub = audio.windows.listen((window) {
-        unawaited(pipeline.processAudio(window));
-      });
+      _frameDispatcher =
+          AnalysisDispatcher<AnalysisFrame>(process: pipeline.processFrame);
+      _audioDispatcher =
+          AnalysisDispatcher<AudioWindow>(process: pipeline.processAudio);
+      _frameSub = camera.analysisFrames.listen(_frameDispatcher!.add);
+      _audioSub = audio.windows.listen(_audioDispatcher!.add);
 
       audio.start();
       _camera = camera;
@@ -261,6 +264,8 @@ class MonitorController extends ChangeNotifier {
     await _audioFailureSub?.cancel();
     _audio?.stop();
     await _audio?.dispose();
+    await _frameDispatcher?.dispose();
+    await _audioDispatcher?.dispose();
     await _pipeline?.dispose();
     await _camera?.dispose();
     await _batcher?.dispose();
@@ -270,6 +275,8 @@ class MonitorController extends ChangeNotifier {
     _batchSub = null;
     _cameraFailureSub = null;
     _audioFailureSub = null;
+    _frameDispatcher = null;
+    _audioDispatcher = null;
     _audio = null;
     _camera = null;
     _pipeline = null;
