@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../channels/discord_channel.dart';
 import '../channels/email_channel.dart';
+import '../channels/pushover_channel.dart';
 import '../channels/telegram_channel.dart';
+import '../channels/webhook_channel.dart';
 import '../core/channel.dart';
 import '../core/detector.dart';
 import '../core/models.dart';
@@ -25,6 +26,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _audioPathController = TextEditingController();
   final _fieldControllers = <String, TextEditingController>{};
   final _emailTls = <String, bool>{};
+  final _webhookPreset = <String, String>{};
+  final _webhookBodyStyle = <String, String>{};
 
   @override
   void initState() {
@@ -48,9 +51,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _field('${c.id}.from', s.from);
           _field('${c.id}.to', s.to);
           _emailTls[c.id] = s.useTls;
-        case 'discord':
-          final s = DiscordChannelSettings.fromJson(c.settingsJson);
-          _field('${c.id}.webhook', s.webhookUrl);
+        case 'webhook':
+          final s = WebhookChannelSettings.fromJson(c.settingsJson);
+          _webhookPreset[c.id] = s.preset;
+          _webhookBodyStyle[c.id] = s.bodyStyle;
+          _field('${c.id}.url', s.url);
+          _field('${c.id}.token', s.bearerToken);
+          _field('${c.id}.title', s.title);
+        case 'pushover':
+          final s = PushoverChannelSettings.fromJson(c.settingsJson);
+          _field('${c.id}.appToken', s.appToken);
+          _field('${c.id}.userKey', s.userKey);
+          _field('${c.id}.sound', s.sound);
       }
     }
   }
@@ -474,12 +486,77 @@ TextEditingController _field(String key, [String? text]) =>
             onChanged: (v) => setState(() => _emailTls[config.id] = v),
           ),
         ];
-      case 'discord':
+      case 'webhook':
+        final preset = _webhookPreset[config.id] ?? 'custom';
         return [
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Preset',
+              border: OutlineInputBorder(),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                key: ValueKey('webhookPreset_${config.id}'),
+                value: preset,
+                isDense: true,
+                items: [
+                  for (final p in webhookPresets)
+                    DropdownMenuItem(value: p, child: Text(p)),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _webhookPreset[config.id] = v);
+                },
+              ),
+            ),
+          ),
           TextField(
-            controller: _field('${config.id}.webhook'),
+            controller: _field('${config.id}.url'),
             obscureText: true,
             decoration: const InputDecoration(labelText: 'Webhook URL'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.token'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Bearer token'),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (preset == 'ntfy') ...[
+            TextField(
+              controller: _field('${config.id}.title'),
+              decoration: const InputDecoration(labelText: 'Title'),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+          if (preset == 'custom') ...[
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('JSON body'),
+              value: (_webhookBodyStyle[config.id] ?? 'json') == 'json',
+              onChanged: (v) => setState(() {
+                _webhookBodyStyle[config.id] = v ? 'json' : 'text';
+              }),
+            ),
+          ],
+        ];
+      case 'pushover':
+        return [
+          TextField(
+            controller: _field('${config.id}.appToken'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'App token'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.userKey'),
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'User key'),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            controller: _field('${config.id}.sound'),
+            decoration: const InputDecoration(labelText: 'Sound'),
             onChanged: (_) => setState(() {}),
           ),
         ];
@@ -511,10 +588,22 @@ TextEditingController _field(String key, [String? text]) =>
               useTls: _emailTls[c.id] ?? false,
             ).toJson(),
           ));
-        case 'discord':
+        case 'webhook':
           channels.add(c.copyWith(
-            settingsJson: DiscordChannelSettings(
-              webhookUrl: _field('${c.id}.webhook').text.trim(),
+            settingsJson: WebhookChannelSettings(
+              preset: _webhookPreset[c.id] ?? 'custom',
+              url: _field('${c.id}.url').text.trim(),
+              bearerToken: _field('${c.id}.token').text,
+              title: _field('${c.id}.title').text,
+              bodyStyle: _webhookBodyStyle[c.id] ?? 'json',
+            ).toJson(),
+          ));
+        case 'pushover':
+          channels.add(c.copyWith(
+            settingsJson: PushoverChannelSettings(
+              appToken: _field('${c.id}.appToken').text.trim(),
+              userKey: _field('${c.id}.userKey').text.trim(),
+              sound: _field('${c.id}.sound').text.trim(),
             ).toJson(),
           ));
         default:

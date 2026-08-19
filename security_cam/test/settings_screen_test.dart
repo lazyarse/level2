@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:security_cam/channels/discord_channel.dart';
 import 'package:security_cam/channels/email_channel.dart';
+import 'package:security_cam/channels/pushover_channel.dart';
+import 'package:security_cam/channels/webhook_channel.dart';
 import 'package:security_cam/core/models.dart';
 import 'package:security_cam/sensors/permissions_service.dart';
 import 'package:security_cam/state/monitor_controller.dart';
@@ -64,7 +65,8 @@ final Finder _listScrollable = find
     .first;
 
 void main() {
-  testWidgets('renders email and discord channel fields', (tester) async {
+  testWidgets('renders email, webhook, and pushover channel fields',
+      (tester) async {
     final controller = await _controller();
     addTearDown(controller.dispose);
     await _pump(tester, controller);
@@ -80,6 +82,12 @@ void main() {
     await tester.scrollUntilVisible(
         find.text('Webhook URL'), 300, scrollable: _listScrollable);
     expect(find.text('Webhook URL'), findsOneWidget);
+    expect(find.text('discord'), findsOneWidget,
+        reason: 'preset dropdown defaults to the discord preset');
+    await tester.scrollUntilVisible(
+        find.text('App token'), 300, scrollable: _listScrollable);
+    expect(find.text('App token'), findsOneWidget);
+    expect(find.text('User key'), findsOneWidget);
   });
 
   testWidgets('log channel is hidden from Channels but routable', (tester) async {
@@ -98,7 +106,7 @@ void main() {
         reason: 'detectors can still route to the log');
   });
 
-  testWidgets('save persists email and discord channel settings',
+  testWidgets('save persists email and webhook channel settings',
       (tester) async {
     final controller = await _controller();
     addTearDown(controller.dispose);
@@ -114,6 +122,13 @@ void main() {
     await tester.enterText(_fieldOf('Webhook URL'),
         'https://discord.com/api/webhooks/1/abc');
 
+    final preset = find.byKey(const ValueKey('webhookPreset_discord'));
+    await tester.scrollUntilVisible(preset, 300, scrollable: _listScrollable);
+    await tester.tap(preset);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('slack').last);
+    await tester.pumpAndSettle();
+
     final save = find.text('Save settings');
     await tester.scrollUntilVisible(save, 300, scrollable: _listScrollable);
     await tester.tap(save);
@@ -121,7 +136,8 @@ void main() {
 
     final types =
         controller.settings.channelConfigs.map((c) => c.type).toList();
-    expect(types, containsAll(['log', 'telegram', 'email', 'discord']));
+    expect(
+        types, containsAll(['log', 'telegram', 'email', 'webhook', 'pushover']));
 
     final email = controller.settings.channelConfigs
         .firstWhere((c) => c.type == 'email');
@@ -130,12 +146,35 @@ void main() {
     expect(es.port, 587);
     expect(es.to, 'alice@example.com');
 
-    final discord = controller.settings.channelConfigs
-        .firstWhere((c) => c.type == 'discord');
-    final ds = DiscordChannelSettings.fromJson(discord.settingsJson);
-    expect(ds.webhookUrl, 'https://discord.com/api/webhooks/1/abc');
+    final webhook = controller.settings.channelConfigs
+        .firstWhere((c) => c.type == 'webhook');
+    final ws = WebhookChannelSettings.fromJson(webhook.settingsJson);
+    expect(ws.preset, 'slack');
+    expect(ws.url, 'https://discord.com/api/webhooks/1/abc');
 
     expect(controller.settings.retentionDays, greaterThanOrEqualTo(0));
+  });
+
+  testWidgets('save persists pushover settings', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    await tester.scrollUntilVisible(
+        find.text('App token'), 300, scrollable: _listScrollable);
+    await tester.enterText(_fieldOf('App token'), 'apptok123');
+    await tester.enterText(_fieldOf('User key'), 'userkey456');
+
+    final save = find.text('Save settings');
+    await tester.scrollUntilVisible(save, 300, scrollable: _listScrollable);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final pushover = controller.settings.channelConfigs
+        .firstWhere((c) => c.type == 'pushover');
+    final ps = PushoverChannelSettings.fromJson(pushover.settingsJson);
+    expect(ps.appToken, 'apptok123');
+    expect(ps.userKey, 'userkey456');
   });
 
   testWidgets('record video toggle saves the video clip preference',
