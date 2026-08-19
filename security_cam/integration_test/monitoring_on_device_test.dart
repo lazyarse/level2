@@ -205,11 +205,16 @@ void main() {
         mark('MONITORING_STARTED');
 
         // The emulator virtual camera scene is continuously moving, so the
-        // motion detector must fire within the poll window.
+        // motion detector must fire within the poll window. Overlapping trigger
+        // batches can produce a motion row whose export was dropped (the native
+        // side exports one clip at a time), so wait for a motion event that
+        // actually carries a clip reference.
         final motion = await harness.waitForEvent(
           (row) =>
-              row.triggerType == 'motion' ||
-              row.triggerTypes.contains('motion'),
+              (row.triggerType == 'motion' ||
+                  row.triggerTypes.contains('motion')) &&
+              row.videoName != null,
+          timeout: const Duration(minutes: 6),
         );
         expect(motion, isNotNull, reason: 'no motion event on the device');
         final event = motion!;
@@ -239,6 +244,11 @@ void main() {
         expect(info!.width, greaterThan(0));
         expect(info.height, greaterThan(0));
         expect(info.width, greaterThanOrEqualTo(info.height));
+        // The native mic's PCM is AAC-muxed into every clip (all API levels);
+        // the host runner can still assert video-only behavior via dart-define.
+        final expectAudio = const bool.fromEnvironment('EXPECT_CLIP_AUDIO');
+        expect(await harness.videoStore.hasAudio(videoName), expectAudio,
+            reason: 'clip audio track mismatch for $videoName');
         await harness.videoStore.delete(videoName);
         expect(await harness.videoStore.exists(videoName), isFalse,
             reason: 'deleteVideo did not remove the clip');

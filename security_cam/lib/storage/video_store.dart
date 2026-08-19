@@ -29,6 +29,10 @@ abstract class VideoStore {
   /// Dimensions of the stored clip (read from its headers), or null when the
   /// clip is missing or the platform doesn't expose it.
   Future<VideoClipInfo?> videoInfo(String name);
+
+  /// Whether the stored clip carries an audio track (false on unsupported
+  /// platforms and for video-only clips).
+  Future<bool> hasAudio(String name);
 }
 
 /// Dimensions of a stored video clip.
@@ -62,6 +66,9 @@ class NoopVideoStore implements VideoStore {
 
   @override
   Future<VideoClipInfo?> videoInfo(String name) async => null;
+
+  @override
+  Future<bool> hasAudio(String name) async => false;
 }
 
 /// Android implementation backed by the native `camera_service` module.
@@ -117,6 +124,15 @@ class PlatformVideoStore implements VideoStore {
     final height = result['height'] as int?;
     if (width == null || height == null) return null;
     return VideoClipInfo(width: width, height: height);
+  }
+
+  @override
+  Future<bool> hasAudio(String name) async {
+    final result = await _method.invokeMethod<bool?>(
+      'videoHasAudio',
+      {'name': name},
+    );
+    return result ?? false;
   }
 }
 

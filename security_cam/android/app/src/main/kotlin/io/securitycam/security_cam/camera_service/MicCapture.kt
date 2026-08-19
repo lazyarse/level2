@@ -8,10 +8,13 @@ import android.util.Log
 /**
  * Owns the single microphone [AudioRecord] for the monitoring FGS.
  *
- * One 16 kHz mono s16le AudioRecord feeds both the Dart analysis path (via the
- * PCM event bridge consumed by `NativeMicAudioSource`) and the clip recorder
- * (via `AudioMixSource` on API 31+). It is started before CameraX binds so the
- * recorder can hand the live AudioRecord to its audio mixer.
+ * One 16 kHz mono s16le AudioRecord feeds the Dart analysis path (via the PCM
+ * event bridge consumed by `NativeMicAudioSource`) and the clip recorder's PCM
+ * buffer (muxed into clips at export time). It is started before CameraX binds
+ * so the recorder can reuse the live AudioRecord.
+ *
+ * Each PCM chunk is delivered with the absolute sample index of its first frame
+ * (`startSample`), so consumers can map PCM bytes to the mic timeline.
  */
 class MicCapture {
     private val tag = "MicCapture"
@@ -21,10 +24,7 @@ class MicCapture {
     private var readThread: Thread? = null
     @Volatile private var running = false
 
-    /** Live AudioRecord for the recorder's `AudioMixSource` (API 31+). */
-    val record: AudioRecord? get() = audioRecord
-
-    fun start(onPcm: (ByteArray) -> Unit) {
+    fun start(onPcm: (pcm: ByteArray, startSample: Long) -> Unit) {
         if (running) return
         val minBuf = AudioRecord.getMinBufferSize(
             sampleRate,
@@ -59,25 +59,34 @@ class MicCapture {
         }
         audioRecord = record
         running = true
-        readThread = Thread({
+        try {
+            record.startRecording()
+        } catch (e: Exception) {
+            Log.w(tag, "startRecording failed", e)
+            running = false
+            audioRecord = null
             try {
-                record.startRecording()
-            } catch (e: Exception) {
-                Log.w(tag, "startRecording failed", e)
-                running = false
-                return@Thread
+                record.release()
+            } catch (_: Exception) {
             }
+            return
+        }
+        readThread = Thread({
             val buf = ByteArray(bufferBytes)
+            var totalSamples = 0L
             while (running) {
                 val n = record.read(buf, 0, buf.size)
                 if (n <= 0) {
                     if (!running) break
                     continue
                 }
+                val samples = n / 2
+                val startSample = totalSamples
+                totalSamples += samples
                 val exact = ByteArray(n)
                 System.arraycopy(buf, 0, exact, 0, n)
                 try {
-                    onPcm(exact)
+                    onPcm(exact, startSample)
                 } catch (e: Exception) {
                     Log.w(tag, "pcm callback failed", e)
                 }

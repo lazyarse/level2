@@ -282,4 +282,7 @@ class _RecordingVideoStore implements VideoStore {
 
   @override
   Future<VideoClipInfo?> videoInfo(String name) async => null;
+
+  @override
+  Future<bool> hasAudio(String name) async => false;
 }

@@ -86,6 +86,9 @@ class TriggerBatcher {
     _openedAt = null;
     final snapshot = snapshotFuture == null ? null : await snapshotFuture;
     final videoName = videoFuture == null ? null : await videoFuture;
+    // A concurrent dispose() may have closed the stream while this flush was
+    // awaiting the snapshot/export; drop the batch rather than throw.
+    if (_disposed) return;
     _batches.add(TriggerBatch(
       timestamp: openedAt,
       triggers: events,

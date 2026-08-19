@@ -147,9 +147,12 @@ object MonitoringServiceController {
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            // Native-owned mic: started before CameraX binds so the recorder can
-            // reuse the live AudioRecord via AudioMixSource (API 31+).
-            micCapture.start { pcm -> CameraServiceChannels.publishMicPcm(pcm) }
+            // Native-owned mic: started before CameraX binds; PCM feeds both the
+            // Dart analysis stream and the clip recorder's audio buffer.
+            micCapture.start { pcm, startSample ->
+                CameraServiceChannels.publishMicPcm(pcm)
+                VideoClipRecorder.onMicPcm(pcm, startSample)
+            }
         } else {
             Log.w(TAG, "RECORD_AUDIO permission not granted; running video-only")
         }

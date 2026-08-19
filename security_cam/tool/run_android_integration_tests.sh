@@ -38,9 +38,12 @@ done
 # fresh streamed install (a stale package would match `pm path` immediately).
 adb uninstall "$PKG" >/dev/null 2>&1
 
-echo "== running: flutter test $TEST -d $SERIAL =="
+# Every clip now carries the mic audio track (PCM is AAC-muxed at export on all
+# API levels), so the monitoring test always expects audio.
+echo "== running: flutter test $TEST -d $SERIAL (clip audio expected: true) =="
 adb logcat -c
-"$FLUTTER" test "$TEST" -d "$SERIAL" > "$OUT" 2>&1 &
+"$FLUTTER" test "$TEST" -d "$SERIAL" \
+  --dart-define=EXPECT_CLIP_AUDIO=true > "$OUT" 2>&1 &
 TEST_PID=$!
 
 # The screen-off test coordinates through `[itest]` markers, which integration

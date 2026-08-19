@@ -157,6 +157,11 @@ class CameraServiceChannels private constructor() {
                         VideoClipRecorder.videoInfo(call.argument<String>("name") ?: "")
                     )
                 }
+                "videoHasAudio" -> {
+                    result.success(
+                        VideoClipRecorder.hasAudio(call.argument<String>("name") ?: "")
+                    )
+                }
                 else -> result.notImplemented()
             }
         }
