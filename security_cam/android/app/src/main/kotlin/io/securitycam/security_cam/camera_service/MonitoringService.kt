@@ -103,6 +103,7 @@ object MonitoringServiceController {
     private const val NOTIFICATION_ID = 1
 
     private val executor = Executors.newSingleThreadExecutor()
+    private val micCapture = MicCapture()
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalysis: ImageAnalysis? = null
     private var imageCapture: ImageCapture? = null
@@ -143,6 +144,15 @@ object MonitoringServiceController {
             active = false
             return
         }
+        if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            // Native-owned mic: started before CameraX binds so the recorder can
+            // reuse the live AudioRecord via AudioMixSource (API 31+).
+            micCapture.start { pcm -> CameraServiceChannels.publishMicPcm(pcm) }
+        } else {
+            Log.w(TAG, "RECORD_AUDIO permission not granted; running video-only")
+        }
         bindCamera(service, cameraId)
     }
 
@@ -151,6 +161,7 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
     }
@@ -160,6 +171,7 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
         val service = activeService

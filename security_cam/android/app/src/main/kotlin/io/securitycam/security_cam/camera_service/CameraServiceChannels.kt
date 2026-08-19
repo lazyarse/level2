@@ -16,16 +16,21 @@ import io.flutter.plugin.common.StandardMethodCodec
  *   startMonitoring(cameraId) / stopMonitoring / captureStill -> JPEG bytes
  * EventChannel `io.securitycam.security_cam/frames`:
  *   {width, height, bgr} BGR analysis frames @ ~4 fps
+ * EventChannel `io.securitycam.security_cam/camera/mic_pcm`:
+ *   raw 16 kHz mono s16le PCM chunks from the native mic (owned by the FGS).
  */
 class CameraServiceChannels private constructor() {
     companion object {
         private const val CHANNEL = "io.securitycam.security_cam/camera"
         private const val FRAMES = "io.securitycam.security_cam/frames"
+        private const val MIC_PCM = "io.securitycam.security_cam/camera/mic_pcm"
 
         private var context: Context? = null
         private var methodChannel: MethodChannel? = null
         private var eventChannel: EventChannel? = null
+        private var micPcmChannel: EventChannel? = null
         private var frameSink: EventChannel.EventSink? = null
+        private var micPcmSink: EventChannel.EventSink? = null
         private val mainHandler = Handler(Looper.getMainLooper())
 
         fun attach(messenger: BinaryMessenger, appContext: Context) {
@@ -47,6 +52,18 @@ class CameraServiceChannels private constructor() {
                         }
                     })
                 }
+            micPcmChannel = EventChannel(messenger, MIC_PCM, StandardMethodCodec.INSTANCE)
+                .apply {
+                    setStreamHandler(object : EventChannel.StreamHandler {
+                        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                            micPcmSink = events
+                        }
+
+                        override fun onCancel(arguments: Any?) {
+                            micPcmSink = null
+                        }
+                    })
+                }
         }
 
         fun detach(messenger: BinaryMessenger) {
@@ -54,13 +71,23 @@ class CameraServiceChannels private constructor() {
             methodChannel = null
             eventChannel?.setStreamHandler(null)
             eventChannel = null
+            micPcmChannel?.setStreamHandler(null)
+            micPcmChannel = null
             frameSink = null
+            micPcmSink = null
             context = null
         }
 
         private fun publishFrame(bgr: ByteArray, width: Int, height: Int) {
             mainHandler.post {
                 frameSink?.success(mapOf("width" to width, "height" to height, "bgr" to bgr))
+            }
+        }
+
+        /** Forwards a native mic PCM chunk to the Dart analysis stream. */
+        fun publishMicPcm(pcm: ByteArray) {
+            mainHandler.post {
+                micPcmSink?.success(pcm)
             }
         }
 
