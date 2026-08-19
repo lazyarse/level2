@@ -62,7 +62,7 @@ class FaceDetector extends FrameDetector {
     if (color == null) {
       return _result(frame.timestamp, 0, false);
     }
-    final faces = await _engine.detectFaces(color);
+    var faces = await _engine.detectFaces(color);
     if (regions.isNotEmpty) {
       faces = [
         for (final f in faces)
