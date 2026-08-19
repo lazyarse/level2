@@ -182,7 +182,9 @@ class AppSettings {
         ChannelConfig(id: 'log', type: 'log', enabled: true),
         ChannelConfig(id: 'telegram', type: 'telegram', enabled: false),
         ChannelConfig(id: 'email', type: 'email', enabled: false),
-        ChannelConfig(id: 'discord', type: 'discord', enabled: false),
+        ChannelConfig(id: 'discord', type: 'webhook',
+            settingsJson: {'preset': 'discord'}, enabled: false),
+        ChannelConfig(id: 'pushover', type: 'pushover', enabled: false),
       ],
     );
   }
@@ -250,7 +252,16 @@ class AppSettings {
         ?.map((k, v) => MapEntry(
             k as String, DetectorConfig.fromJson(v as Map<String, dynamic>)));
     final stored = (json['channelConfigs'] as List?)
-        ?.map((e) => ChannelConfig.fromJson(e as Map<String, dynamic>))
+        ?.map((e) {
+          final config = ChannelConfig.fromJson(e as Map<String, dynamic>);
+          if (config.type != 'discord') return config;
+          return ChannelConfig(
+            id: config.id,
+            type: 'webhook',
+            enabled: config.enabled,
+            settingsJson: {'preset': 'discord', ...config.settingsJson},
+          );
+        })
         .toList() ??
     const <ChannelConfig>[];
     final channels = [

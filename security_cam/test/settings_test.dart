@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:security_cam/core/channel.dart';
 import 'package:security_cam/core/detector.dart';
 import 'package:security_cam/core/models.dart';
 import 'package:security_cam/core/settings.dart';
@@ -111,12 +112,82 @@ void main() {
       ],
     });
     expect(restored.channelConfigs.map((c) => c.id).toList(),
-        ['log', 'telegram', 'email', 'discord']);
+        ['log', 'telegram', 'email', 'discord', 'pushover']);
     expect(restored.channelConfigs.firstWhere((c) => c.id == 'log').enabled,
         isTrue);
     for (final c in restored.channelConfigs.where((c) => c.id != 'log')) {
       expect(c.enabled, isFalse, reason: 'merged channels default to disabled');
     }
+  });
+
+  test('defaults retype the discord channel to a disabled webhook preset', () {
+    final defaults = AppSettings.defaults();
+    final discord = defaults.channelConfigs.firstWhere((c) => c.id == 'discord');
+    expect(discord.type, 'webhook');
+    expect(discord.settingsJson['preset'], 'discord');
+    expect(discord.enabled, isFalse);
+    final pushover = defaults.channelConfigs.firstWhere((c) => c.id == 'pushover');
+    expect(pushover.type, 'pushover');
+    expect(pushover.enabled, isFalse);
+  });
+
+  test('legacy discord channels migrate to webhook preset discord', () {
+    final restored = AppSettings.fromJson(const {
+      'channelConfigs': [
+        {
+          'id': 'discord',
+          'type': 'discord',
+          'enabled': true,
+          'settings': {
+            'webhookUrl': 'https://discord.com/api/webhooks/1/abc',
+          },
+        },
+      ],
+    });
+    final discord = restored.channelConfigs.firstWhere((c) => c.id == 'discord');
+    expect(discord.type, 'webhook');
+    expect(discord.enabled, isTrue);
+    expect(discord.settingsJson['preset'], 'discord');
+    expect(discord.settingsJson['webhookUrl'],
+        'https://discord.com/api/webhooks/1/abc');
+  });
+
+  test('webhook and pushover channel settings JSON round-trip', () {
+    final settings = AppSettings.defaults().copyWith(
+      channelConfigs: const [
+        ChannelConfig(id: 'log', type: 'log', enabled: true),
+        ChannelConfig(
+          id: 'discord',
+          type: 'webhook',
+          settingsJson: {
+            'preset': 'ntfy',
+            'url': 'https://ntfy.sh/cam',
+            'bearerToken': 'tok',
+            'title': 'Cam',
+            'bodyStyle': 'text',
+          },
+        ),
+        ChannelConfig(
+          id: 'pushover',
+          type: 'pushover',
+          settingsJson: {
+            'appToken': 'a',
+            'userKey': 'u',
+            'sound': 'siren',
+            'priority': 1,
+          },
+        ),
+      ],
+    );
+    final restored = AppSettings.fromJson(settings.toJson());
+    final webhook =
+        restored.channelConfigs.firstWhere((c) => c.id == 'discord');
+    expect(webhook.settingsJson['preset'], 'ntfy');
+    expect(webhook.settingsJson['url'], 'https://ntfy.sh/cam');
+    final pushover =
+        restored.channelConfigs.firstWhere((c) => c.id == 'pushover');
+    expect(pushover.settingsJson['appToken'], 'a');
+    expect(pushover.settingsJson['priority'], 1);
   });
 
   test('stored channel settings are preserved, not clobbered by defaults', () {
@@ -140,8 +211,8 @@ void main() {
     expect(email.enabled, isTrue);
     expect(email.settingsJson['host'], 'smtp.example.com');
     expect(restored.channelConfigs.map((c) => c.id),
-        containsAll(['log', 'telegram', 'email', 'discord']));
-    expect(restored.channelConfigs, hasLength(4));
+        containsAll(['log', 'telegram', 'email', 'discord', 'pushover']));
+    expect(restored.channelConfigs, hasLength(5));
   });
 
   test('copyWith updates only provided fields', () {

@@ -1,7 +1,8 @@
-import '../channels/discord_channel.dart';
 import '../channels/email_channel.dart';
 import '../channels/log_channel.dart';
+import '../channels/pushover_channel.dart';
 import '../channels/telegram_channel.dart';
+import '../channels/webhook_channel.dart';
 import '../core/channel.dart';
 import '../core/detector.dart';
 import '../core/models.dart';
@@ -39,10 +40,16 @@ Channel _emailChannel(ChannelConfig c) => EmailChannel(
       settings: EmailChannelSettings.fromJson(c.settingsJson),
     );
 
-Channel _discordChannel(ChannelConfig c) => DiscordChannel(
+Channel _webhookChannel(ChannelConfig c) => WebhookChannel(
       id: c.id,
       enabled: c.enabled,
-      settings: DiscordChannelSettings.fromJson(c.settingsJson),
+      settings: WebhookChannelSettings.fromJson(c.settingsJson),
+    );
+
+Channel _pushoverChannel(ChannelConfig c) => PushoverChannel(
+      id: c.id,
+      enabled: c.enabled,
+      settings: PushoverChannelSettings.fromJson(c.settingsJson),
     );
 
 /// Top-level function references (sendable to a worker isolate).
@@ -50,7 +57,8 @@ final Map<String, ChannelFactory> channelRegistry = {
   'log': _logChannel,
   'telegram': _telegramChannel,
   'email': _emailChannel,
-  'discord': _discordChannel,
+  'webhook': _webhookChannel,
+  'pushover': _pushoverChannel,
 };
 
 /// Builds the typed [ChannelSettings] for a channel type (used by the settings
@@ -63,8 +71,10 @@ ChannelSettings buildChannelSettings(String type, Map<String, dynamic> json) {
       return TelegramChannelSettings.fromJson(json);
     case 'email':
       return EmailChannelSettings.fromJson(json);
-    case 'discord':
-      return DiscordChannelSettings.fromJson(json);
+    case 'webhook':
+      return WebhookChannelSettings.fromJson(json);
+    case 'pushover':
+      return PushoverChannelSettings.fromJson(json);
     default:
       throw ArgumentError.value(type, 'type', 'unsupported channel type');
   }
