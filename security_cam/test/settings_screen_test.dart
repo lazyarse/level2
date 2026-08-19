@@ -207,6 +207,8 @@ void main() {
     final dropdown = find.widgetWithText(DropdownButtonFormField<String>,
         'Lowest (device minimum)');
     await tester.scrollUntilVisible(dropdown, 300, scrollable: _listScrollable);
+    await tester.ensureVisible(dropdown);
+    await tester.pumpAndSettle();
     expect(controller.settings.videoQuality, 'lowest');
 
     await tester.tap(dropdown);
@@ -275,5 +277,15 @@ void main() {
     await tester.scrollUntilVisible(
         find.text('Balanced (320x240)'), 300, scrollable: _listScrollable);
     expect(find.text('Balanced (320x240)'), findsOneWidget);
+  });
+
+  testWidgets('renders detection regions card with empty state', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller);
+
+    await tester.scrollUntilVisible(
+        find.text('Detection regions'), 300, scrollable: _listScrollable);
+    expect(find.text('No regions — detecting everywhere'), findsOneWidget);
   });
 }

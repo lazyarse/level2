@@ -4,11 +4,14 @@ import '../channels/email_channel.dart';
 import '../channels/pushover_channel.dart';
 import '../channels/telegram_channel.dart';
 import '../channels/webhook_channel.dart';
+import '../core/camera_session.dart';
 import '../core/channel.dart';
 import '../core/detector.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
+import '../sensors/camera_source_factory.dart';
 import '../state/monitor_controller.dart';
+import 'region_editor_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final MonitorController controller;
@@ -204,6 +207,25 @@ TextEditingController _field(String key, [String? text]) =>
                 );
               }),
             ),
+          const SizedBox(height: 24),
+          Text('Detection regions', style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Optional inclusion zones: motion/face only triggers inside them. '
+            'Empty = detect everywhere.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.crop_free),
+              title: Text(_draft.detectionRegions.isEmpty
+                  ? 'No regions — detecting everywhere'
+                  : '${_draft.detectionRegions.length} '
+                      'region${_draft.detectionRegions.length == 1 ? '' : 's'}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openRegionEditor(),
+            ),
+          ),
           const SizedBox(height: 24),
           Text('Channels', style: Theme.of(context).textTheme.titleMedium),
           for (final c in _draft.channelConfigs)
@@ -632,6 +654,29 @@ TextEditingController _field(String key, [String? text]) =>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Settings saved')),
     );
+  }
+
+  Future<void> _openRegionEditor() async {
+    final camera = buildCameraSession(_draft);
+    final (w, h) = AnalysisResolution.size(_draft.analysisResolution);
+    await camera.init(CameraConfig(
+      cameraId: camera.cameraId,
+      analysisWidth: w,
+      analysisHeight: h,
+      analysisFps: 4,
+    ));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => RegionEditorScreen(
+          frames: camera.analysisFrames,
+          initialRegions: _draft.detectionRegions,
+          onSave: (regions) => setState(() {
+            _draft = _draft.copyWith(detectionRegions: regions);
+          }),
+        ),
+      ),
+    );
+    await camera.dispose();
   }
 }
 
