@@ -168,6 +168,24 @@ void main() {
     await sub.cancel();
     await pipeline.dispose();
   });
+
+  test('setRegions fans out to frame detectors', () async {
+    final pipeline = DetectorPipeline(
+      classifier: MockAudioEventClassifier(),
+      configs: const [
+        DetectorConfig(type: TriggerType.motion, enabled: true, threshold: 0.01),
+      ],
+    );
+    await pipeline.init();
+    final motion = pipeline.frameDetectors.first as MotionDetector;
+    expect(motion.regions, isEmpty);
+
+    const region = DetectionRegion(
+        id: 'r1', shape: 'rect', label: 'doorway', points: [0.1, 0.2, 0.5, 0.8]);
+    pipeline.setRegions(const [region]);
+    expect(motion.regions, [region]);
+    await pipeline.dispose();
+  });
 }
 
 /// Gated stub detector: counts how often its async path is invoked.

@@ -162,6 +162,7 @@ class MonitorController extends ChangeNotifier {
         configs: settings.detectorConfigs.values.toList(),
       );
       await pipeline.init();
+      pipeline.setRegions(settings.detectionRegions);
       await camera.init(CameraConfig(
         cameraId: camera.cameraId,
         analysisWidth: AnalysisResolution.size(settings.analysisResolution).$1,

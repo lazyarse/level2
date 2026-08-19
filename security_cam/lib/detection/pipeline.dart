@@ -21,6 +21,14 @@ class DetectorPipeline {
     _frameDetectors.add(detector);
   }
 
+  /// Sets the global inclusion regions and fans them out to every frame
+  /// detector. Empty = detect everywhere.
+  void setRegions(List<DetectionRegion> regions) {
+    for (final d in _frameDetectors) {
+      d.regions = regions;
+    }
+  }
+
   DetectorPipeline({
     required this.classifier,
     required List<DetectorConfig> configs,

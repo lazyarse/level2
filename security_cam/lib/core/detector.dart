@@ -77,6 +77,10 @@ abstract class Detector {
 }
 
 abstract class FrameDetector extends Detector {
+  /// Inclusion regions (normalized 0..1 on the analysis frame). Empty = detect
+  /// everywhere. Set by the pipeline via [DetectorPipeline.setRegions].
+  List<DetectionRegion> regions = const [];
+
   DetectionResult analyzeFrame(AnalysisFrame frame);
 
   /// Async analysis path for gated/heavy detectors (runs off the pipeline's
