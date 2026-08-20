@@ -1,5 +1,6 @@
 package io.securitycam.level1.ui.monitor
 
+import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -14,14 +15,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -43,6 +52,15 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         if (viewModel.hasCorePermissions()) viewModel.start() else viewModel.onPermissionsDenied()
     }
 
+    val displayRotation = LocalContext.current.display?.rotation ?: Surface.ROTATION_0
+    val rotationDegrees = when (displayRotation) {
+        Surface.ROTATION_90 -> 90
+        Surface.ROTATION_180 -> 180
+        Surface.ROTATION_270 -> 270
+        else -> 0
+    }
+    var showRegions by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -57,10 +75,28 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 ),
         ) {
             PreviewSurface(Modifier.fillMaxSize())
+            // Regions feed from settings in Phase 4; empty until then.
+            RegionOverlay(
+                regions = emptyList(),
+                rotationDegrees = rotationDegrees,
+                modifier = Modifier.fillMaxSize(),
+                show = showRegions,
+            )
             ZoomBadge(
                 zoomRatio = zoomRatio,
                 modifier = Modifier.align(Alignment.TopStart),
             )
+            IconButton(
+                onClick = { showRegions = !showRegions },
+                modifier = Modifier.align(Alignment.TopEnd),
+            ) {
+                Icon(
+                    Icons.Filled.Visibility,
+                    contentDescription = "Toggle detection regions",
+                    tint = if (showRegions) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         MonitorStatusBar(
             cameraName = cameraName,
