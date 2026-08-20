@@ -9,6 +9,8 @@ Flutter security-cam app in `level1/` (Android + CameraX), with an emulator-base
   - `ANDROID_HOME=... flutter build apk --debug`
   - `ANDROID_HOME=... flutter test integration_test/<file>.dart -d <serial>` (the tool runner `level1/tool/run_android_integration_tests.sh` also needs it: `ANDROID_HOME=... level1/tool/run_android_integration_tests.sh <serial>`)
   - (Linux desktop builds and `flutter analyze`/unit tests need no prefix.)
+- **Prefix with `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` for every native Gradle build** in `level1/android/`. The host default `java` is 25.0.4, which Gradle 8.14 refuses to run on (`BUILD FAILED` with the bare version string `25.0.4`). Example:
+  - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
 
 ## Dev/test target preference
 
