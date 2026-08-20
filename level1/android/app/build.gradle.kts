@@ -38,6 +38,12 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     // Flutter tooling can regenerate src/main/java/io/flutter/plugins/
     // GeneratedPluginRegistrant.java whenever the reference harness runs; this
     // native build must ignore it (it references the Flutter embedding).
@@ -56,6 +62,7 @@ dependencies {
     implementation("androidx.camera:camera-view:$camerax")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.13.1")
     // CameraX returns Guava `ListenableFuture`s; androidx transitive Guava is
@@ -76,6 +83,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

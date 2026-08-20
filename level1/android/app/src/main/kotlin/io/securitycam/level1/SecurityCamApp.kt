@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import io.securitycam.level1.ui.monitor.MonitorScreen
 
 enum class Level1Tab(val label: String, val icon: ImageVector) {
     Monitor("Monitor", Icons.Filled.Videocam),
@@ -50,11 +51,19 @@ fun SecurityCamApp() {
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Text(
-                text = "level1 placeholder",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(16.dp),
-            )
+            when (tab) {
+                Level1Tab.Monitor -> MonitorScreen()
+                Level1Tab.Events -> Text(
+                    text = "Events — Phase 5",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+                Level1Tab.Settings -> Text(
+                    text = "Settings — Phase 5",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
         }
     }
 }

@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.Display
 import android.view.Surface
 import android.view.WindowManager
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -22,13 +23,19 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleService
 import io.securitycam.level1.MainActivity
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Foreground service owning the CameraX session so the camera keeps streaming
@@ -133,6 +140,12 @@ object MonitoringServiceController {
     // Preview use case bound into the CameraX group; its surface provider is
     // supplied/cleared by the UI via [setPreviewSurfaceProvider].
     private var boundPreview: Preview? = null
+    private var pendingPreviewProvider: Preview.SurfaceProvider? = null
+
+    // Bound Camera handle for zoom (net-new Phase 1.4).
+    private var boundCamera: Camera? = null
+    private val _zoomRatio = MutableStateFlow(1f)
+    val zoomRatio: StateFlow<Float> = _zoomRatio.asStateFlow()
 
     fun onStart(
         service: LifecycleService,
@@ -188,6 +201,8 @@ object MonitoringServiceController {
         imageCapture = null
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
+        boundCamera = null
+        _zoomRatio.value = 1f
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
@@ -200,6 +215,8 @@ object MonitoringServiceController {
         imageCapture = null
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
+        boundCamera = null
+        _zoomRatio.value = 1f
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
@@ -221,10 +238,44 @@ object MonitoringServiceController {
     /**
      * Attaches or detaches the live preview. Pass `null` on screen-off / screen
      * dispose to keep streaming analysis/video without rendering; the service
-     * keeps the Preview use case bound either way.
+     * keeps the Preview use case bound either way. The provider is remembered
+     * so a UI that attaches before the CameraX bind settles (or re-attaches
+     * after a rebind) still lands on the bound preview.
      */
     fun setPreviewSurfaceProvider(provider: Preview.SurfaceProvider?) {
+        pendingPreviewProvider = provider
         boundPreview?.setSurfaceProvider(provider)
+    }
+
+    /** Re-applies the display rotation to the bound preview (display change). */
+    fun setTargetRotation(rotation: Int) {
+        boundPreview?.targetRotation = rotation
+    }
+
+    /** Pins the newly-bound Camera; primes zoom range from its cameraInfo. */
+    fun onCameraBound(camera: Camera) {
+        boundCamera = camera
+        currentZoomState(camera)?.let { _zoomRatio.value = it.zoomRatio }
+    }
+
+    private fun currentZoomState(camera: Camera): ZoomState? =
+        camera.cameraInfo.zoomState.value
+
+    /** Latest zoom ratio; drives the % badge and double-tap reset. */
+    fun zoomRatio(): StateFlow<Float> = _zoomRatio
+
+    /**
+     * Applies a zoom ratio clamped to the camera's [minZoomRatio, maxZoomRatio]
+     * range. Fire-and-forget on the controller executor; the ratio flow is
+     * updated on success so the badge/gesture state stays honest.
+     */
+    fun setZoomRatio(ratio: Float) {
+        val camera = boundCamera ?: return
+        val state = currentZoomState(camera) ?: return
+        val clamped = ratio.coerceIn(state.minZoomRatio, state.maxZoomRatio)
+        camera.cameraControl.setZoomRatio(clamped).addListener({
+            _zoomRatio.value = clamped
+        }, executor)
     }
 
     fun previewActive(): Boolean = boundPreview != null
@@ -322,6 +373,7 @@ object MonitoringServiceController {
                         .build()
                         .also { p ->
                             boundPreview = p
+                            pendingPreviewProvider?.let { p.setSurfaceProvider(it) }
                             Log.i(TAG, "preview use case built rotation=$rotation")
                         }
                 } else null
@@ -340,7 +392,10 @@ object MonitoringServiceController {
                 }
                 provider.bindToLifecycle(
                     lifecycleOwner, selector, groupBuilder.build()
-                )
+                ).also { camera ->
+                    onCameraBound(camera)
+                    Log.i(TAG, "camera bound id=$cameraId")
+                }
                 if (recordVideo) {
                     VideoClipRecorder.onMonitoringStarted()
                 }
