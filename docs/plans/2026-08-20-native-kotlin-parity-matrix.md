@@ -1,0 +1,76 @@
+# Native migration parity matrix
+
+Every Dart unit test file in `test/*` (recorded in `docs/plans/port-parity-manifest.txt`)
+gets a JVM twin under `level1/android/app/src/test/kotlin/io/securitycam/level1/`.
+Every Flutter integration scenario in `integration_test/*` gets an instrumentation
+twin under `level1/android/app/src/androidTest/kotlin/io/securitycam/level1/`
+(Task 7.1). Phase/Task columns reference where each test's subject matter is ported
+in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
+
+## Unit tests (37)
+
+| Dart test | JVM twin test | Phase | Task | Status |
+|---|---|---|---|---|
+| `analysis_dispatcher_test.dart` | `AnalysisDispatcherTest.kt` | Phase 2 | Task 2.2 | [ ] |
+| `analysis_frame_test.dart` | `AnalysisFrameTest.kt` | Phase 2 | Task 2.1 | [ ] |
+| `android_camera_session_test.dart` | `AndroidCameraSessionTest.kt` | Phase 1 | Task 1.1 | [ ] |
+| `audio_detectors_test.dart` | `AudioDetectorsTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `audio_source_factory_test.dart` | `AudioSourceFactoryTest.kt` | Phase 1 | Task 1.1 | [ ] |
+| `bgr_frame_assembler_test.dart` | `BgrFrameAssemblerTest.kt` | Phase 1 | Task 1.1 | [ ] |
+| `camera_source_factory_test.dart` | `CameraSourceFactoryTest.kt` | Phase 1 | Task 1.1 | [ ] |
+| `camera_view_test.dart` | `CameraViewTest.kt` | Phase 1 | Task 1.2 | [ ] |
+| `detection_region_test.dart` | `DetectionRegionTest.kt` | Phase 1 | Task 1.3 | [ ] |
+| `detector_config_test.dart` | `DetectorConfigTest.kt` | Phase 2 | Task 2.1 | [ ] |
+| `detector_registry_test.dart` | `DetectorRegistryTest.kt` | Phase 2 | Task 2.1 | [ ] |
+| `email_channel_test.dart` | `EmailChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [ ] |
+| `event_pipeline_test.dart` | `EventPipelineTest.kt` | Phase 2 | Task 2.4 | [ ] |
+| `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [ ] |
+| `face_detector_test.dart` | `FaceEngineTest.kt` | Phase 3 | Task 3.4 | [ ] |
+| `ffmpeg_args_test.dart` | `FfmpegArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
+| `ffmpeg_audio_args_test.dart` | `FfmpegAudioArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
+| `ffmpeg_live_test.dart` | `FfmpegLiveTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
+| `gray_frame_assembler_test.dart` | `GrayFrameAssemblerTest.kt` | Phase 2 | Task 2.3 | [ ] |
+| `media_naming_test.dart` | `MediaNamingTest.kt` | Phase 2 | Task 2.4 | [ ] |
+| `monitor_controller_test.dart` | `MonitorViewModelTest.kt` | Phase 1 | Task 1.5 | [ ] |
+| `motion_detector_test.dart` | `MotionDetectorTest.kt` | Phase 2 | Task 2.3 | [ ] |
+| `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [ ] |
+| `pipeline_test.dart` | `DetectorPipelineTest.kt` | Phase 2 | Task 2.2 | [ ] |
+| `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [ ] |
+| `region_filter_test.dart` | `RegionFilterTest.kt` | Phase 2 | Task 2.3 | [ ] |
+| `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [ ] |
+| `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [ ] |
+| `settings_test.dart` | `SettingsTest.kt` | Phase 2 | Task 2.1 | [ ] |
+| `shell_navigation_test.dart` | `ShellNavigationTest.kt` | Phase 5 | Task 5.4 | [ ] |
+| `telegram_channel_test.dart` | `TelegramChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `trigger_batcher_test.dart` | `TriggerBatcherTest.kt` | Phase 2 | Task 2.4 | [ ] |
+| `webhook_channel_test.dart` | `WebhookChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `yamnet_audio_event_classifier_test.dart` | `YamnetAudioEventClassifierTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `yolo_person_engine_test.dart` | `YoloPersonEngineTest.kt` | Phase 3 | Task 3.3 | [ ] |
+
+## Integration tests (4)
+
+| Integration scenario | Instrumentation test | Task | Status |
+|---|---|---|---|
+| `face_detection_linux_test.dart` | `FaceDetectionTest.kt` | Task 7.1 | [ ] |
+| `monitoring_on_device_test.dart` | `MonitoringInstrumentedTest.kt` | Task 7.1 | [ ] |
+| `person_detection_linux_test.dart` | `PersonDetectionTest.kt` | Task 7.1 | [ ] |
+| `screen_off_gate_test.dart` | `ScreenOffGateTest.kt` | Task 7.1 | [ ] |
+
+## Legend
+
+- **Status `[ ]`** = twin test not yet ported (pending). **Flip to `[x]`** when the
+  JVM/instrumentation twin lands — i.e. as the corresponding Phase 1/2/3/4/5 task and
+  the Phase 7 sweep complete (see Task 0.5). **`n/a`** applies only to the desktop-only
+  `ffmpeg`/sim twins: Task 7.2 excludes those Dart tests from porting by design
+  (`./gradlew :app:testDebugUnitTest` is the parity gate; `ffmpeg`/sim files are marked
+  `n/a` in the final sweep, not `[x]`).
+- JVM twin names follow the plan's `FooTest.kt` convention (PascalCase, derived from the
+  Dart file name); a few use the plan's named twins where the port target differs
+  (`pipeline` → `DetectorPipelineTest.kt`, `event_log` → `EventStoreTest.kt`,
+  `face_detector` → `FaceEngineTest.kt`, `monitor_controller` → `MonitorViewModelTest.kt`).
+- **Sources:** `docs/plans/2026-08-20-native-kotlin-migration-plan.md` (Phase/Task
+  assignment; Task 0.2/0.5 define this matrix) and
+  `docs/plans/port-parity-manifest.txt` (the 37 Dart unit files + 4 integration files).
