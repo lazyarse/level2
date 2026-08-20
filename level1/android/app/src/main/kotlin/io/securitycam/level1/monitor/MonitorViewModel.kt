@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level1.camera_service.CameraEvents
 import io.securitycam.level1.camera_service.MonitoringService
 import io.securitycam.level1.camera_service.MonitoringServiceController
@@ -80,7 +83,17 @@ class MonitorViewModel(
     /** CAMERA + RECORD_AUDIO gate monitoring; POST_NOTIFICATIONS is non-fatal. */
     fun hasCorePermissions(): Boolean = hasCorePermissions(getApplication())
 
-    private companion object {
+    companion object {
+        /** Explicit factory: the default owner factory can't build an AndroidViewModel. */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                MonitorViewModel(
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                        ?: error("Application missing from initializer"),
+                )
+            }
+        }
+
         fun hasCorePermissions(context: Application): Boolean =
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                 PackageManager.PERMISSION_GRANTED &&

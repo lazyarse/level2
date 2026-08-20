@@ -30,7 +30,7 @@ import io.securitycam.level1.monitor.MonitorState
 import io.securitycam.level1.monitor.MonitorViewModel
 
 @Composable
-fun MonitorScreen(viewModel: MonitorViewModel = viewModel()) {
+fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewModel.Factory)) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
