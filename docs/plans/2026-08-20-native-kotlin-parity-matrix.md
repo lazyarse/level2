@@ -32,7 +32,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `ffmpeg_live_test.dart` | `FfmpegLiveTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
 | `gray_frame_assembler_test.dart` | `GrayFrameAssemblerTest.kt` | Phase 2 | Task 2.3 | [ ] |
 | `media_naming_test.dart` | `MediaNamingTest.kt` | Phase 2 | Task 2.4 | [ ] |
-| `monitor_controller_test.dart` | `MonitorViewModelTest.kt` | Phase 1 | Task 1.5 | [ ] |
+| `monitor_controller_test.dart` | `MonitorViewModelTest.kt` | Phase 1 | Task 1.5 | [x] |
 | `motion_detector_test.dart` | `MotionDetectorTest.kt` | Phase 2 | Task 2.3 | [ ] |
 | `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [ ] |
 | `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [ ] |
