@@ -1,13 +1,13 @@
 # AGENTS.md
 
-Flutter security-cam app in `security_cam/` (Android + CameraX), with an emulator-based integration suite under `security_cam/integration_test/`. Design docs in `docs/plans/`.
+Flutter security-cam app in `level1/` (Android + CameraX), with an emulator-based integration suite under `level1/integration_test/`. Design docs in `docs/plans/`. **Migration in progress (2026-08-20):** the app is being converted to 100% native Kotlin + Compose under `level1/android/` (package `io.securitycam.level1`) per `docs/plans/2026-08-20-native-kotlin-migration-plan.md`; the Flutter tree at `level1/` remains the desktop-only reference harness until the Phase 7 cutover.
 
 ## Commands
 
 - Run `date -R` before every command.
 - **Prefix with `ANDROID_HOME=/home/tpa/code/android-env/android-sdk` for every Android build** that runs native-assets hooks — that is, any Android build since `face_detection_tflite` was added (`dartcv4`/`opencv_dart` → `package:toolchain`). The native-assets toolchain locates the Android NDK via **`ANDROID_HOME`** (NOT `ANDROID_SDK_ROOT`), and the shell only exports `ANDROID_SDK_ROOT=/home/tpa/code/android-env/android-sdk`. Without it the build fails with `Bad state: No element`. Examples:
   - `ANDROID_HOME=... flutter build apk --debug`
-  - `ANDROID_HOME=... flutter test integration_test/<file>.dart -d <serial>` (the tool runner `security_cam/tool/run_android_integration_tests.sh` also needs it: `ANDROID_HOME=... security_cam/tool/run_android_integration_tests.sh <serial>`)
+  - `ANDROID_HOME=... flutter test integration_test/<file>.dart -d <serial>` (the tool runner `level1/tool/run_android_integration_tests.sh` also needs it: `ANDROID_HOME=... level1/tool/run_android_integration_tests.sh <serial>`)
   - (Linux desktop builds and `flutter analyze`/unit tests need no prefix.)
 
 ## Dev/test target preference
@@ -26,7 +26,7 @@ Avoid emulators unless the change touches native Android behavior.
 
 ## Emulator integration tests
 
-- Run via `security_cam/tool/run_android_integration_tests.sh` (host-driven: waits for boot, grants permissions via `pm grant`, coordinates the screen-off test through `[itest]` markers).
+- Run via `level1/tool/run_android_integration_tests.sh` (host-driven: waits for boot, grants permissions via `pm grant`, coordinates the screen-off test through `[itest]` markers).
 - Use the **AOSP system image**, never the Google-APIs one (`pixel_34`): the `google_apis` image's System UI is heavy and wedges under load (ANR → package service dies → streamed install fails with "Broken pipe"), especially in headless CI. Launch headless in the background: `nohup <sdk>/emulator/emulator -avd <pixel_24_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`.
 - Do **not** run the `pixel_24_aosp` and `pixel_34_aosp` emulators at the same time, nor run the two images in parallel — shut one down before launching the other.
 - Before running any emulator test, verify the host has enough free resources:
