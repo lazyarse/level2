@@ -44,6 +44,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val error by viewModel.error.collectAsStateWithLifecycle()
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
+    val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -75,9 +76,8 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 ),
         ) {
             PreviewSurface(Modifier.fillMaxSize())
-            // Regions feed from settings in Phase 4; empty until then.
             RegionOverlay(
-                regions = emptyList(),
+                regions = detectionRegions,
                 rotationDegrees = rotationDegrees,
                 modifier = Modifier.fillMaxSize(),
                 show = showRegions,

@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level1.camera_service.CameraEvents
 import io.securitycam.level1.camera_service.MonitoringService
 import io.securitycam.level1.camera_service.MonitoringServiceController
+import io.securitycam.level1.detection.DetectionRegion
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,9 @@ class MonitorViewModel(
 
     private val _cameraName = MutableStateFlow("Hallway")
     val cameraName: StateFlow<String> = _cameraName.asStateFlow()
+
+    private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
+    val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
 
     private val previewStatusListener: (Boolean) -> Unit = { active ->
         _previewActive.value = active

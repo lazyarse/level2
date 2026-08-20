@@ -8,26 +8,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import io.securitycam.level1.detection.DetectionRegion
+import io.securitycam.level1.detection.DetectionRegionShape
 import kotlin.math.min
-
-/**
- * Inclusion region in normalized analysis-frame space (0..1, flattened
- * [x0,y0,x1,y1] for rects, [x0,y0,x1,y1,...] vertex pairs for polys).
- *
- * Mirrors `DetectionRegion` (Phase 2) so the overlay compiles standalone; the
- * screen wires in the Phase 2 type directly (same shape).
- */
-data class OverlayRegion(
-    val id: String,
-    val shape: String,
-    val label: String,
-    val points: List<Float>,
-) {
-    companion object {
-        const val SHAPE_RECT = "rect"
-        const val SHAPE_POLY = "poly"
-    }
-}
 
 /**
  * Maps normalized analysis-frame points through the display rotation into
@@ -68,23 +51,23 @@ object RegionDisplayMapper {
 
     /** Builds the display-space Path for a region (rects → closed box). */
     fun regionPath(
-        region: OverlayRegion,
+        region: DetectionRegion,
         rotationDegrees: Int,
         viewWidth: Float,
         viewHeight: Float,
         frameAspect: Float = 4f / 3f,
     ): Path {
         val path = Path()
-        if (region.shape == OverlayRegion.SHAPE_RECT && region.points.size >= 4) {
-            val p0 = mapPoint(region.points[0], region.points[1], rotationDegrees, viewWidth, viewHeight, frameAspect)
-            val p1 = mapPoint(region.points[2], region.points[3], rotationDegrees, viewWidth, viewHeight, frameAspect)
+        if (region.shape == DetectionRegionShape.rect && region.points.size >= 4) {
+            val p0 = mapPoint(region.points[0].toFloat(), region.points[1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
+            val p1 = mapPoint(region.points[2].toFloat(), region.points[3].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
             path.addRect(Rect(p0, p1))
             return path
         }
         var first = true
         var i = 0
         while (i + 1 < region.points.size) {
-            val p = mapPoint(region.points[i], region.points[i + 1], rotationDegrees, viewWidth, viewHeight, frameAspect)
+            val p = mapPoint(region.points[i].toFloat(), region.points[i + 1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
             if (first) {
                 path.moveTo(p.x, p.y)
                 first = false
@@ -109,7 +92,7 @@ private val RegionPalette = listOf(
 /** Draws [regions] over the preview in display space. */
 @Composable
 fun RegionOverlay(
-    regions: List<OverlayRegion>,
+    regions: List<DetectionRegion>,
     rotationDegrees: Int,
     modifier: Modifier = Modifier,
     show: Boolean = true,
