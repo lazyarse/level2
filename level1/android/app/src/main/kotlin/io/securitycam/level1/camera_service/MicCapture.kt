@@ -1,4 +1,4 @@
-package io.securitycam.security_cam.camera_service
+package io.securitycam.level1.camera_service
 
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -8,10 +8,10 @@ import android.util.Log
 /**
  * Owns the single microphone [AudioRecord] for the monitoring FGS.
  *
- * One 16 kHz mono s16le AudioRecord feeds the Dart analysis path (via the PCM
- * event bridge consumed by `NativeMicAudioSource`) and the clip recorder's PCM
- * buffer (muxed into clips at export time). It is started before CameraX binds
- * so the recorder can reuse the live AudioRecord.
+ * One 16 kHz mono s16le AudioRecord feeds the native analysis path (via
+ * [CameraEvents]) and the clip recorder's PCM buffer (muxed into clips at
+ * export time). It is started before CameraX binds so the recorder can reuse
+ * the live AudioRecord.
  *
  * Each PCM chunk is delivered with the absolute sample index of its first frame
  * (`startSample`), so consumers can map PCM bytes to the mic timeline.

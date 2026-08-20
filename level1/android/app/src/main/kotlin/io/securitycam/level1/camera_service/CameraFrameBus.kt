@@ -1,12 +1,12 @@
-package io.securitycam.security_cam.camera_service
+package io.securitycam.level1.camera_service
 
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Fan-out bus for BGR analysis frames produced by the camera foreground
- * service. The Flutter [CameraServiceChannels] EventChannel subscribes here so
- * analysis frames cross to the Dart isolate (preset resolution @ ~4 fps during
- * monitoring).
+ * service. The native pipeline (and later the analysis feed view) subscribes
+ * here so analysis frames reach the app process (preset resolution @ ~4 fps
+ * during monitoring).
  */
 object CameraFrameBus {
     private val listeners = CopyOnWriteArrayList<(bgr: ByteArray, width: Int, height: Int) -> Unit>()

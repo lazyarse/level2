@@ -1,4 +1,4 @@
-package io.securitycam.security_cam.camera_service
+package io.securitycam.level1.camera_service
 
 import android.content.ContentValues
 import android.content.Context
@@ -39,7 +39,7 @@ import java.util.concurrent.Executors
  * buffer. On a trigger the in-flight segment becomes the pre-roll tail, a
  * post-roll recording is started for the configured tail length, and the three
  * segments (ring + tail + post) are concatenated with MediaExtractor/MediaMuxer
- * into MediaStore `Movies/SecurityCam` with the shared date-time-cameraName
+ * into MediaStore `Movies/level1` with the shared date-time-cameraName
  * scheme.
  *
  * Audio: the recorder stays video-only; the native-owned mic's PCM is teed into
@@ -111,7 +111,7 @@ object VideoClipRecorder {
         ringDir = dir
     }
 
-    private fun mapQuality(value: String): Quality = when (value) {
+    internal fun mapQuality(value: String): Quality = when (value) {
         "sd" -> Quality.SD
         "hd" -> Quality.HD
         "fhd" -> Quality.FHD
@@ -120,8 +120,12 @@ object VideoClipRecorder {
         else -> Quality.LOWEST
     }
 
-    /** Builds the video use case for the CameraX bind. */
-    fun buildVideoCapture(): VideoCapture<Recorder> {
+    /**
+     * Builds the video use case for the CameraX bind. [rotation] is the current
+     * display rotation (a `Surface.ROTATION_*` constant) so clips are recorded
+     * upright regardless of the device's sensor orientation.
+     */
+    fun buildVideoCapture(rotation: Int): VideoCapture<Recorder> {
         val quality = mapQuality(videoQuality)
         val selector = QualitySelector.from(
             quality,
@@ -132,7 +136,9 @@ object VideoClipRecorder {
             .setQualitySelector(selector)
             .build()
         recorder = r
-        videoCapture = VideoCapture.withOutput(r)
+        videoCapture = VideoCapture.Builder(r)
+            .setTargetRotation(rotation)
+            .build()
         return videoCapture!!
     }
 
@@ -404,7 +410,7 @@ object VideoClipRecorder {
     }
 
     /** Shared date-time-cameraName scheme (mirrors Dart `mediaFileName`). */
-    private fun videoFileName(triggerAtMs: Long, camName: String): String {
+    internal fun videoFileName(triggerAtMs: Long, camName: String): String {
         fun two(n: Int) = n.toString().padStart(2, '0')
         fun three(n: Int) = n.toString().padStart(3, '0')
         val t = Calendar.getInstance().apply { timeInMillis = triggerAtMs }
@@ -707,7 +713,7 @@ object VideoClipRecorder {
                     put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                     put(
                         MediaStore.Video.Media.RELATIVE_PATH,
-                        Environment.DIRECTORY_MOVIES + "/SecurityCam"
+                        Environment.DIRECTORY_MOVIES + "/level1"
                     )
                     put(MediaStore.Video.Media.IS_PENDING, 1)
                 }
@@ -728,7 +734,7 @@ object VideoClipRecorder {
                 @Suppress("DEPRECATION")
                 val dir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-                    "SecurityCam"
+                    "level1"
                 )
                 if (!dir.exists()) dir.mkdirs()
                 val dest = File(dir, displayName)

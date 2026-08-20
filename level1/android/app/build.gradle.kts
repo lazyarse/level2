@@ -39,6 +39,11 @@ android {
     }
 }
 
+// Flutter tooling can regenerate src/main/java/io/flutter/plugins/
+// GeneratedPluginRegistrant.java whenever the reference harness runs; this
+// native build must ignore it (it references the Flutter embedding).
+sourceSets["main"].java.exclude("io/flutter/plugins/**")
+
 dependencies {
     // 1.3.4 pinned: 1.4.x's bindToLifecycle(…, vararg useCases) collides in Kotlin
     // with the 8-arg default-args synthetic facade (internal) — resolution picks
