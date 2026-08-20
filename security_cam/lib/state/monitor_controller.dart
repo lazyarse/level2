@@ -12,7 +12,8 @@ import '../detection/pipeline.dart';
 import '../event/event_pipeline.dart';
 import '../event/trigger_batcher.dart';
 import '../sensors/audio_source_factory.dart';
-import '../sensors/android_camera_session.dart';
+import '../sensors/android_camera_session.dart'
+    show AndroidCameraSession, PreviewInfo, applyScreenOrientation;
 import '../sensors/audio_classifier_factory.dart';
 import '../sensors/camera_source_factory.dart';
 import '../sensors/ffmpeg_audio_source.dart';
@@ -67,12 +68,16 @@ class MonitorController extends ChangeNotifier {
   StreamSubscription<TriggerBatch>? _batchSub;
   StreamSubscription<String>? _cameraFailureSub;
   StreamSubscription<String>? _audioFailureSub;
+  StreamSubscription<bool>? _previewStatusSub;
   AnalysisDispatcher<AnalysisFrame>? _frameDispatcher;
   AnalysisDispatcher<AudioWindow>? _audioDispatcher;
 
   Future<void> init() async {
     settings = await settingsStore.load();
     _restartPurgeTimer();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      unawaited(applyScreenOrientation(settings.screenOrientation));
+    }
     notifyListeners();
   }
 
@@ -126,6 +131,26 @@ class MonitorController extends ChangeNotifier {
   Future<void> openVideo(String name) => videoStore.open(name);
 
   Stream<AnalysisFrame>? get analysisFrames => _camera?.analysisFrames;
+
+  /// Texture id for the live preview passthrough on Android, or null when it
+  /// isn't active (desktop/fallback/pre-monitoring).
+  int? get previewTextureId {
+    final camera = _camera;
+    return camera is AndroidCameraSession ? camera.previewTextureId : null;
+  }
+
+  /// Display-oriented size and rotation of the live preview, or null when not
+  /// bound yet.
+  Future<PreviewInfo?> getPreviewInfo() async {
+    final camera = _camera;
+    return camera is AndroidCameraSession ? camera.getPreviewInfo() : null;
+  }
+
+  /// Dev-time source controls (simulated camera/audio) exist only on desktop;
+  /// mobile builds always use the on-device camera and microphone.
+  bool get supportsDevSources =>
+      defaultTargetPlatform != TargetPlatform.android &&
+      defaultTargetPlatform != TargetPlatform.iOS;
 
   AudioScene get audioScene =>
       _audio is SimulatedAudioSource
@@ -230,6 +255,10 @@ class MonitorController extends ChangeNotifier {
       _camera = camera;
       _audio = audio;
       _pipeline = pipeline;
+      if (camera is AndroidCameraSession) {
+        _previewStatusSub?.cancel();
+        _previewStatusSub = camera.previewStatus.listen((_) => notifyListeners());
+      }
 
       state = MonitorState.monitoring;
       notifyListeners();
@@ -262,6 +291,7 @@ class MonitorController extends ChangeNotifier {
     await _batchSub?.cancel();
     await _cameraFailureSub?.cancel();
     await _audioFailureSub?.cancel();
+    await _previewStatusSub?.cancel();
     _audio?.stop();
     await _audio?.dispose();
     await _frameDispatcher?.dispose();
@@ -275,6 +305,7 @@ class MonitorController extends ChangeNotifier {
     _batchSub = null;
     _cameraFailureSub = null;
     _audioFailureSub = null;
+    _previewStatusSub = null;
     _frameDispatcher = null;
     _audioDispatcher = null;
     _audio = null;

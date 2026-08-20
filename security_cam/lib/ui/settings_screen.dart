@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../channels/email_channel.dart';
@@ -9,6 +12,7 @@ import '../core/channel.dart';
 import '../core/detector.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
+import '../sensors/android_camera_session.dart' show applyScreenOrientation;
 import '../sensors/camera_source_factory.dart';
 import '../state/monitor_controller.dart';
 import 'region_editor_screen.dart';
@@ -99,98 +103,100 @@ TextEditingController _field(String key, [String? text]) =>
             ),
           ),
           const SizedBox(height: 24),
-          Text('Sources', style: Theme.of(context).textTheme.titleMedium),
-          const Text(
-            'Dev-time only: mobile builds always use the on-device camera and ignore these.',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Camera source',
-              border: OutlineInputBorder(),
+          if (widget.controller.supportsDevSources) ...[
+            Text('Sources', style: Theme.of(context).textTheme.titleMedium),
+            const Text(
+              'Dev-time only: mobile builds always use the on-device camera and ignore these.',
+              style: TextStyle(fontSize: 12),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _draft.cameraSource,
-                isDense: true,
-                items: const [
-                  DropdownMenuItem(
-                      value: CameraSource.simulated, child: Text('Simulated')),
-                  DropdownMenuItem(
-                      value: CameraSource.webcam, child: Text('Webcam')),
-                  DropdownMenuItem(
-                      value: CameraSource.file, child: Text('Video file')),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    _draft = v == CameraSource.simulated
-                        ? _draft.copyWith(
-                            cameraSource: v, clearCameraSourcePath: true)
-                        : _draft.copyWith(cameraSource: v);
-                  });
-                },
-              ),
-            ),
-          ),
-          if (_draft.cameraSource != CameraSource.simulated) ...[
             const SizedBox(height: 8),
-            TextField(
-              controller: _cameraPathController,
-              decoration: InputDecoration(
-                labelText: _draft.cameraSource == CameraSource.webcam
-                    ? 'Device path'
-                    : 'Video file path',
-                hintText: _draft.cameraSource == CameraSource.webcam
-                    ? '/dev/video0'
-                    : '/path/to/clip.mp4',
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
-          const SizedBox(height: 8),
-          InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Audio source',
-              border: OutlineInputBorder(),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _draft.audioSource,
-                isDense: true,
-                items: const [
-                  DropdownMenuItem(
-                      value: AudioInput.simulated, child: Text('Simulated')),
-                  DropdownMenuItem(
-                      value: AudioInput.mic, child: Text('Microphone')),
-                  DropdownMenuItem(
-                      value: AudioInput.file, child: Text('Audio file')),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    _draft = v == AudioInput.simulated
-                        ? _draft.copyWith(
-                            audioSource: v, clearAudioSourcePath: true)
-                        : _draft.copyWith(audioSource: v);
-                  });
-                },
-              ),
-            ),
-          ),
-          if (_draft.audioSource == AudioInput.file) ...[
-            const SizedBox(height: 8),
-            TextField(
-              controller: _audioPathController,
+            InputDecorator(
               decoration: const InputDecoration(
-                labelText: 'Audio file path',
-                hintText: '/path/to/clip.wav',
+                labelText: 'Camera source',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _draft.cameraSource,
+                  isDense: true,
+                  items: const [
+                    DropdownMenuItem(
+                        value: CameraSource.simulated, child: Text('Simulated')),
+                    DropdownMenuItem(
+                        value: CameraSource.webcam, child: Text('Webcam')),
+                    DropdownMenuItem(
+                        value: CameraSource.file, child: Text('Video file')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _draft = v == CameraSource.simulated
+                          ? _draft.copyWith(
+                              cameraSource: v, clearCameraSourcePath: true)
+                          : _draft.copyWith(cameraSource: v);
+                    });
+                  },
+                ),
+              ),
             ),
+            if (_draft.cameraSource != CameraSource.simulated) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _cameraPathController,
+                decoration: InputDecoration(
+                  labelText: _draft.cameraSource == CameraSource.webcam
+                      ? 'Device path'
+                      : 'Video file path',
+                  hintText: _draft.cameraSource == CameraSource.webcam
+                      ? '/dev/video0'
+                      : '/path/to/clip.mp4',
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+            const SizedBox(height: 8),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Audio source',
+                border: OutlineInputBorder(),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _draft.audioSource,
+                  isDense: true,
+                  items: const [
+                    DropdownMenuItem(
+                        value: AudioInput.simulated, child: Text('Simulated')),
+                    DropdownMenuItem(
+                        value: AudioInput.mic, child: Text('Microphone')),
+                    DropdownMenuItem(
+                        value: AudioInput.file, child: Text('Audio file')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _draft = v == AudioInput.simulated
+                          ? _draft.copyWith(
+                              audioSource: v, clearAudioSourcePath: true)
+                          : _draft.copyWith(audioSource: v);
+                    });
+                  },
+                ),
+              ),
+            ),
+            if (_draft.audioSource == AudioInput.file) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _audioPathController,
+                decoration: const InputDecoration(
+                  labelText: 'Audio file path',
+                  hintText: '/path/to/clip.wav',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
           ],
           const SizedBox(height: 24),
           Text('Detectors', style: Theme.of(context).textTheme.titleMedium),
@@ -379,6 +385,34 @@ TextEditingController _field(String key, [String? text]) =>
               }
             }),
           ),
+          if (defaultTargetPlatform == TargetPlatform.android) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Screen orientation: locks the monitor screen to portrait or '
+              'landscape, or follows the device sensor.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              key: const ValueKey('screenOrientationDropdown'),
+              initialValue: _draft.screenOrientation,
+              decoration: const InputDecoration(
+                labelText: 'Screen orientation',
+              ),
+              items: [
+                for (final o in ScreenOrientation.values)
+                  DropdownMenuItem(
+                    value: o,
+                    child: Text(ScreenOrientation.label(o)),
+                  ),
+              ],
+              onChanged: (v) => setState(() {
+                if (v != null) {
+                  _draft = _draft.copyWith(screenOrientation: v);
+                }
+              }),
+            ),
+          ],
           FilledButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save),
@@ -648,7 +682,12 @@ TextEditingController _field(String key, [String? text]) =>
       clearAudioSourcePath: audioPath == null,
       channelConfigs: channels,
     );
+    final previousOrientation = widget.controller.settings.screenOrientation;
     await widget.controller.updateSettings(next);
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        next.screenOrientation != previousOrientation) {
+      unawaited(applyScreenOrientation(next.screenOrientation));
+    }
     setState(() => _draft = next);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

@@ -110,7 +110,7 @@ class _EventsScreenState extends State<EventsScreen> {
                           ? IconButton(
                               tooltip: 'Play video',
                               icon: const Icon(Icons.play_circle_outline),
-                              onPressed: () => widget.openVideo!(e.videoName!),
+                              onPressed: () => _playVideo(e.videoName!),
                             )
                           : null,
                     );
@@ -122,6 +122,17 @@ class _EventsScreenState extends State<EventsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _playVideo(String name) async {
+    try {
+      await widget.openVideo!(name);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not play video: $e')),
+      );
+    }
   }
 
   IconData _iconFor(String type) {

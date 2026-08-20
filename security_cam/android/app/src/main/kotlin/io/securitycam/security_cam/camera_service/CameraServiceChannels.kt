@@ -1,6 +1,8 @@
 package io.securitycam.security_cam.camera_service
 
+import android.app.Activity
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
@@ -8,34 +10,50 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMethodCodec
+import io.flutter.view.TextureRegistry
 
 /**
  * Dart-facing channels for the camera foreground service.
  *
  * MethodChannel `io.securitycam.security_cam/camera`:
- *   startMonitoring(cameraId) / stopMonitoring / captureStill -> JPEG bytes
+ *   startMonitoring(cameraId) / stopMonitoring / captureStill -> JPEG bytes /
+ *   createPreviewSurface -> textureId / releasePreviewSurface / getPreviewSize
  * EventChannel `io.securitycam.security_cam/frames`:
  *   {width, height, bgr} BGR analysis frames @ ~4 fps
  * EventChannel `io.securitycam.security_cam/camera/mic_pcm`:
  *   raw 16 kHz mono s16le PCM chunks from the native mic (owned by the FGS).
+ * EventChannel `io.securitycam.security_cam/camera/preview_status`:
+ *   boolean "live preview passthrough active" (emitted once the CameraX bind
+ *   settles, so Dart knows whether to show the preview Texture).
  */
 class CameraServiceChannels private constructor() {
     companion object {
         private const val CHANNEL = "io.securitycam.security_cam/camera"
         private const val FRAMES = "io.securitycam.security_cam/frames"
         private const val MIC_PCM = "io.securitycam.security_cam/camera/mic_pcm"
+        private const val PREVIEW_STATUS = "io.securitycam.security_cam/camera/preview_status"
 
         private var context: Context? = null
+        private var activity: Activity? = null
         private var methodChannel: MethodChannel? = null
         private var eventChannel: EventChannel? = null
         private var micPcmChannel: EventChannel? = null
+        private var previewStatusChannel: EventChannel? = null
         private var frameSink: EventChannel.EventSink? = null
         private var micPcmSink: EventChannel.EventSink? = null
+        private var previewStatusSink: EventChannel.EventSink? = null
         private val mainHandler = Handler(Looper.getMainLooper())
 
-        fun attach(messenger: BinaryMessenger, appContext: Context) {
+        fun attach(
+            messenger: BinaryMessenger,
+            textureRegistry: TextureRegistry,
+            activity: Activity,
+            appContext: Context,
+        ) {
             detach(messenger)
+            this.activity = activity
             context = appContext
+            MonitoringServiceController.onAttach(textureRegistry)
             methodChannel = MethodChannel(messenger, CHANNEL, StandardMethodCodec.INSTANCE)
                 .apply { setMethodCallHandler(::handle) }
             eventChannel = EventChannel(messenger, FRAMES, StandardMethodCodec.INSTANCE)
@@ -64,6 +82,18 @@ class CameraServiceChannels private constructor() {
                         }
                     })
                 }
+            previewStatusChannel = EventChannel(messenger, PREVIEW_STATUS, StandardMethodCodec.INSTANCE)
+                .apply {
+                    setStreamHandler(object : EventChannel.StreamHandler {
+                        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                            previewStatusSink = events
+                        }
+
+                        override fun onCancel(arguments: Any?) {
+                            previewStatusSink = null
+                        }
+                    })
+                }
         }
 
         fun detach(messenger: BinaryMessenger) {
@@ -73,9 +103,14 @@ class CameraServiceChannels private constructor() {
             eventChannel = null
             micPcmChannel?.setStreamHandler(null)
             micPcmChannel = null
+            previewStatusChannel?.setStreamHandler(null)
+            previewStatusChannel = null
+            previewStatusSink = null
             frameSink = null
             micPcmSink = null
+            MonitoringServiceController.onDetach()
             context = null
+            activity = null
         }
 
         private fun publishFrame(bgr: ByteArray, width: Int, height: Int) {
@@ -88,6 +123,13 @@ class CameraServiceChannels private constructor() {
         fun publishMicPcm(pcm: ByteArray) {
             mainHandler.post {
                 micPcmSink?.success(pcm)
+            }
+        }
+
+        /** Notifies Dart whether the live preview passthrough is active. */
+        fun publishPreviewStatus(active: Boolean) {
+            mainHandler.post {
+                previewStatusSink?.success(active)
             }
         }
 
@@ -146,7 +188,44 @@ class CameraServiceChannels private constructor() {
                     result.success(null)
                 }
                 "openVideo" -> {
-                    VideoClipRecorder.open(call.argument<String>("name") ?: "")
+                    val message = VideoClipRecorder.open(
+                        call.argument<String>("name") ?: ""
+                    )
+                    if (message == null) {
+                        result.success(null)
+                    } else {
+                        result.error("open_video_failed", message, null)
+                    }
+                }
+                "createPreviewSurface" -> {
+                    val id = MonitoringServiceController.createPreviewSurface()
+                    if (id == null) {
+                        result.error("preview_unavailable", "texture registry unavailable", null)
+                    } else {
+                        result.success(id)
+                    }
+                }
+                "releasePreviewSurface" -> {
+                    MonitoringServiceController.releasePreviewSurface()
+                    result.success(null)
+                }
+                "getPreviewSize" -> {
+                    result.success(MonitoringServiceController.previewSize())
+                }
+                "setOrientation" -> {
+                    val activityRef = activity
+                    if (activityRef == null) {
+                        result.error("orientation_failed", "activity unavailable", null)
+                        return
+                    }
+                    val requested = when (call.argument<String>("orientation")) {
+                        "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        "sensor" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                        else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                    mainHandler.post {
+                        activityRef.requestedOrientation = requested
+                    }
                     result.success(null)
                 }
                 "videoExists" -> {

@@ -868,8 +868,9 @@ object VideoClipRecorder {
         }
     }
 
-    fun open(name: String) {
-        val appContext = context ?: return
+    /** Returns an error message on failure, or null when the player opened. */
+    fun open(name: String): String? {
+        val appContext = context ?: return "no application context"
         val uri = queryUriByName(name)
         val fallback = File(appContext.filesDir, "videos/$name")
         val contentUri = if (uri != null) {
@@ -880,15 +881,20 @@ object VideoClipRecorder {
             )
         } else {
             Log.w(TAG, "open video: no such clip $name")
-            return
+            return "no such clip: $name"
         }
+        // Launched from the application context, so NEW_TASK is mandatory.
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(contentUri, "video/mp4")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        try {
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        return try {
             appContext.startActivity(intent)
+            null
         } catch (e: Exception) {
             Log.w(TAG, "open video failed for $name", e)
+            "no app can play this clip: ${e.message}"
         }
     }
 }

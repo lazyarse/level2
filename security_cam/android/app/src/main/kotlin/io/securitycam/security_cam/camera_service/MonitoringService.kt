@@ -8,8 +8,14 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.SurfaceTexture
+import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import android.view.Display
+import android.view.Surface
+import android.view.WindowManager
 import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ImageAnalysis
@@ -17,12 +23,15 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleService
+import io.flutter.view.TextureRegistry
 import io.securitycam.security_cam.MainActivity
 import java.util.concurrent.Executors
 
@@ -115,6 +124,14 @@ object MonitoringServiceController {
     private var analysisWidth = 320
     private var analysisHeight = 240
 
+    // Flutter-registered SurfaceTexture backing the CameraX Preview passthrough.
+    private var textureRegistry: TextureRegistry? = null
+    private var previewEntry: TextureRegistry.SurfaceTextureEntry? = null
+    private var previewRotation = Surface.ROTATION_0
+    private var previewRotationDegrees = 0
+    private var previewResolved: android.util.Size? = null
+    private var boundPreview: Preview? = null
+
     fun onStart(
         service: LifecycleService,
         cameraId: String,
@@ -126,6 +143,7 @@ object MonitoringServiceController {
         analysisWidth: Int = 320,
         analysisHeight: Int = 240,
     ) {
+        Log.i(TAG, "onStart cameraId=$cameraId previewSurface=${previewSurfaceTexture() != null}")
         if (active) return
         active = true
         frameCount = 0
@@ -164,6 +182,9 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        releasePreviewSurface()
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
@@ -174,6 +195,9 @@ object MonitoringServiceController {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        releasePreviewSurface()
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
         releaseWakeLock()
@@ -191,6 +215,75 @@ object MonitoringServiceController {
     }
 
     private var activeService: LifecycleService? = null
+
+    /** Called on engine attach: drop any stale surface and take the new registry. */
+    fun onAttach(registry: TextureRegistry) {
+        releasePreviewSurface()
+        textureRegistry = registry
+    }
+
+    /** Called on engine detach: stop streaming to the surface and free it. */
+    fun onDetach() {
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        releasePreviewSurface()
+        textureRegistry = null
+    }
+
+    /** Registers a SurfaceTexture with the Flutter engine for the live preview. */
+    fun createPreviewSurface(): Long? {
+        val registry = textureRegistry ?: run {
+            Log.w(TAG, "createPreviewSurface: textureRegistry is null")
+            return null
+        }
+        releasePreviewSurface()
+        val entry = registry.createSurfaceTexture()
+        previewEntry = entry
+        Log.i(TAG, "createPreviewSurface -> id=${entry.id()}")
+        return entry.id()
+    }
+
+    fun releasePreviewSurface() {
+        previewEntry?.let { entry ->
+            entry.release()
+        }
+        previewEntry = null
+        previewResolved = null
+        previewRotationDegrees = 0
+    }
+
+    fun previewSurfaceTexture(): SurfaceTexture? = previewEntry?.surfaceTexture()
+
+    fun previewActive(): Boolean = boundPreview != null
+
+    /** Resolved preview size in display orientation, or null before it is bound. */
+    fun previewSize(): Map<String, Int>? {
+        val size = previewResolved ?: return null
+        if (size.width == 0 || size.height == 0) return null
+        val portrait = previewRotation == Surface.ROTATION_90 ||
+            previewRotation == Surface.ROTATION_270
+        val result = mapOf(
+            "width" to (if (portrait) size.height else size.width),
+            "height" to (if (portrait) size.width else size.height),
+            "rotation" to previewRotationDegrees,
+        )
+        Log.i(TAG, "previewSize -> $result")
+        return result
+    }
+
+    private fun displayRotation(context: Context): Int {
+        // A background `LifecycleService` has no associated display, so
+        // `context.display` throws on API 30+; use the default display instead.
+        val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+                .getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                .defaultDisplay.rotation
+        }
+        return rotation ?: Surface.ROTATION_0
+    }
 
     private fun startForeground(service: LifecycleService) {
         activeService = service
@@ -231,7 +324,11 @@ object MonitoringServiceController {
         wakeLock = null
     }
 
-    private fun bindCamera(service: LifecycleService, cameraId: String) {
+    private fun bindCamera(
+        service: LifecycleService,
+        cameraId: String,
+        allowPreview: Boolean = true,
+    ) {
         val providerFuture = ProcessCameraProvider.getInstance(service)
         providerFuture.addListener({
             val provider = providerFuture.get()
@@ -260,6 +357,32 @@ object MonitoringServiceController {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
                 val videoCapture = VideoClipRecorder.buildVideoCapture()
+                val preview = if (allowPreview) {
+                    previewSurfaceTexture()?.let { texture ->
+                        val rotation = displayRotation(service)
+                        previewRotation = rotation
+                        Preview.Builder()
+                            .setTargetRotation(rotation)
+                            .build()
+                            .also { p ->
+                                boundPreview = p
+                                p.setSurfaceProvider { request ->
+                                    previewResolved = request.resolution
+                                    val surface = Surface(texture)
+                                    request.provideSurface(
+                                        surface,
+                                        ContextCompat.getMainExecutor(service),
+                                    ) { result ->
+                                        if (result.resultCode !=
+                                            SurfaceRequest.Result.RESULT_SURFACE_USED_SUCCESSFULLY
+                                        ) {
+                                            Log.w(TAG, "preview surface result=${result.resultCode}")
+                                        }
+                                    }
+                                }
+                            }
+                    }
+                } else null
                 imageAnalysis = analysis
                 imageCapture = capture
                 provider.unbindAll()
@@ -267,15 +390,54 @@ object MonitoringServiceController {
                 val groupBuilder = UseCaseGroup.Builder()
                     .addUseCase(analysis)
                     .addUseCase(capture)
+                if (preview != null) {
+                    groupBuilder.addUseCase(preview)
+                }
                 if (recordVideo) {
                     groupBuilder.addUseCase(videoCapture)
                 }
-                provider.bindToLifecycle(lifecycleOwner, selector, groupBuilder.build())
+                val camera = provider.bindToLifecycle(
+                    lifecycleOwner, selector, groupBuilder.build()
+                )
+                if (preview != null) {
+                    // Compute the rotation the texture content must be turned
+                    // clockwise (in quarter-turns) to appear upright. CameraX
+                    // sets a transform matrix on the SurfaceTexture, but
+                    // Flutter's Impeller renderer ignores it, so the raw sensor
+                    // frame is what reaches the Texture widget.
+                    val sensorOrientation = camera.cameraInfo.sensorRotationDegrees
+                    val deviceRotationDegrees = previewRotation * 90
+                    val isFront = selector == CameraSelector.DEFAULT_FRONT_CAMERA
+                    previewRotationDegrees = if (isFront) {
+                        (sensorOrientation + deviceRotationDegrees) % 360
+                    } else {
+                        (sensorOrientation - deviceRotationDegrees + 360) % 360
+                    }
+                    Log.i(
+                        TAG,
+                        "preview bound sensor=$sensorOrientation " +
+                            "deviceRot=${previewRotation * 90} degrees=$previewRotationDegrees " +
+                            "resolved=${previewResolved}"
+                    )
+                }
                 if (recordVideo) {
                     VideoClipRecorder.onMonitoringStarted()
                 }
+                CameraServiceChannels.publishPreviewStatus(preview != null)
             } catch (e: Exception) {
-                Log.e(TAG, "camera bind failed", e)
+                if (allowPreview) {
+                    // e.g. the device's camera can't serve Preview + Analysis +
+                    // Capture + Video simultaneously; fall back to the existing
+                    // analysis-only monitoring rather than failing the bind.
+                    Log.w(TAG, "camera bind failed with preview; retrying without it", e)
+                    boundPreview?.setSurfaceProvider(null)
+                    boundPreview = null
+                    releasePreviewSurface()
+                    bindCamera(service, cameraId, allowPreview = false)
+                } else {
+                    Log.e(TAG, "camera bind failed", e)
+                    CameraServiceChannels.publishPreviewStatus(false)
+                }
             }
         }, ContextCompat.getMainExecutor(service))
     }

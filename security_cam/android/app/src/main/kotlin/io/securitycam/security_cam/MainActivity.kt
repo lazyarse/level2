@@ -9,7 +9,12 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val context: Context = applicationContext
-        CameraServiceChannels.attach(flutterEngine.dartExecutor.binaryMessenger, context)
+        CameraServiceChannels.attach(
+            flutterEngine.dartExecutor.binaryMessenger,
+            flutterEngine.renderer,
+            this,
+            context,
+        )
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

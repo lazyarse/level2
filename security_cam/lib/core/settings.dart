@@ -87,6 +87,26 @@ class AnalysisResolution {
   const AnalysisResolution._();
 }
 
+/// Screen orientation lock (Android only). Defaults to [portrait]; the native
+/// side maps these to `ActivityInfo.SCREEN_ORIENTATION_*`.
+class ScreenOrientation {
+  static const portrait = 'portrait';
+  static const landscape = 'landscape';
+  static const sensor = 'sensor';
+
+  static const values = [portrait, landscape, sensor];
+
+  static String label(String value) {
+    return switch (value) {
+      landscape => 'Landscape',
+      sensor => 'Auto (sensor)',
+      _ => 'Portrait',
+    };
+  }
+
+  const ScreenOrientation._();
+}
+
 class AppSettings {
   final String cameraName;
   final String cameraSource;
@@ -114,6 +134,9 @@ class AppSettings {
   /// Analysis stream resolution preset (see [AnalysisResolution]).
   final String analysisResolution;
 
+  /// Screen orientation lock (Android only, see [ScreenOrientation]).
+  final String screenOrientation;
+
   /// Inclusion regions (normalized 0..1 on the analysis frame). Empty = detect
   /// everywhere (whole frame).
   final List<DetectionRegion> detectionRegions;
@@ -133,6 +156,7 @@ class AppSettings {
     this.recordVideo = true,
     this.videoQuality = VideoQuality.lowest,
     this.analysisResolution = AnalysisResolution.balanced,
+    this.screenOrientation = ScreenOrientation.portrait,
     this.detectionRegions = const [],
   });
 
@@ -211,6 +235,7 @@ class AppSettings {
     bool? recordVideo,
     String? videoQuality,
     String? analysisResolution,
+    String? screenOrientation,
     List<DetectionRegion>? detectionRegions,
   }) {
     return AppSettings(
@@ -232,6 +257,7 @@ class AppSettings {
       recordVideo: recordVideo ?? this.recordVideo,
       videoQuality: videoQuality ?? this.videoQuality,
       analysisResolution: analysisResolution ?? this.analysisResolution,
+      screenOrientation: screenOrientation ?? this.screenOrientation,
       detectionRegions: detectionRegions ?? this.detectionRegions,
     );
   }
@@ -251,6 +277,7 @@ class AppSettings {
         'recordVideo': recordVideo,
         'videoQuality': videoQuality,
         'analysisResolution': analysisResolution,
+        'screenOrientation': screenOrientation,
         'detectionRegions': detectionRegions.map((r) => r.toJson()).toList(),
       };
 
@@ -299,6 +326,8 @@ class AppSettings {
       videoQuality: json['videoQuality'] as String? ?? defaults.videoQuality,
       analysisResolution:
           json['analysisResolution'] as String? ?? defaults.analysisResolution,
+      screenOrientation:
+          json['screenOrientation'] as String? ?? defaults.screenOrientation,
       detectionRegions: (json['detectionRegions'] as List?)
               ?.map((e) =>
                   DetectionRegion.fromJson(e as Map<String, dynamic>))
