@@ -25,11 +25,9 @@ import org.json.JSONObject
 class SettingsStore(
     context: Context,
     private val secrets: SecretStore,
-    scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    @Suppress("UNUSED_PARAMETER") scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
-    private val dataStore = PreferenceDataStoreFactory.create(scope = scope) {
-        context.applicationContext.preferencesDataStoreFile(FILE_NAME)
-    }
+    private val dataStore = sharedDataStore(context)
 
     /** Loads settings, injecting channel secrets and migrating legacy inline tokens. */
     suspend fun load(): AppSettings {
@@ -112,6 +110,26 @@ class SettingsStore(
     companion object {
         const val FILE_NAME = "settings"
         val KEY: Preferences.Key<String> = stringPreferencesKey("app_settings_v1")
+
+        /**
+         * Process-wide singleton keyed by file path: constructing multiple
+         * active DataStores on the same file throws `IllegalStateException`
+         * (surfaced by the instrumentation suite when MonitorViewModel and
+         * the settings screen both opened one).
+         */
+        private val sharedStores =
+            mutableMapOf<String, androidx.datastore.core.DataStore<Preferences>>()
+
+        private fun sharedDataStore(context: Context): androidx.datastore.core.DataStore<Preferences> {
+            val file = context.applicationContext.preferencesDataStoreFile(FILE_NAME)
+            return synchronized(sharedStores) {
+                sharedStores.getOrPut(file.absolutePath) {
+                    PreferenceDataStoreFactory.create(
+                        scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+                    ) { file }
+                }
+            }
+        }
 
         fun secretKey(channelId: String, field: String): String = "channel.$channelId.$field"
 

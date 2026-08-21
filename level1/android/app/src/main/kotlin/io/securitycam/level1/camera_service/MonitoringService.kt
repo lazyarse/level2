@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import android.view.Display
@@ -209,6 +210,24 @@ object MonitoringServiceController {
     }
 
     fun stop() {
+        // CameraX requires the app main thread; the UI calls us from there but
+        // instrumentation/tests may not, so hop over when needed (synchronously).
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopInternal()
+        } else {
+            val done = java.util.concurrent.CountDownLatch(1)
+            android.os.Handler(Looper.getMainLooper()).post {
+                try {
+                    stopInternal()
+                } finally {
+                    done.countDown()
+                }
+            }
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
+    }
+
+    private fun stopInternal() {
         active = false
         cameraProvider?.unbindAll()
         imageAnalysis = null

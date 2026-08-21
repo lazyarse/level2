@@ -23,7 +23,10 @@ android {
 
     defaultConfig {
         applicationId = "io.securitycam.level1"
-        minSdk = 24
+        // 28 (not a hard product floor): MediaPipe's tasks-vision JNI needs
+        // aligned_alloc (bionic API 28) and strtod_l/newlocale (API 26); every
+        // x86_64-capable release (0.10.26+) carries both requirements.
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"

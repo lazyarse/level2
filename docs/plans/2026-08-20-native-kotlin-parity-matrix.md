@@ -54,10 +54,10 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 
 | Integration scenario | Instrumentation test | Task | Status |
 |---|---|---|---|
-| `face_detection_linux_test.dart` | `FaceDetectionTest.kt` | Task 7.1 | [ ] |
-| `monitoring_on_device_test.dart` | `MonitoringInstrumentedTest.kt` | Task 7.1 | [ ] |
-| `person_detection_linux_test.dart` | `PersonDetectionTest.kt` | Task 7.1 | [ ] |
-| `screen_off_gate_test.dart` | `ScreenOffGateTest.kt` | Task 7.1 | [ ] |
+| `face_detection_linux_test.dart` | `FaceDetectionTest.kt` | Task 7.1 | [x] (MediaPipe short-range needs center-crop approach for distant faces; see test note) |
+| `monitoring_on_device_test.dart` | `MonitoringInstrumentedTest.kt` | Task 7.1 | [x] |
+| `person_detection_linux_test.dart` | `PersonDetectionTest.kt` | Task 7.1 | [x] (blank-frame gate ≤5 boxes, matching native YOLO noise floor) |
+| `screen_off_gate_test.dart` | `ScreenOffGateTest.kt` | Task 7.1 | [x] (recordVideo=false, `[itest]` markers via logcat) |
 
 ## Legend
 

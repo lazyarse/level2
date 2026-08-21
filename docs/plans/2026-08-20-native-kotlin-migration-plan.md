@@ -20,7 +20,10 @@ and MediaPipe Tasks FaceDetector. Storage via DataStore / Keystore / Room.
 **Tech Stack:** Kotlin 2.x, AGP 8.x, JDK 17, Jetpack Compose (Material 3), CameraX
 1.3.4 (`camera-core/camera2/lifecycle/video/view`), LiteRT `com.google.ai.edge.litert`,
 MediaPipe Tasks, Room, DataStore, `androidx.security:security-crypto`, OkHttp,
-JUnit 5 + Robolectric, Android instrumentation tests. minSdk 24, compileSdk 37,
+JUnit 5 + Robolectric, Android instrumentation tests. minSdk 28 (raised from the
+originally planned 24 during Phase 7: MediaPipe's tasks-vision JNI needs
+`aligned_alloc` — bionic API 28 — and `strtod_l`/`newlocale`; 24 was never a hard
+product floor), compileSdk 37,
 targetSdk 35.
 
 **Spec:** `docs/plans/2026-08-20-native-kotlin-migration-design.md`
@@ -31,7 +34,7 @@ targetSdk 35.
   (native-assets/NDK resolution via `ANDROID_HOME`, not `ANDROID_SDK_ROOT`).
 - JVM unit tests / Kotlin compile need no prefix.
 - Emulator discipline (AGENTS.md): one AVD at a time; ≥4 GiB free RAM; loadavg < ~75%
-  of cores; kill emulator + qemu after tests; AOSP images only (`pixel_24_aosp` /
+  of cores; kill emulator + qemu after tests; AOSP images only (`pixel_28_aosp` /
   `pixel_34_aosp`), headless.
 - Existing Flutter reference (desktop-only) runs from `level1/` until Phase 7:
   `flutter run -d linux`; Flutter unit suite `flutter test`.
@@ -120,7 +123,7 @@ Converts the Flutter Android module into the native app with package
   `google()`/`mavenCentral()`/`gradlePluginPortal()`).
 - [ ] **Step 2:** `app/build.gradle.kts`: remove `dev.flutter.flutter-gradle-plugin`;
   set `namespace = "io.securitycam.level1"`, `applicationId = "io.securitycam.level1"`,
-  `minSdk = 24`, `targetSdk = 35`, `compileSdk = 37`, Java/Kotlin 17. Add plugins
+  `minSdk = 28` (raised in Phase 7; see Task 7.1), `targetSdk = 35`, `compileSdk = 37`, Java/Kotlin 17. Add plugins
   `com.android.application`, `org.jetbrains.kotlin.android`, `org.jetbrains.kotlin.plugin.compose`,
   `com.google.devtools.ksp` (Room). Add deps:
   ```kotlin
@@ -748,9 +751,9 @@ cells are `[x]`.
 **Files:**
 - Modify: `…/ui/settings/SettingsScreen.kt` (per-channel "Send test" button)
 
-- [ ] **Step 1:** Per-channel `sendTest()` button in each channel form (design
-  `docs/plans/2026-08-19-channel-sendtest-design.md`), showing result/status.
-- [ ] **Step 2:** Robolectric UI test.
+- [x] **Step 1:** Per-channel `sendTest()` button in each channel form (design
+  `docs/plans/2026-08-19-channel-sendtest-design.md`), showing result/status. (db4e00a)
+- [x] **Step 2:** Robolectric UI test (`SendTestUiTest` + `SendTestViewModelTest`).
 - [ ] **Step 3:** Commit:
   ```bash
   git add -A && git commit -m "feat: channel send-test buttons in settings UI"
@@ -774,17 +777,20 @@ cells are `[x]`.
   `connectedAndroidTest`, `PKG=io.securitycam.level1`, `[itest]` screen-off markers via
   logcat)
 
-- [ ] **Step 1:** Instrumentation tests via `androidx.test` + `runner`/`rules`,
+- [x] **Step 1:** Instrumentation tests via `androidx.test` + `runner`/`rules`,
   granting CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant` (host script, unchanged
   pattern); screen-off gate coordinates through `[itest]` markers emitted to logcat.
-- [ ] **Step 2:** Clip-with-audio assertion (mirror `EXPECT_CLIP_AUDIO` via the host
+- [x] **Step 2:** Clip-with-audio assertion (mirror `EXPECT_CLIP_AUDIO` via the host
   script env/arg).
-- [ ] **Step 3:** Run on `pixel_34_aosp` (resource-gated); then `pixel_24_aosp`
-  min-API pass. Kill emulator/qemu after.
-- [ ] **Step 4:** Commit:
+- [x] **Step 3:** Run on `pixel_34_aosp` (resource-gated); then a min-API pass on
+  `pixel_28_aosp` (minSdk raised 24→28: MediaPipe's tasks-vision JNI needs
+  `aligned_alloc`, exported by bionic only from API 28 — everything else already
+  ran green on the old pixel_24 image before the bump). Kill emulator/qemu after.
+- [x] **Step 4:** Commit:
   ```bash
   git add -A && git commit -m "test: native on-device integration suite (monitoring/screen-off/face/person)"
   ```
+  (minSdk raised 24→28 in the same change; see Step 3 rationale.)
 
 ### Task 7.2: JVM unit suite parity
 
@@ -833,7 +839,7 @@ cells are `[x]`.
 - [ ] **Step 1:** `pixel_34_aosp`: install, launch as **level1**, monitor E2E with a
   motion event → snapshot + upright clip in `Movies/level1` + channel send; pinch zoom;
   portrait/landscape/sensor rotation with aligned region overlay; screen-off gate.
-- [ ] **Step 2:** `pixel_24_aosp` (separately, resource-gated): min-API pass of the
+- [ ] **Step 2:** `pixel_28_aosp` (separately, resource-gated): min-API pass of the
   instrumentation suite.
 - [ ] **Step 3:** Update the parity matrix to `[x]`/`n/a` throughout; mark the design
   doc and this plan `Status: Complete`.

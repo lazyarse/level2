@@ -23,8 +23,10 @@ Prefer the fastest platform that can validate the change:
 1. **Linux desktop app** (`flutter test -d linux`, or `flutter run -d linux` for a quick smoke) —
    unit tests + simulated camera/audio run instantly with no emulator; use for iteration,
    pure-Dart logic, Settings/UI, and everything not exercising the native `camera_service`.
-2. **`pixel_24_aosp`** — Android on-device integration tests when they must run (min-API 24
-   baseline checks; the leanest AOSP image).
+2. **`pixel_28_aosp`** — Android on-device integration tests when they must run (min-API 28
+   baseline checks; the leanest AOSP image). minSdk is 28 because MediaPipe's tasks-vision
+   JNI needs `aligned_alloc` (bionic API 28) plus `strtod_l`/`newlocale` (API 26); every
+   x86_64-capable release carries both. The old `pixel_24_aosp` AVD predates that decision.
 3. **`pixel_34_aosp`** — only when the task is API-34-specific (foreground service type,
    notification runtime permission, MediaStore `RELATIVE_PATH`, camera capabilities on API 34).
 
@@ -33,8 +35,8 @@ Avoid emulators unless the change touches native Android behavior.
 ## Emulator integration tests
 
 - Run via `level1/tool/run_android_integration_tests.sh` (host-driven: waits for boot, grants permissions via `pm grant`, coordinates the screen-off test through `[itest]` markers).
-- Use the **AOSP system image**, never the Google-APIs one (`pixel_34`): the `google_apis` image's System UI is heavy and wedges under load (ANR → package service dies → streamed install fails with "Broken pipe"), especially in headless CI. Launch headless in the background: `nohup <sdk>/emulator/emulator -avd <pixel_24_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`.
-- Do **not** run the `pixel_24_aosp` and `pixel_34_aosp` emulators at the same time, nor run the two images in parallel — shut one down before launching the other.
+- Use the **AOSP system image**, never the Google-APIs one (`pixel_34`): the `google_apis` image's System UI is heavy and wedges under load (ANR → package service dies → streamed install fails with "Broken pipe"), especially in headless CI. Launch headless in the background: `nohup <sdk>/emulator/emulator -avd <pixel_28_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`.
+- Do **not** run the `pixel_28_aosp` and `pixel_34_aosp` emulators at the same time, nor run the two images in parallel — shut one down before launching the other.
 - Before running any emulator test, verify the host has enough free resources:
   - RAM: at least 4 GiB free (see `free -h`, `Mem: available`).
   - CPU: load average (see `cat /proc/loadavg`) below ~75% of core count.
