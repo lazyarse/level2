@@ -14,7 +14,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `analysis_dispatcher_test.dart` | `AnalysisDispatcherTest.kt` | Phase 2 | Task 2.2 | [x] |
 | `analysis_frame_test.dart` | `AnalysisFrameTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `android_camera_session_test.dart` | `AndroidCameraSessionTest.kt` | Phase 1 | Task 1.1 | [ ] |
-| `audio_detectors_test.dart` | `AudioDetectorsTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `audio_detectors_test.dart` | `AudioDetectorsTest.kt` | Phase 3 | Task 3.2 | [x] |
 | `audio_source_factory_test.dart` | `AudioSourceFactoryTest.kt` | Phase 1 | Task 1.1 | [ ] |
 | `bgr_frame_assembler_test.dart` | `BgrFrameAssemblerTest.kt` | Phase 1 | Task 1.1 | [ ] |
 | `camera_source_factory_test.dart` | `CameraSourceFactoryTest.kt` | Phase 1 | Task 1.1 | [ ] |
@@ -34,7 +34,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `media_naming_test.dart` | `MediaNamingTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `monitor_controller_test.dart` | `MonitorViewModelTest.kt` | Phase 1 | Task 1.5 | [x] |
 | `motion_detector_test.dart` | `MotionDetectorTest.kt` | Phase 2 | Task 2.3 | [x] |
-| `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [x] |
 | `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [ ] |
 | `pipeline_test.dart` | `DetectorPipelineTest.kt` | Phase 2 | Task 2.2 | [x] |
 | `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
@@ -47,7 +47,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `telegram_channel_test.dart` | `TelegramChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
 | `trigger_batcher_test.dart` | `TriggerBatcherTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `webhook_channel_test.dart` | `WebhookChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
-| `yamnet_audio_event_classifier_test.dart` | `YamnetAudioEventClassifierTest.kt` | Phase 3 | Task 3.2 | [ ] |
+| `yamnet_audio_event_classifier_test.dart` | `YamnetClassifierTest.kt` | Phase 3 | Task 3.2 | [x] |
 | `yolo_person_engine_test.dart` | `YoloPersonEngineTest.kt` | Phase 3 | Task 3.3 | [ ] |
 
 ## Integration tests (4)

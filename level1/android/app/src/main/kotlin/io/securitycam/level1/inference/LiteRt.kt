@@ -4,11 +4,6 @@ import android.content.Context
 import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.LiteRtException
-import com.google.ai.edge.litert.TensorBuffer
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.channels.FileChannel
 import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.InterpreterFactory
 
@@ -29,19 +24,10 @@ class LiteRt private constructor(
         /** 1 x 3 x 640 x 640 NCHW float32 input elements. */
         const val YOLO_INPUT_ELEMENTS: Int = 1 * 3 * 640 * 640
 
-        private fun loadModelFile(context: Context, path: String): ByteBuffer {
-            val fd = context.assets.openFd(path)
-            FileInputStream(fd.fileDescriptor).use { stream ->
-                return stream.channel
-                    .map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
-                    .order(ByteOrder.nativeOrder())
-            }
-        }
-
         fun create(context: Context): LiteRt {
             val yamnet = try {
                 InterpreterFactory().create(
-                    loadModelFile(context, "yamnet.tflite"),
+                    TfliteAssets.loadModelFile(context, "yamnet.tflite"),
                     InterpreterApi.Options().setNumThreads(1),
                 )
             } catch (_: Exception) {
