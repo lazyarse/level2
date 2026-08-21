@@ -24,56 +24,56 @@ staging instrumentation pass at the end.
 
 ### Task 1: Model + geometry + pipeline plumbing
 
-- [ ] **Step 1:** `core/Settings.kt` — `AppSettings.exclusionRegions`
+- [x] **Step 1:** `core/Settings.kt` — `AppSettings.exclusionRegions`
   (default `[]`), `copyWith`, `toJson`, `fromJson` (missing key → empty).
-- [ ] **Step 2:** `detection/RegionFilter.kt` — `pixelMaskExcluding(inclusions,
+- [x] **Step 2:** `detection/RegionFilter.kt` — `pixelMaskExcluding(inclusions,
   exclusions, width, height)`: inclusion mask (or all-ones when no inclusions),
   then clear pixels whose center lies inside any exclusion.
-- [ ] **Step 3:** `detection/Detector.kt` — `FrameDetector.exclusionRegions`.
-- [ ] **Step 4:** `detection/pipeline/DetectorPipeline.kt` — `setRegions(inclusions,
+- [x] **Step 3:** `detection/Detector.kt` — `FrameDetector.exclusionRegions`.
+- [x] **Step 4:** `detection/pipeline/DetectorPipeline.kt` — `setRegions(inclusions,
   exclusions)` fans both out.
-- [ ] **Step 5:** `monitor/MonitoringRuntime.kt` passes `settings.exclusionRegions`.
-- [ ] **Step 6:** Tests — Settings round-trip incl. legacy JSON without the key;
+- [x] **Step 5:** `monitor/MonitoringRuntime.kt` passes `settings.exclusionRegions`.
+- [x] **Step 6:** Tests — Settings round-trip incl. legacy JSON without the key;
   `RegionFilterTest`: mask cleared inside exclusion, identical to `pixelMask`
   when exclusions empty, full-frame exclusion → zero pixels.
-- [ ] **Step 7:** Verify + commit.
+- [x] **Step 7:** Verify + commit.
 
 ### Task 2: Motion + face/person honor exclusion zones
 
-- [ ] **Step 1:** `MotionDetector` builds its cached mask via
+- [x] **Step 1:** `MotionDetector` builds its cached mask via
   `pixelMaskExcluding`; cache invalidates when either list identity changes;
   `reset()` clears both refs.
-- [ ] **Step 2:** `FaceDetector`/person engine keep a detection iff it overlaps an
+- [x] **Step 2:** `FaceDetector`/person engine keep a detection iff it overlaps an
   inclusion zone (or there are none) AND does not overlap any exclusion.
-- [ ] **Step 3:** Tests — motion: change inside an exclusion does not trigger with
+- [x] **Step 3:** Tests — motion: change inside an exclusion does not trigger with
   no inclusions; face/person: dropped inside, kept outside, inclusion+exclusion
   interaction.
-- [ ] **Step 4:** Verify + commit.
+- [x] **Step 4:** Verify + commit.
 
 ### Task 3: Editor mode toggle + settings wiring
 
-- [ ] **Step 1:** `RegionEditorViewModel` holds both lists; tools operate on the
+- [x] **Step 1:** `RegionEditorViewModel` holds both lists; tools operate on the
   active mode only.
-- [ ] **Step 2:** `RegionEditorScreen` gains an Inclusion/Exclusion SegmentedButton;
+- [x] **Step 2:** `RegionEditorScreen` gains an Inclusion/Exclusion SegmentedButton;
   each mode lists/draws its own zones (exclusions red); Done →
   `onSave(inclusions, exclusions)`.
-- [ ] **Step 3:** Call site (`SecurityCamApp`) passes draft's both lists and saves
+- [x] **Step 3:** Call site (`SecurityCamApp`) passes draft's both lists and saves
   both back via settings view-model update.
-- [ ] **Step 4:** Tests — mode switch isolates lists; tools hit active list; round-trip.
-- [ ] **Step 5:** Verify + commit.
+- [x] **Step 4:** Tests — mode switch isolates lists; tools hit active list; round-trip.
+- [x] **Step 5:** Verify + commit.
 
 ### Task 4: Overlay shows exclusion zones
 
-- [ ] **Step 1:** `MonitorViewModel.exclusionRegions` StateFlow alongside
+- [x] **Step 1:** `MonitorViewModel.exclusionRegions` StateFlow alongside
   `detectionRegions`; fed from loaded settings.
-- [ ] **Step 2:** `ui/monitor/RegionOverlay.kt` draws exclusions in a distinct red;
+- [x] **Step 2:** `ui/monitor/RegionOverlay.kt` draws exclusions in a distinct red;
   regions toggle reveals both.
-- [ ] **Step 3:** Test — view-model picks up exclusions from settings load.
-- [ ] **Step 4:** Verify + commit.
+- [x] **Step 3:** Test — view-model picks up exclusions from settings load.
+- [x] **Step 4:** Verify + commit.
 
 ### Final verification
 
-- [ ] Full unit suite + `assembleDebug`.
-- [ ] Staging instrumentation pass on `pixel_34_aosp` (`run_android_integration_tests.sh <serial> all`),
+- [x] Full unit suite (296/296) + `assembleDebug`.
+- [x] Staging instrumentation pass (`OK (18 tests)`, 146 s) on `pixel_34_aosp` (`run_android_integration_tests.sh <serial> all`),
       emulator killed afterwards.
-- [ ] Tick this plan; add parity-matrix rows for the new native tests.
+- [x] Tick this plan; add parity-matrix rows for the new native tests.

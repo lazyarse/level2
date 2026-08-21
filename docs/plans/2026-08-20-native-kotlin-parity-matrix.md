@@ -40,6 +40,21 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [x] (gesture paths covered by `RegionEditorViewModelTest`) |
 | `region_filter_test.dart` | `RegionFilterTest.kt` | Phase 2 | Task 2.3 | [x] |
+
+### Privacy-zones port additions (2026-08-21, `2026-08-21-privacy-zones-native-plan.md`)
+
+The Dart privacy-zones tests extended the files above; the native port adds
+dedicated coverage in the same Kotlin files plus one new suite.
+
+| Dart-era coverage (privacy zones) | Native test | Phase | Source task | Done |
+|---|---|---|---|---|
+| exclusion mask cases (`region_filter_test`) | `RegionFilterTest.kt` (`pixelMaskExcluding*`) | PZ | Task 1 | [x] |
+| settings round-trip of `exclusionRegions` (`settings_test`) | `SettingsTest.kt` | PZ | Task 1 | [x] |
+| pipeline fans out exclusions (`pipeline_test`) | `DetectorPipelineTest.kt` | PZ | Task 1 | [x] |
+| motion inside-exclusion no-trigger (`motion_detector_test`) | `MotionDetectorTest.kt` | PZ | Task 2 | [x] |
+| face/person dropped-inside/kept-outside (`face_engine_test`, `person_detector_test`) | `FaceDetectorTest.kt`, `PersonDetectorTest.kt` | PZ | Task 2 | [x] |
+| editor mode toggle + both-list save (`region_editor_screen_test`) | `RegionEditorScreenTest.kt`, `RegionEditorViewModelTest.kt` | PZ | Task 3 | [x] |
+| overlay/VM exclusion flow (`monitor_controller_test`) | `MonitorViewModelTest.kt` (`startLoadsBothRegionListsIntoFlows`) | PZ | Task 4 | [x] |
 | `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [x] |
 | `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [x] |
 | `settings_test.dart` | `SettingsTest.kt` | Phase 2 | Task 2.1 | [x] |
