@@ -97,6 +97,7 @@ data class AppSettings(
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
     val detectionRegions: List<DetectionRegion> = emptyList(),
+    val scheduleExclusions: List<ScheduleWindow> = emptyList(),
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -134,6 +135,7 @@ data class AppSettings(
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
         detectionRegions = detectionRegions ?: this.detectionRegions,
+        scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -154,6 +156,7 @@ data class AppSettings(
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
         json["detectionRegions"] = detectionRegions.map { it.toJson() }
+        json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         return json
     }
 
@@ -280,6 +283,9 @@ data class AppSettings(
                     ?: defaults.screenOrientation,
                 detectionRegions = (json["detectionRegions"] as? List<*>)
                     ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                    ?: emptyList(),
+                scheduleExclusions = (json["scheduleExclusions"] as? List<*>)
+                    ?.map { ScheduleWindow.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
             )
         }

@@ -16,6 +16,7 @@ import io.securitycam.level1.camera_service.MonitoringService
 import io.securitycam.level1.camera_service.MonitoringServiceController
 import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.core.AppSettings
+import io.securitycam.level1.core.SchedulePolicy
 import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
@@ -25,9 +26,12 @@ import io.securitycam.level1.storage.SettingsStore
 import java.io.File
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -62,6 +66,8 @@ class MonitorViewModel(
     private val settingsLoader: suspend () -> AppSettings = {
         SettingsStore(application, EncryptedSecretStore(application)).load()
     },
+    private val scheduleCheckInterval: Duration? = Duration.ofMinutes(1),
+    private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MonitorState.Idle)
@@ -69,6 +75,12 @@ class MonitorViewModel(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _scheduleNote = MutableStateFlow<String?>(null)
+    val scheduleNote: StateFlow<String?> = _scheduleNote.asStateFlow()
+
+    private val _schedulePaused = MutableStateFlow(false)
+    val schedulePaused: StateFlow<Boolean> = _schedulePaused.asStateFlow()
 
     private val _previewActive = MutableStateFlow(false)
     val previewActive: StateFlow<Boolean> = _previewActive.asStateFlow()
@@ -84,6 +96,8 @@ class MonitorViewModel(
 
     private var runtime: MonitoringRuntime? = null
     private var healthJob: kotlinx.coroutines.Job? = null
+    private var scheduleJob: kotlinx.coroutines.Job? = null
+    private var scheduleSettings: AppSettings? = null
 
     private val previewStatusListener: (Boolean) -> Unit = { active ->
         _previewActive.value = active
@@ -91,6 +105,16 @@ class MonitorViewModel(
 
     init {
         CameraEvents.addPreviewStatusListener(previewStatusListener)
+        // Schedule enforcement tick (design: auto-stop on entering an exclusion,
+        // auto-resume on leaving if monitoring was running before).
+        scheduleCheckInterval?.let { interval ->
+            scheduleJob = viewModelScope.launch {
+                while (isActive) {
+                    delay(interval.toMillis())
+                    runCatching { checkScheduleNow() }
+                }
+            }
+        }
     }
 
     /** Permissions surfaced to the UI for `RequestMultiplePermissions`. */
@@ -144,6 +168,17 @@ class MonitorViewModel(
             onPermissionsDenied()
             return
         }
+        // Manual start is blocked while a schedule exclusion is active (cached
+        // settings only — before the first load we cannot know yet).
+        scheduleSettings?.let { cached ->
+            if (SchedulePolicy.isExcluded(cached.scheduleExclusions, nowProvider())) {
+                _scheduleNote.value =
+                    "Monitoring is paused during a scheduled exclusion"
+                return
+            }
+        }
+        _schedulePaused.value = false
+        _scheduleNote.value = null
         _state.value = MonitorState.Starting
         _error.value = null
         startMonitoring()
@@ -153,6 +188,7 @@ class MonitorViewModel(
         viewModelScope.launch {
             try {
                 val settings = settingsLoader()
+                scheduleSettings = settings
                 _cameraName.value = settings.cameraName
                 _detectionRegions.value = settings.detectionRegions
                 MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
@@ -170,6 +206,8 @@ class MonitorViewModel(
     }
 
     fun stop() {
+        // A manual stop always cancels any pending auto-resume.
+        _schedulePaused.value = false
         if (_state.value == MonitorState.Idle) return
         stopMonitoring()
         _state.value = MonitorState.Idle
@@ -179,6 +217,38 @@ class MonitorViewModel(
         healthJob?.cancel()
         healthJob = null
         viewModelScope.launch { current?.stop() }
+    }
+
+    /**
+     * Schedule enforcement, run by the periodic tick and directly from tests:
+     * auto-stop when monitoring enters an exclusion window, auto-resume when
+     * it leaves (only if the schedule stopped it).
+     */
+    suspend fun checkScheduleNow() {
+        val settings = settingsLoader()
+        scheduleSettings = settings
+        val excluded = SchedulePolicy.isExcluded(settings.scheduleExclusions, nowProvider())
+        when {
+            _state.value == MonitorState.Monitoring && excluded -> {
+                _schedulePaused.value = true
+                _scheduleNote.value = "Monitoring paused — scheduled exclusion"
+                stopMonitoring()
+                _state.value = MonitorState.Idle
+                _healthStalled.value = false
+                val current = runtime
+                runtime = null
+                healthJob?.cancel()
+                healthJob = null
+                current?.stop()
+            }
+
+            _state.value == MonitorState.Idle &&
+                _schedulePaused.value &&
+                !excluded -> {
+                _schedulePaused.value = false
+                start()
+            }
+        }
     }
 
     /**
@@ -200,6 +270,8 @@ class MonitorViewModel(
 
     override fun onCleared() {
         CameraEvents.removePreviewStatusListener(previewStatusListener)
+        scheduleJob?.cancel()
+        scheduleJob = null
         val current = runtime
         runtime = null
         if (current != null) {

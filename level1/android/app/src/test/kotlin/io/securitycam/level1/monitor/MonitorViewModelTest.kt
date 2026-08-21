@@ -2,6 +2,8 @@ package io.securitycam.level1.monitor
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import io.securitycam.level1.core.AppSettings
+import io.securitycam.level1.core.ScheduleWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -75,5 +77,89 @@ class MonitorViewModelTest {
         val perms = vm.requiredPermissions()
         assertTrue(perms.contains(android.Manifest.permission.CAMERA))
         assertTrue(perms.contains(android.Manifest.permission.RECORD_AUDIO))
+    }
+
+    // ---- Schedule enforcement (design: 2026-08-19-monitoring-schedule) ----
+
+    private fun scheduleSettings(always: Boolean): AppSettings = AppSettings(
+        detectorConfigs = AppSettings.defaults().detectorConfigs,
+        channelConfigs = AppSettings.defaults().channelConfigs,
+        scheduleExclusions = if (!always) {
+            emptyList()
+        } else {
+            listOf(
+                // Mon–Sun 00:00–00:00 ⇒ a 24 h exclusion.
+                ScheduleWindow(id = "w1", days = 0b1111111, startHour = 0, startMinute = 0, endHour = 0, endMinute = 0),
+            )
+        },
+    )
+
+    @Test
+    fun autoStopWhenEnteringExclusion_andResumeWhenLeaving() {
+        var excluded = false
+        val startRan = mutableListOf<Int>()
+        val stopRan = mutableListOf<Int>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { startRan.add(1) },
+            stopMonitoring = { stopRan.add(1) },
+            settingsLoader = { scheduleSettings(always = excluded) },
+            scheduleCheckInterval = null,
+        )
+        vm.start()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
+
+        kotlinx.coroutines.runBlocking {
+            excluded = true
+            vm.checkScheduleNow()
+        }
+        assertEquals(MonitorState.Idle, vm.state.value)
+        assertTrue(vm.schedulePaused.value)
+        assertEquals(1, stopRan.size)
+
+        kotlinx.coroutines.runBlocking {
+            excluded = false
+            vm.checkScheduleNow()
+        }
+        assertEquals(MonitorState.Monitoring, vm.state.value)
+        assertTrue(!vm.schedulePaused.value)
+        assertEquals(2, startRan.size)
+    }
+
+    @Test
+    fun manualStartBlockedWhileExcluded() {
+        val startRan = mutableListOf<Int>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { startRan.add(1) },
+            stopMonitoring = {},
+            settingsLoader = { scheduleSettings(always = true) },
+            scheduleCheckInterval = null,
+        )
+        // Prime the cached settings (as the periodic tick would).
+        kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
+        vm.start()
+        assertEquals(MonitorState.Idle, vm.state.value)
+        assertTrue(startRan.isEmpty())
+        assertTrue(vm.scheduleNote.value!!.contains("scheduled exclusion"))
+    }
+
+    @Test
+    fun manualStopClearsPendingAutoResume() {
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = {},
+            stopMonitoring = {},
+            settingsLoader = { scheduleSettings(always = true) },
+            scheduleCheckInterval = null,
+        )
+        vm.start()
+        kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
+        assertTrue(vm.schedulePaused.value)
+        vm.stop()
+        assertTrue(!vm.schedulePaused.value)
     }
 }

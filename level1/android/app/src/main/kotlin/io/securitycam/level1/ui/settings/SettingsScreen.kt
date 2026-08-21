@@ -16,8 +16,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.RemoveCircleOutline
@@ -31,6 +33,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +65,7 @@ import io.securitycam.level1.channels.TelegramChannelSettings
 import io.securitycam.level1.channels.WebhookChannelSettings
 import io.securitycam.level1.channels.webhookPresets
 import io.securitycam.level1.core.AnalysisResolution
+import io.securitycam.level1.core.ScheduleWindow
 import io.securitycam.level1.core.ScreenOrientation
 import io.securitycam.level1.core.VideoQuality
 import io.securitycam.level1.core.TriggerType
@@ -208,6 +212,52 @@ fun SettingsScreen(
                         },
                     )
                 }
+            }
+            SectionTitle("Schedule")
+            BodyText("Monitoring pauses during these times.")
+            Spacer(Modifier.height(8.dp))
+            for (window in current.scheduleExclusions) {
+                ScheduleWindowCard(
+                    window = window,
+                    onChanged = { next ->
+                        viewModel.update { s ->
+                            s.copy(
+                                scheduleExclusions = s.scheduleExclusions.map {
+                                    if (it.id == window.id) next else it
+                                },
+                            )
+                        }
+                    },
+                    onDelete = {
+                        viewModel.update { s ->
+                            s.copy(
+                                scheduleExclusions =
+                                    s.scheduleExclusions.filterNot { it.id == window.id },
+                            )
+                        }
+                    },
+                )
+            }
+            Button(
+                onClick = {
+                    viewModel.update { s ->
+                        s.copy(
+                            scheduleExclusions = s.scheduleExclusions + ScheduleWindow(
+                                id = java.util.UUID.randomUUID().toString(),
+                                days = 0b1111111,
+                                startHour = 22,
+                                startMinute = 0,
+                                endHour = 6,
+                                endMinute = 0,
+                            ),
+                        )
+                    }
+                },
+                modifier = Modifier.testTag("scheduleAddWindow"),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Add window")
             }
             SectionTitle("Notifications")
             Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
@@ -416,6 +466,100 @@ internal fun buildChannelConfigs(
 
         else -> c
     }
+}
+
+/** One recurring exclusion window: enable switch, day toggles, time steppers. */
+@Composable
+private fun ScheduleWindowCard(
+    window: ScheduleWindow,
+    onChanged: (ScheduleWindow) -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .testTag("scheduleWindow_${window.id}"),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    scheduleSummary(window),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "delete_${window.id}")
+                }
+                Switch(
+                    checked = window.enabled,
+                    onCheckedChange = { onChanged(window.copy(enabled = it)) },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val labels = listOf("M", "T", "W", "T", "F", "S", "S")
+                for (bit in 0 until 7) {
+                    val active = window.days and (1 shl bit) != 0
+                    FilterChip(
+                        selected = active,
+                        onClick = {
+                            val next = if (active) {
+                                window.days and (1 shl bit).inv()
+                            } else {
+                                window.days or (1 shl bit)
+                            }
+                            onChanged(window.copy(days = next))
+                        },
+                        label = { Text(labels[bit]) },
+                    )
+                }
+            }
+            TimeStepperRow("Start", window.startHour, window.startMinute) { h, m ->
+                onChanged(window.copy(startHour = h, startMinute = m))
+            }
+            TimeStepperRow("End", window.endHour, window.endMinute) { h, m ->
+                onChanged(window.copy(endHour = h, endMinute = m))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeStepperRow(
+    label: String,
+    hour: Int,
+    minute: Int,
+    onStep: (Int, Int) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("$label ${fmtTime(hour, minute)}", modifier = Modifier.weight(1f))
+        IconButton(
+            onClick = {
+                var t = hour * 60 + minute - 15
+                t = (t + 1440) % 1440
+                onStep(t / 60, t % 60)
+            },
+        ) { Icon(Icons.Filled.RemoveCircleOutline, contentDescription = "${label}_minus") }
+        IconButton(
+            onClick = {
+                val t = (hour * 60 + minute + 15) % 1440
+                onStep(t / 60, t % 60)
+            },
+        ) { Icon(Icons.Outlined.AddCircleOutline, contentDescription = "${label}_plus") }
+    }
+}
+
+private fun fmtTime(hour: Int, minute: Int): String = "%02d:%02d".format(hour, minute)
+
+private fun scheduleSummary(window: ScheduleWindow): String {
+    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    val days = (0 until 7).filter { window.days and (1 shl it) != 0 }.map { names[it] }
+    val dayText = when {
+        days.isEmpty() -> "Never"
+        days.size == 7 -> "Every day"
+        else -> days.joinToString(",")
+    }
+    return "$dayText ${fmtTime(window.startHour, window.startMinute)}–" +
+        fmtTime(window.endHour, window.endMinute) +
+        if (!window.enabled) " (off)" else ""
 }
 
 @Composable
