@@ -25,7 +25,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `email_channel_test.dart` | `EmailChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [x] |
 | `event_pipeline_test.dart` | `EventPipelineTest.kt` | Phase 2 | Task 2.4 | [x] |
-| `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [ ] |
+| `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [x] |
 | `face_detector_test.dart` | `FaceEngineTest.kt` | Phase 3 | Task 3.4 | [x] |
 | `ffmpeg_args_test.dart` | `FfmpegArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
 | `ffmpeg_audio_args_test.dart` | `FfmpegAudioArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
@@ -38,9 +38,9 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [x] |
 | `pipeline_test.dart` | `DetectorPipelineTest.kt` | Phase 2 | Task 2.2 | [x] |
 | `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
-| `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [ ] |
+| `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [x] (gesture paths covered by `RegionEditorViewModelTest`) |
 | `region_filter_test.dart` | `RegionFilterTest.kt` | Phase 2 | Task 2.3 | [x] |
-| `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [ ] |
+| `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [x] |
 | `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [x] |
 | `settings_test.dart` | `SettingsTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `shell_navigation_test.dart` | `ShellNavigationTest.kt` | Phase 5 | Task 5.4 | [ ] |
