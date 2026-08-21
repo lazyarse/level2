@@ -45,16 +45,15 @@ class FaceDetector(
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
         var faces = engine.detectFaces(color)
-        if (regions.isNotEmpty()) {
-            faces = faces.filter { f ->
-                RegionFilter.rectOverlapsAny(
-                    regions,
-                    f.x1 / color.width,
-                    f.y1 / color.height,
-                    (f.x2 - f.x1) / color.width,
-                    (f.y2 - f.y1) / color.height,
-                )
-            }
+        faces = faces.filter { f ->
+            val bx = f.x1 / color.width
+            val by = f.y1 / color.height
+            val bw = (f.x2 - f.x1) / color.width
+            val bh = (f.y2 - f.y1) / color.height
+            // Keep when it overlaps an inclusion zone (or none exist) and no
+            // exclusion zone: exclusion wins.
+            RegionFilter.rectOverlapsAny(regions, bx, by, bw, bh) &&
+                !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
         }
         if (faces.isEmpty()) {
             persistenceCount = 0

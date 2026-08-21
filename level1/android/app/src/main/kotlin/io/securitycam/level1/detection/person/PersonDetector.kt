@@ -5,6 +5,7 @@ import io.securitycam.level1.detection.AnalysisFrame
 import io.securitycam.level1.detection.DetectionResult
 import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.detection.FrameDetector
+import io.securitycam.level1.detection.RegionFilter
 
 /**
  * Person-detection trigger. Runs on color analysis frames (motion-gated by the
@@ -41,7 +42,19 @@ class PersonDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        val people = engine.detectPersons(color)
+        var people = engine.detectPersons(color)
+        if (people.isNotEmpty()) {
+            // Keep when the box overlaps an inclusion zone (or none exist) and
+            // no exclusion zone: exclusion wins.
+            people = people.filter { p ->
+                val bx = p.x1 / color.width
+                val by = p.y1 / color.height
+                val bw = (p.x2 - p.x1) / color.width
+                val bh = (p.y2 - p.y1) / color.height
+                RegionFilter.rectOverlapsAny(regions, bx, by, bw, bh) &&
+                    !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
+            }
+        }
         if (people.isEmpty()) {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)

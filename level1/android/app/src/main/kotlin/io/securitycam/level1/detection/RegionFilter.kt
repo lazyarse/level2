@@ -52,6 +52,18 @@ object RegionFilter {
         return false
     }
 
+    /**
+     * Exclusion-side overlap test: unlike [rectOverlapsAny], an empty list
+     * excludes nothing (a box never hits an absent zone).
+     */
+    fun boxHitsAnyExclusion(
+        exclusions: List<DetectionRegion>,
+        x: Double,
+        y: Double,
+        w: Double,
+        h: Double,
+    ): Boolean = exclusions.isNotEmpty() && rectOverlapsAny(exclusions, x, y, w, h)
+
     private fun boxOverlapsRegion(
         region: DetectionRegion,
         x: Double,

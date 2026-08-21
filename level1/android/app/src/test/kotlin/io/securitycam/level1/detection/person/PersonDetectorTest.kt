@@ -3,12 +3,14 @@ package io.securitycam.level1.detection.person
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.detection.AnalysisFrame
 import io.securitycam.level1.detection.ColorBitmap
+import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.detection.GrayscaleBitmap
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Port of `test/person_detector_test.dart`. */
@@ -26,6 +28,9 @@ class PersonDetectorTest {
         bitmap = GrayscaleBitmap(3, 3, ByteArray(9)),
         color = c,
     )
+
+    /** 100x100 color frame so pixel-coordinate engine boxes map to 0..1 cleanly. */
+    private fun bigColor(): ColorBitmap = ColorBitmap(100, 100, ByteArray(3 * 100 * 100))
 
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
@@ -112,6 +117,59 @@ class PersonDetectorTest {
         d.analyzeFrameAsync(frame(base, c = color(140)))
         d.reset()
         val r = d.analyzeFrameAsync(frame(base.plusSeconds(1), c = color(140)))
+        assertFalse(r.triggered)
+        d.dispose()
+    }
+
+    @Test
+    fun personInsideExclusionZoneIsDropped() = runBlocking {
+        val engine = MockPersonEngine()
+        // Engine boxes are pixel coords on a 100x100 frame: (10..40)^2 -> 0.1..0.4 normalized.
+        engine.persons.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        val d = PersonDetector(
+            DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
+            engine = engine,
+        )
+        d.init()
+        d.exclusionRegions = listOf(
+            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        )
+        val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
+        assertFalse(r.triggered)
+        d.dispose()
+    }
+
+    @Test
+    fun personOutsideExclusionTriggers() = runBlocking {
+        val engine = MockPersonEngine()
+        // Pixels (60..90)^2 -> 0.6..0.9 normalized, clear of the 0..0.5 exclusion.
+        engine.persons.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val d = PersonDetector(
+            DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
+            engine = engine,
+        )
+        d.init()
+        d.exclusionRegions = listOf(
+            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        )
+        val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
+        assertTrue(r.triggered)
+        d.dispose()
+    }
+
+    @Test
+    fun personOutsideInclusionsIsDropped() = runBlocking {
+        val engine = MockPersonEngine()
+        engine.persons.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val d = PersonDetector(
+            DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
+            engine = engine,
+        )
+        d.init()
+        d.regions = listOf(
+            DetectionRegion("r1", "rect", "focus", listOf(0.0, 0.0, 0.4, 0.4)),
+        )
+        val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
         assertFalse(r.triggered)
         d.dispose()
     }

@@ -134,4 +134,58 @@ class MotionDetectorTest {
             ).triggered,
         )
     }
+
+    @Test
+    fun changeInsideExclusionDoesNotTriggerWhenNoInclusions() {
+        val detector = MotionDetector(config())
+        detector.exclusionRegions = listOf(
+            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        )
+        assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
+        assertFalse(
+            detector.analyzeFrame(
+                frame(1, buildFrameWithRect(16, 16, 140, 1, 1, 4, 4, 30), 16, 16),
+            ).triggered,
+        )
+        assertFalse(
+            detector.analyzeFrame(
+                frame(2, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16),
+            ).triggered,
+        )
+    }
+
+    @Test
+    fun changeOutsideExclusionStillTriggers() {
+        val detector = MotionDetector(config())
+        detector.exclusionRegions = listOf(
+            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        )
+        assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
+        detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16))
+        assertTrue(
+            detector.analyzeFrame(
+                frame(2, buildFrameWithRect(16, 16, 140, 10, 10, 8, 8, 30), 16, 16),
+            ).triggered,
+        )
+    }
+
+    @Test
+    fun swappingExclusionListRebuildsMaskWithoutReset() {
+        val detector = MotionDetector(config(threshold = 0.05, persistence = 1))
+        detector.exclusionRegions = listOf(
+            DetectionRegion("e1", "rect", "all", listOf(0.0, 0.0, 1.0, 1.0)),
+        )
+        assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
+        assertFalse(
+            detector.analyzeFrame(
+                frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16),
+            ).triggered,
+        )
+        detector.exclusionRegions = emptyList()
+        assertTrue(
+            detector.analyzeFrame(
+                frame(2, buildFrameWithRect(16, 16, 140, 10, 10, 8, 8, 30), 16, 16),
+            ).triggered,
+        )
+    }
 }
