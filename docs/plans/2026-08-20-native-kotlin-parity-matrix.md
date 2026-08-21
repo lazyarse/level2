@@ -22,7 +22,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `detection_region_test.dart` | `DetectionRegionTest.kt` | Phase 1 | Task 1.3 | [x] |
 | `detector_config_test.dart` | `DetectorConfigTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `detector_registry_test.dart` | `DetectorRegistryTest.kt` | Phase 2 | Task 2.1 | [x] |
-| `email_channel_test.dart` | `EmailChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `email_channel_test.dart` | `EmailChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [ ] |
 | `event_pipeline_test.dart` | `EventPipelineTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [ ] |
@@ -37,16 +37,16 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [x] |
 | `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [x] |
 | `pipeline_test.dart` | `DetectorPipelineTest.kt` | Phase 2 | Task 2.2 | [x] |
-| `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [ ] |
 | `region_filter_test.dart` | `RegionFilterTest.kt` | Phase 2 | Task 2.3 | [x] |
 | `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [ ] |
 | `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [ ] |
 | `settings_test.dart` | `SettingsTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `shell_navigation_test.dart` | `ShellNavigationTest.kt` | Phase 5 | Task 5.4 | [ ] |
-| `telegram_channel_test.dart` | `TelegramChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `telegram_channel_test.dart` | `TelegramChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `trigger_batcher_test.dart` | `TriggerBatcherTest.kt` | Phase 2 | Task 2.4 | [x] |
-| `webhook_channel_test.dart` | `WebhookChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
+| `webhook_channel_test.dart` | `WebhookChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
 | `yamnet_audio_event_classifier_test.dart` | `YamnetClassifierTest.kt` | Phase 3 | Task 3.2 | [x] |
 | `yolo_person_engine_test.dart` | `YoloPostprocessTest.kt` | Phase 3 | Task 3.3 | [x] |
 
