@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -30,7 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -153,15 +157,33 @@ private fun MonitorStatusBar(
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.weight(1f))
+            // "Recording" indicator while the pipeline is live.
+            if (monitoring) {
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color.Red),
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Button(onClick = if (monitoring) onStop else onStart) {
+                Icon(
+                    if (monitoring) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.width(4.dp))
                 Text(if (monitoring) "Stop" else "Start")
             }
         }
-        if (error != null) {
+        if (state == MonitorState.Error && error != null) {
             Text(
-                text = error,
+                text = "Error: $error",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("monitorErrorBanner"),
             )
         }
     }
