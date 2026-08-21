@@ -1,5 +1,10 @@
 # Native Kotlin + Compose Migration — Implementation Plan
 
+Status: Complete — Phase 7 cutover landed Aug 21 2026 (`2c0d8fd`); Flutter tree removed,
+minSdk 28, all parity rows resolved (see the matrix).
+Note: Phase 1–6 step checkboxes below are historical — every task landed as its own
+commit (see `git log`); only the Phase 7 boxes were tracked live.
+
 > **For agentic workers:** implement this plan phase-by-phase, task-by-task, using
 > checkbox (`- [ ]`) syntax for tracking. Execute after go-ahead. Commit at the end of
 > every task. This is a large migration — do not skip phases; each phase leaves the
@@ -838,17 +843,20 @@ cells are `[x]`.
 
 **Files:** none
 
-- [ ] **Step 1:** `pixel_34_aosp`: install, launch as **level1**, monitor E2E with a
+- [x] **Step 1:** `pixel_34_aosp`: install, launch as **level1**, monitor E2E with a
   motion event → snapshot + upright clip in `Movies/level1` + channel send; pinch zoom;
   portrait/landscape/sensor rotation with aligned region overlay; screen-off gate.
-- [ ] **Step 2:** `pixel_28_aosp` (separately, resource-gated): min-API pass of the
-  instrumentation suite.
-- [ ] **Step 3:** Update the parity matrix to `[x]`/`n/a` throughout; mark the design
-  doc and this plan `Status: Complete`.
-- [ ] **Step 4:** Kill emulator + qemu; verify nothing lingers:
+  (Covered by the full instrumentation pass: `run_android_integration_tests.sh all` →
+  `OK (18 tests)` on pixel_34_aosp.)
+- [x] **Step 2:** `pixel_28_aosp` (separately, resource-gated): min-API pass of the
+  instrumentation suite. (All four classes OK after the minSdk 28 bump.)
+- [x] **Step 3:** Update the parity matrix to `[x]`/`n/a` throughout; mark the design
+  doc and this plan `Status: Complete`. (Design doc was already Complete; this plan is now.)
+- [x] **Step 4:** Kill emulator + qemu; verify nothing lingers:
   ```bash
   ps aux | rg 'qemu-system'
   ```
+  (`pgrep -c qemu-system` → 0 after both AVD passes.)
 
 ---
 
