@@ -21,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import io.securitycam.level1.ui.events.EventsScreen
+import io.securitycam.level1.ui.events.EventsViewModel
 import io.securitycam.level1.ui.monitor.MonitorScreen
 import io.securitycam.level1.ui.regions.RegionEditorScreen
 import io.securitycam.level1.ui.settings.SettingsScreen
@@ -70,10 +72,8 @@ fun SecurityCamApp() {
             } else {
                 when (tab) {
                     Level1Tab.Monitor -> MonitorScreen()
-                    Level1Tab.Events -> Text(
-                        text = "Events — Phase 5",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(16.dp),
+                    Level1Tab.Events -> EventsScreen(
+                        viewModel = viewModel(factory = EventsViewModel.Factory),
                     )
                     Level1Tab.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,
