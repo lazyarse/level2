@@ -41,7 +41,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [ ] |
 | `region_filter_test.dart` | `RegionFilterTest.kt` | Phase 2 | Task 2.3 | [x] |
 | `settings_screen_test.dart` | `SettingsScreenTest.kt` | Phase 5 | Task 5.1 | [ ] |
-| `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [ ] |
+| `settings_store_test.dart` | `SettingsStoreTest.kt` | Phase 4 | Task 4.1 | [x] |
 | `settings_test.dart` | `SettingsTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `shell_navigation_test.dart` | `ShellNavigationTest.kt` | Phase 5 | Task 5.4 | [ ] |
 | `telegram_channel_test.dart` | `TelegramChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
