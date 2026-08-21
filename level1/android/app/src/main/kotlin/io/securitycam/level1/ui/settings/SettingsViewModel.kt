@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level1.camera_service.VideoClipRecorder
+import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
+import io.securitycam.level1.event.ChannelFactory
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
 import io.securitycam.level1.storage.FileSnapshotStore
@@ -31,6 +33,7 @@ class SettingsViewModel(
     private val settingsLoader: suspend () -> AppSettings,
     private val settingsSaver: suspend (AppSettings) -> Unit,
     private val eventsClearer: suspend (Duration?) -> Unit,
+    private val channelFactories: Map<String, ChannelFactory> = ChannelRegistry.factories,
 ) : ViewModel() {
 
     /** Null until the stored settings finish loading. */
@@ -40,6 +43,13 @@ class SettingsViewModel(
     /** One-shot snackbar text; consume with [consumeMessage]. */
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    /** Channel id whose "Send test" is in flight (button disabled). */
+    private val _sendingTestId = MutableStateFlow<String?>(null)
+    val sendingTestId: StateFlow<String?> = _sendingTestId.asStateFlow()
+
+    /** Factories exposed so the UI can gate the send-test button on validate(). */
+    val testFactories: Map<String, ChannelFactory> get() = channelFactories
 
     init {
         viewModelScope.launch {
@@ -68,6 +78,36 @@ class SettingsViewModel(
 
     fun consumeMessage() {
         _message.value = null
+    }
+
+    /**
+     * Sends a test alert through [config]'s channel (design:
+     * `2026-08-19-channel-sendtest-design.md`). Returns "delivered",
+     * "invalid: <reason>" (validate short-circuit, no network), or
+     * "failed: <error>".
+     */
+    suspend fun sendTest(config: io.securitycam.level1.core.ChannelConfig): String {
+        val factory = channelFactories[config.type]
+            ?: return "failed: unknown channel type ${config.type}"
+        val channel = factory(config)
+        val invalid = channel.validate()
+        if (invalid != null) return "invalid: $invalid"
+        return try {
+            channel.sendTest()
+            "delivered"
+        } catch (t: Throwable) {
+            "failed: ${t.message ?: t.javaClass.simpleName}"
+        }
+    }
+
+    /** UI entry point: runs [sendTest] and surfaces the result as a snackbar. */
+    fun sendTestFromUi(config: io.securitycam.level1.core.ChannelConfig) {
+        if (_sendingTestId.value != null) return
+        _sendingTestId.value = config.id
+        viewModelScope.launch {
+            _message.value = "Send test: ${sendTest(config)}"
+            _sendingTestId.value = null
+        }
     }
 
     companion object {

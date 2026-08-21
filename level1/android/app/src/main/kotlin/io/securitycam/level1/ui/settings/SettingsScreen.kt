@@ -37,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -210,6 +211,11 @@ fun SettingsScreen(
                                 )
                             }
                         },
+                        onSendTest = { merged ->
+                            viewModel.sendTestFromUi(merged)
+                        },
+                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
+                        factories = viewModel.testFactories,
                     )
                 }
             }
@@ -648,6 +654,9 @@ private fun ChannelCard(
     config: io.securitycam.level1.core.ChannelConfig,
     fields: MutableMap<String, String>,
     onEnabledChange: (Boolean) -> Unit,
+    onSendTest: (io.securitycam.level1.core.ChannelConfig) -> Unit,
+    inFlight: Boolean,
+    factories: Map<String, io.securitycam.level1.event.ChannelFactory>,
 ) {
     // Keys are already fully qualified as "<channelId>.<field>".
     val setField: SetField = { key, value -> fields[key] = value }
@@ -708,6 +717,20 @@ private fun ChannelCard(
                     SecretField("User key", fields, "${config.id}.userKey", setField)
                     Field("Sound", fields, "${config.id}.sound", setField)
                 }
+            }
+            val draftValid = remember(config.id, config.type, fields.toMap()) {
+                val merged = buildChannelConfigs(listOf(config), fields).first()
+                val channel = factories[merged.type]?.invoke(merged)
+                channel != null && channel.validate() == null
+            }
+            OutlinedButton(
+                onClick = {
+                    onSendTest(buildChannelConfigs(listOf(config), fields).first())
+                },
+                enabled = draftValid && !inFlight,
+                modifier = Modifier.testTag("sendTest_${config.id}"),
+            ) {
+                Text(if (inFlight) "Sending…" else "Send test")
             }
         }
     }
