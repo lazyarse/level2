@@ -50,11 +50,6 @@ android {
             isIncludeAndroidResources = true
         }
     }
-
-    // Flutter tooling can regenerate src/main/java/io/flutter/plugins/
-    // GeneratedPluginRegistrant.java whenever the reference harness runs; this
-    // native build must ignore it (it references the Flutter embedding).
-    sourceSets["main"].java.exclude("io/flutter/plugins/**")
 }
 
 dependencies {
