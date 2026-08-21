@@ -34,6 +34,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -64,21 +67,34 @@ private val RegionPalette = listOf(
     Color(0xFFD7AEFB),
 )
 
+/** Distinct color for exclusion (privacy) zones. */
+private val ExclusionBase = Color(0xFFEA4335)
+
+/** Palette entry for the active editor mode: red in exclusion mode. */
+private fun regionColor(mode: RegionEditorMode, index: Int): Color =
+    if (mode == RegionEditorMode.exclusion) {
+        ExclusionBase
+    } else {
+        RegionPalette[index % RegionPalette.size]
+    }
+
 /**
- * Full-screen inclusion-region editor over the live preview. Port of
- * `lib/ui/region_editor_screen.dart`: draw rect/polygon regions, drag-move,
- * corner-resize, rename, delete, clear; reports the final list via [onSave].
+ * Full-screen region editor over the live preview. Port of
+ * `lib/ui/region_editor_screen.dart`, extended per the privacy-zones design
+ * with an Inclusion/Exclusion mode toggle: both lists are edited in place
+ * (exclusions rendered in red) and reported together via [onSave].
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RegionEditorScreen(
     initialRegions: List<DetectionRegion>,
-    onSave: (List<DetectionRegion>) -> Unit,
+    onSave: (inclusions: List<DetectionRegion>, exclusions: List<DetectionRegion>) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     showPreview: Boolean = true,
+    initialExclusions: List<DetectionRegion> = emptyList(),
 ) {
-    val vm = remember { RegionEditorViewModel(initialRegions) }
+    val vm = remember { RegionEditorViewModel(initialRegions, initialExclusions) }
     var confirmClear by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -89,7 +105,7 @@ fun RegionEditorScreen(
                 actions = {
                     TextButton(
                         onClick = {
-                            onSave(vm.regions)
+                            onSave(vm.inclusionRegions, vm.exclusionRegions)
                             onClose()
                         },
                         modifier = Modifier.testTag("regionDone"),
@@ -99,6 +115,24 @@ fun RegionEditorScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            SingleChoiceSegmentedButtonRow(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                SegmentedButton(
+                    selected = vm.mode == RegionEditorMode.inclusion,
+                    onClick = { vm.chooseMode(RegionEditorMode.inclusion) },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                    modifier = Modifier.testTag("regionMode_inclusion"),
+                ) { Text("Inclusion") }
+                SegmentedButton(
+                    selected = vm.mode == RegionEditorMode.exclusion,
+                    onClick = { vm.chooseMode(RegionEditorMode.exclusion) },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                    modifier = Modifier.testTag("regionMode_exclusion"),
+                ) { Text("Exclusion") }
+            }
             EditorCanvas(vm, showPreview, Modifier.weight(1f).padding(8.dp))
             Column(Modifier.padding(12.dp)) {
                 FlowRow {
@@ -159,7 +193,7 @@ fun RegionEditorScreen(
                                 Icon(
                                     Icons.Filled.CropSquare,
                                     contentDescription = null,
-                                    tint = RegionPalette[i % RegionPalette.size],
+                                    tint = regionColor(vm.mode, i),
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Column {
@@ -217,8 +251,13 @@ fun RegionEditorScreen(
             title = { Text("Clear all regions?") },
             text = {
                 Text(
-                    "This removes every inclusion region. Detection will apply " +
-                        "to the whole frame.",
+                    if (vm.mode == RegionEditorMode.exclusion) {
+                        "This removes every exclusion zone. Detection will no " +
+                            "longer ignore those areas."
+                    } else {
+                        "This removes every inclusion region. Detection will apply " +
+                            "to the whole frame."
+                    },
                 )
             },
             dismissButton = {
@@ -293,7 +332,7 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
             val w = size.width
             val h = size.height
             vm.regions.forEachIndexed { i, r ->
-                val base = RegionPalette[i % RegionPalette.size]
+                val base = regionColor(vm.mode, i)
                 val fill = base.copy(alpha = 0.18f)
                 val isSelected = i == vm.selected
                 if (r.shape == DetectionRegionShape.rect && r.points.size >= 4) {

@@ -77,8 +77,11 @@ fun SecurityCamApp(
             if (showRegionEditor) {
                 RegionEditorScreen(
                     initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
-                    onSave = { regions ->
-                        settingsViewModel.update { it.copy(detectionRegions = regions) }
+                    initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),
+                    onSave = { regions, exclusions ->
+                        settingsViewModel.update {
+                            it.copy(detectionRegions = regions, exclusionRegions = exclusions)
+                        }
                     },
                     onClose = { showRegionEditor = false },
                 )

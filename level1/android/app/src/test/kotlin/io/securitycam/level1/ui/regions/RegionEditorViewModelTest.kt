@@ -3,6 +3,7 @@ package io.securitycam.level1.ui.regions
 import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectionRegionShape
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -143,6 +144,58 @@ class RegionEditorViewModelTest {
         vm.select(0)
         vm.clearAll()
         assertEquals(0, vm.regions.size)
+        assertEquals(-1, vm.selected)
+        assertNull(vm.pendingPoly)
+    }
+
+    @Test
+    fun modeToggleStartsWithEmptyExclusionList() {
+        val vm = vmWithDoorway()
+        vm.chooseMode(RegionEditorMode.exclusion)
+        assertEquals(RegionEditorMode.exclusion, vm.mode)
+        assertEquals(0, vm.regions.size)
+        assertEquals(-1, vm.selected)
+        // The inclusion list is untouched.
+        assertEquals(1, vm.inclusionRegions.size)
+    }
+
+    @Test
+    fun toolsOperateOnTheActiveModeListOnly() {
+        val vm = vmWithDoorway()
+        vm.chooseMode(RegionEditorMode.exclusion)
+        vm.addRegion()
+        assertEquals(1, vm.exclusionRegions.size)
+        assertEquals(1, vm.inclusionRegions.size)
+
+        vm.chooseMode(RegionEditorMode.inclusion)
+        assertEquals(1, vm.regions.size)
+
+        vm.chooseMode(RegionEditorMode.exclusion)
+        vm.deleteAt(0)
+        assertEquals(0, vm.exclusionRegions.size)
+        assertEquals(1, vm.inclusionRegions.size)
+    }
+
+    @Test
+    fun clearAllOnlyClearsTheActiveMode() {
+        val vm = RegionEditorViewModel(
+            listOf(DetectionRegion("r0", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))),
+            listOf(DetectionRegion("e0", "rect", "private", listOf(0.6, 0.6, 0.9, 0.9))),
+        )
+        vm.chooseMode(RegionEditorMode.exclusion)
+        vm.clearAll()
+        assertEquals(0, vm.exclusionRegions.size)
+        assertEquals(1, vm.inclusionRegions.size)
+    }
+
+    @Test
+    fun modeSwitchDropsTransientSelectionState() {
+        val vm = vmWithDoorway()
+        vm.select(0)
+        vm.chooseShape(DetectionRegionShape.poly)
+        vm.onTap(0.3, 0.3) // starts a pending poly
+        assertNotNull(vm.pendingPoly)
+        vm.chooseMode(RegionEditorMode.exclusion)
         assertEquals(-1, vm.selected)
         assertNull(vm.pendingPoly)
     }

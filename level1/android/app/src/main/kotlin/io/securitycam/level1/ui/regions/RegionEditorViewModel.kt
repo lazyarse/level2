@@ -8,17 +8,34 @@ import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectionRegionShape
 import io.securitycam.level1.detection.RegionFilter.pointInRegion
 
+/** Which list the editor tools currently operate on. */
+enum class RegionEditorMode { inclusion, exclusion }
+
 /**
  * Interaction logic for the region editor. Port of the state machine in
  * `lib/ui/region_editor_screen.dart`: tap-to-select / poly-vertex placement,
  * drag-to-draw new rects, corner-resize and move of existing rects, label
- * editing, delete, clear. All coordinates are normalized (0..1) analysis-frame
- * space; the composable only converts pointer offsets.
+ * editing, delete, clear — extended per the privacy-zones design to edit BOTH
+ * the inclusion and exclusion lists through an active-mode toggle. All
+ * coordinates are normalized (0..1) analysis-frame space; the composable only
+ * converts pointer offsets.
  */
-class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
+class RegionEditorViewModel(
+    initialRegions: List<DetectionRegion>,
+    initialExclusions: List<DetectionRegion> = emptyList(),
+) {
 
-    var regions by mutableStateOf(initialRegions)
+    var inclusionRegions by mutableStateOf(initialRegions)
         private set
+    var exclusionRegions by mutableStateOf(initialExclusions)
+        private set
+    var mode by mutableStateOf(RegionEditorMode.inclusion)
+        private set
+
+    /** The list the current [mode] edits; every tool below operates on it. */
+    val regions: List<DetectionRegion>
+        get() = if (mode == RegionEditorMode.inclusion) inclusionRegions else exclusionRegions
+
     var selected by mutableIntStateOf(-1)
         private set
     var shape by mutableStateOf(DetectionRegionShape.rect)
@@ -34,6 +51,22 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
     private var dragResizing = false
     private var dragMoving = false
 
+    fun chooseMode(value: RegionEditorMode) {
+        if (mode == value) return
+        mode = value
+        selected = -1
+        pendingPoly = null
+        dragRect = null
+    }
+
+    private fun setActive(value: List<DetectionRegion>) {
+        if (mode == RegionEditorMode.inclusion) {
+            inclusionRegions = value
+        } else {
+            exclusionRegions = value
+        }
+    }
+
     fun select(index: Int) {
         selected = index
     }
@@ -48,9 +81,9 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
         val i = selected
         if (i !in regions.indices) return
         val r = regions[i]
-        regions = regions.toMutableList().also {
+        setActive(regions.toMutableList().also {
             it[i] = r.copy(label = label.trim().ifEmpty { r.label })
-        }
+        })
     }
 
     fun onTap(nx: Double, ny: Double) {
@@ -92,9 +125,9 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
                 val i = selected
                 if (i in regions.indices) {
                     val r = regions[i]
-                    regions = regions.toMutableList().also {
+                    setActive(regions.toMutableList().also {
                         it[i] = r.copy(points = listOf(r.points[0], r.points[1], nx.toDouble(), ny.toDouble()))
-                    }
+                    })
                 }
             }
             dragMoving -> {
@@ -102,9 +135,9 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
                 val last = dragLast
                 if (i in regions.indices && last != null) {
                     val r = regions[i]
-                    regions = regions.toMutableList().also {
+                    setActive(regions.toMutableList().also {
                         it[i] = r.copy(points = translate(r.points, nx - last.first, ny - last.second))
-                    }
+                    })
                     dragLast = n
                 }
             }
@@ -153,7 +186,7 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
 
     fun deleteAt(index: Int) {
         if (index !in regions.indices) return
-        regions = regions.toMutableList().also { it.removeAt(index) }
+        setActive(regions.toMutableList().also { it.removeAt(index) })
         when {
             selected == index -> {
                 selected = -1
@@ -165,12 +198,12 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
     fun deleteSelected() {
         val i = selected
         if (i !in regions.indices) return
-        regions = regions.toMutableList().also { it.removeAt(i) }
+        setActive(regions.toMutableList().also { it.removeAt(i) })
         selected = -1
     }
 
     fun clearAll() {
-        regions = emptyList()
+        setActive(emptyList())
         selected = -1
         pendingPoly = null
     }
@@ -178,11 +211,13 @@ class RegionEditorViewModel(initialRegions: List<DetectionRegion>) {
     private fun addRegion(shapeValue: String, points: List<Double>) {
         val id = "r${nextId}"
         nextId++
-        regions = regions + DetectionRegion(
-            id = id,
-            shape = shapeValue,
-            label = "Region $nextId",
-            points = points,
+        setActive(
+            regions + DetectionRegion(
+                id = id,
+                shape = shapeValue,
+                label = "Region $nextId",
+                points = points,
+            ),
         )
         select(regions.size - 1)
     }
