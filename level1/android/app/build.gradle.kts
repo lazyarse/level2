@@ -13,6 +13,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time (Duration, Instant, …) is API 26+; desugar it for minSdk 24.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -53,6 +55,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     // 1.3.4 pinned: 1.4.x's bindToLifecycle(…, vararg useCases) collides in Kotlin
     // with the 8-arg default-args synthetic facade (internal) — resolution picks
     // the internal one and fails to compile.
