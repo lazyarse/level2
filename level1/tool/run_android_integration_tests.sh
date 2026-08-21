@@ -16,6 +16,9 @@
 #
 # Clip audio assertion: clips always carry the mic track, so monitoring tests
 # default to expectClipAudio=true. Override with EXPECT_CLIP_AUDIO=false.
+#
+# Build type: instrumentation runs against the MINIFIED "staging" build by
+# default (R8 keeps validated on every pass). Override with BUILD_TYPE=debug.
 set -uo pipefail
 
 SDK="${ANDROID_HOME:-/home/tpa/code/android-env/android-sdk}"
@@ -23,7 +26,10 @@ ADB="$SDK/platform-tools/adb"
 SERIAL="${1:-emulator-5554}"
 TEST_CLASS="${2:-io.securitycam.level1.MonitoringInstrumentedTest}"
 EXPECT_AUDIO="${EXPECT_CLIP_AUDIO:-true}"
-PKG=io.securitycam.level1
+BUILD_TYPE="${BUILD_TYPE:-staging}"
+SUFFIX=""
+[ "$BUILD_TYPE" = "staging" ] && SUFFIX=".staging"
+PKG="io.securitycam.level1$SUFFIX"
 TEST_PKG="$PKG.test"
 RUNNER="androidx.test.runner.AndroidJUnitRunner"
 OUT="/tmp/opencode/itest_native_$(basename "${TEST_CLASS##*.}").log"
@@ -46,7 +52,12 @@ done
 }
 
 echo "== building + installing APKs =="
-(cd "$ANDROID_ROOT" && timeout 300 $GRADLE :app:installDebug :app:installDebugAndroidTest) || {
+case "$BUILD_TYPE" in
+  staging) BT_TASK="Staging" ;;
+  debug)   BT_TASK="Debug" ;;
+  *) echo "unsupported BUILD_TYPE=$BUILD_TYPE (staging|debug)"; exit 1 ;;
+esac
+(cd "$ANDROID_ROOT" && timeout 300 $GRADLE ":app:install$BT_TASK" ":app:install${BT_TASK}AndroidTest") || {
   echo "gradle install failed"; exit 1
 }
 

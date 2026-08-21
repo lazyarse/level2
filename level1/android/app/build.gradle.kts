@@ -33,11 +33,51 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Instrumentation runs against the minified staging build by default so
+    // R8 regressions surface in every emulator pass, not only in release QA.
+    testBuildType = "staging"
+
+    signingConfigs {
+        val storeFile = (project.findProperty("LEVEL1_RELEASE_STORE_FILE") as String?)
+            ?: System.getenv("LEVEL1_RELEASE_STORE_FILE")
+        val storePassword = (project.findProperty("LEVEL1_RELEASE_STORE_PASSWORD") as String?)
+            ?: System.getenv("LEVEL1_RELEASE_STORE_PASSWORD")
+        val keyAlias = (project.findProperty("LEVEL1_RELEASE_KEY_ALIAS") as String?)
+            ?: System.getenv("LEVEL1_RELEASE_KEY_ALIAS")
+        val keyPassword = (project.findProperty("LEVEL1_RELEASE_KEY_PASSWORD") as String?)
+            ?: System.getenv("LEVEL1_RELEASE_KEY_PASSWORD")
+        if (storeFile != null && storePassword != null && keyAlias != null && keyPassword != null) {
+            create("release") {
+                this.storeFile = file(storeFile)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Sign with the debug key until a proper release signing config exists.
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (signingConfigs.any { it.name == "release" }) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // No LEVEL1_RELEASE_* credentials: fall back to the debug key.
+                signingConfig = signingConfigs.getByName("debug")
+            }
+        }
+        create("staging") {
+            initWith(getByName("release"))
+            // Minified like release but debug-signed so instrumentation can
+            // install alongside; proves R8 keeps on every emulator run.
             signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".staging"
         }
     }
 
