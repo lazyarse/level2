@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.securitycam.level1.ui.monitor.MonitorScreen
+import io.securitycam.level1.ui.settings.SettingsScreen
+import io.securitycam.level1.ui.settings.SettingsViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 enum class Level1Tab(val label: String, val icon: ImageVector) {
     Monitor("Monitor", Icons.Filled.Videocam),
@@ -58,10 +61,8 @@ fun SecurityCamApp() {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp),
                 )
-                Level1Tab.Settings -> Text(
-                    text = "Settings — Phase 5",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(16.dp),
+                Level1Tab.Settings -> SettingsScreen(
+                    viewModel = viewModel(factory = SettingsViewModel.Factory),
                 )
             }
         }

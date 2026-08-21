@@ -29,6 +29,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Host for Robolectric Compose UI tests (createComposeRule). -->
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
         <service
             android:name=".camera_service.MonitoringService"
             android:exported="false"

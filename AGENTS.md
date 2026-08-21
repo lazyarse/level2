@@ -11,6 +11,10 @@ Flutter security-cam app in `level1/` (Android + CameraX), with an emulator-base
   - (Linux desktop builds and `flutter analyze`/unit tests need no prefix.)
 - **Prefix with `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` for every native Gradle build** in `level1/android/`. The host default `java` is 25.0.4, which Gradle 8.14 refuses to run on (`BUILD FAILED` with the bare version string `25.0.4`). Example:
   - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
+- **Cap command timeouts tightly so hangs surface fast** (the full native unit suite takes ~45 s; a cold Gradle build ~2 min):
+  - Gradle build/test commands: **5 min max** (`timeout 300 ./gradlew ...`). Never use 10–15 min timeouts — a hanging test (e.g. a non-daemon thread blocking shutdown, as happened with OkHttp keep-alive + MockWebServer) should fail the command in minutes, not eat a quarter hour.
+  - adb/emulator operations (install, boot wait, UI automation): **2–3 min max** per step.
+  - If a timeout fires, diagnose the hang before rerunning; don't just raise the timeout.
 
 ## Dev/test target preference
 
