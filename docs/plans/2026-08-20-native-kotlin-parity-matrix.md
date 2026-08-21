@@ -23,7 +23,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `detector_config_test.dart` | `DetectorConfigTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `detector_registry_test.dart` | `DetectorRegistryTest.kt` | Phase 2 | Task 2.1 | [x] |
 | `email_channel_test.dart` | `EmailChannelTest.kt` | Phase 4 | Task 4.3 | [x] |
-| `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [ ] |
+| `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [x] |
 | `event_pipeline_test.dart` | `EventPipelineTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [ ] |
 | `face_detector_test.dart` | `FaceEngineTest.kt` | Phase 3 | Task 3.4 | [x] |
