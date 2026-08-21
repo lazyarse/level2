@@ -4,18 +4,32 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level1.camera_service.CameraEvents
 import io.securitycam.level1.camera_service.MonitoringService
 import io.securitycam.level1.camera_service.MonitoringServiceController
+import io.securitycam.level1.camera_service.VideoClipRecorder
+import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.detection.DetectionRegion
+import io.securitycam.level1.storage.AppDatabase
+import io.securitycam.level1.storage.EncryptedSecretStore
+import io.securitycam.level1.storage.FileSnapshotStore
+import io.securitycam.level1.storage.RoomEventLog
+import io.securitycam.level1.storage.SettingsStore
+import java.io.File
+import java.time.Duration
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Monitor state machine. Ports the Dart `MonitorController` lifecycle for the
@@ -45,6 +59,9 @@ class MonitorViewModel(
     private val stopMonitoring: () -> Unit = {
         MonitoringServiceController.stop()
     },
+    private val settingsLoader: suspend () -> AppSettings = {
+        SettingsStore(application, EncryptedSecretStore(application)).load()
+    },
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MonitorState.Idle)
@@ -61,6 +78,8 @@ class MonitorViewModel(
 
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
+
+    private var runtime: MonitoringRuntime? = null
 
     private val previewStatusListener: (Boolean) -> Unit = { active ->
         _previewActive.value = active
@@ -88,6 +107,8 @@ class MonitorViewModel(
     fun hasCorePermissions(): Boolean = hasCorePermissions(getApplication())
 
     companion object {
+        private const val TAG = "MonitorViewModel"
+
         /** Explicit factory: the default owner factory can't build an AndroidViewModel. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -123,16 +144,57 @@ class MonitorViewModel(
         _error.value = null
         startMonitoring()
         _state.value = MonitorState.Monitoring
+        // Build the detection→event runtime off the main thread; the service
+        // (camera + mic) is already streaming by the time it subscribes.
+        viewModelScope.launch {
+            try {
+                val settings = settingsLoader()
+                _cameraName.value = settings.cameraName
+                _detectionRegions.value = settings.detectionRegions
+                MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
+                    runtime = it
+                    it.begin()
+                }
+                purgeOldEvents(settings)
+            } catch (t: Throwable) {
+                Log.w(TAG, "runtime start failed", t)
+            }
+        }
     }
 
     fun stop() {
         if (_state.value == MonitorState.Idle) return
         stopMonitoring()
         _state.value = MonitorState.Idle
+        val current = runtime
+        runtime = null
+        viewModelScope.launch { current?.stop() }
+    }
+
+    /**
+     * Retention purge: deletes event rows older than [AppSettings.retentionDays]
+     * along with their snapshots and clips (port of the Dart purge logic).
+     */
+    private suspend fun purgeOldEvents(settings: AppSettings) {
+        val context = getApplication<Application>()
+        val cutoff = Instant.now().minus(Duration.ofDays(settings.retentionDays.toLong()))
+        val deleted = RoomEventLog(AppDatabase.get(context).eventDao()).deleteEvents(cutoff)
+        val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
+        for (name in deleted.snapshotNames) {
+            runCatching { snapshots.delete(name) }
+        }
+        for (name in deleted.videoNames) {
+            runCatching { VideoClipRecorder.delete(name) }
+        }
     }
 
     override fun onCleared() {
         CameraEvents.removePreviewStatusListener(previewStatusListener)
+        val current = runtime
+        runtime = null
+        if (current != null) {
+            runBlocking { current.stop() }
+        }
         stopMonitoring()
         super.onCleared()
     }
