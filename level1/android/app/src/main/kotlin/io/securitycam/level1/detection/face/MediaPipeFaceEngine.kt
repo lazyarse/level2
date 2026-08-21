@@ -16,7 +16,7 @@ import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
  */
 class MediaPipeFaceEngine(
     private val context: Context,
-    private val minScore: Double = 0.0,
+    private val minScore: Double = 0.5,
 ) : FaceEngine {
 
     private var detector: FaceDetector? = null

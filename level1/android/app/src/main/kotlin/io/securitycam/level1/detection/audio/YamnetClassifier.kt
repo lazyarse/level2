@@ -57,7 +57,12 @@ class YamnetClassifier private constructor(
 
     override suspend fun classify(window: AudioWindow): AudioEventScores {
         writeInput(inputBytes, window.samples, inputIsInt8, inScale, inZeroPoint)
-        interpreter.run(inputBytes, outputBytes)
+        // TFLite maps byte[] to UINT8 tensors; float32 tensors need ByteBuffers.
+        val input: Any = if (inputIsInt8) inputBytes
+        else ByteBuffer.wrap(inputBytes).order(ByteOrder.LITTLE_ENDIAN)
+        val output: Any = if (outputIsInt8) outputBytes
+        else ByteBuffer.wrap(outputBytes).order(ByteOrder.LITTLE_ENDIAN)
+        interpreter.run(input, output)
         val classScores = readOutput(outputBytes, outputIsInt8, outScale, outZeroPoint)
         return AudioEventScores(
             timestamp = window.timestamp,
