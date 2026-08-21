@@ -24,6 +24,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -68,6 +69,9 @@ dependencies {
     // CameraX returns Guava `ListenableFuture`s; androidx transitive Guava is
     // otherwise allowed to skew and break ListenableFuture resolution.
     implementation("com.google.guava:guava:33.3.1-android")
+
+    // LiteRT 2.2.0 (single artifact with Interpreter + CompiledModel)
+    implementation("com.google.ai.edge.litert:litert:2.2.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
