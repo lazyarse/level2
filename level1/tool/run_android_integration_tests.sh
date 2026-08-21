@@ -57,7 +57,9 @@ case "$BUILD_TYPE" in
   debug)   BT_TASK="Debug" ;;
   *) echo "unsupported BUILD_TYPE=$BUILD_TYPE (staging|debug)"; exit 1 ;;
 esac
-(cd "$ANDROID_ROOT" && timeout 300 $GRADLE ":app:install$BT_TASK" ":app:install${BT_TASK}AndroidTest") || {
+# 420s: composite build+install — a cold pass re-R8s both APKs (~2-3 min) and
+# streams the ~90 MB staging APK; plain warm installs finish in ~35 s.
+(cd "$ANDROID_ROOT" && timeout 420 $GRADLE ":app:install$BT_TASK" ":app:install${BT_TASK}AndroidTest") || {
   echo "gradle install failed"; exit 1
 }
 

@@ -43,7 +43,7 @@ class MonitoringInstrumentedTest {
     private lateinit var vm: MonitorViewModel
 
     /** How long to wait for the first motion trigger (slow swiftshader boot). */
-    private val pollTimeoutMs = 6 * 60_000L
+    private val pollTimeoutMs = 3 * 60_000L
     private val pollIntervalMs = 2_000L
 
     @Before

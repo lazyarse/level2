@@ -8,3 +8,6 @@
 
 # LiteRT (org.tensorflow.lite) ships its own consumer rules; models load via
 # AssetManager file paths, so nothing app-side needs keeping.
+#
+# NOTE: rules for the staging (instrumented, shrunk-but-linked) variant live
+# in staging-rules.pro — keep release rules here aggressive.

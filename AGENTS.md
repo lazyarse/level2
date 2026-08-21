@@ -1,5 +1,7 @@
 # AGENTS.md
 
+**Run `date -R` before every command.**
+
 Native Android security-camera app in `level1/android/` (100% Kotlin + Jetpack Compose,
 package `io.securitycam.level1`); the Flutter tree was removed after the Phase 7 cutover
 (2026-08-21). Design docs in `docs/plans/`; the Dart→Kotlin test mapping lives in
@@ -9,7 +11,6 @@ suite under `level1/android/app/src/androidTest/`, driven by
 
 ## Commands
 
-- Run `date -R` before every command.
 - **All Gradle builds** run from `level1/android/` with both env prefixes:
   `ANDROID_HOME=/home/tpa/code/android-env/android-sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
   The native-assets toolchain locates the NDK via `ANDROID_HOME` (NOT `ANDROID_SDK_ROOT`;
@@ -19,14 +20,21 @@ suite under `level1/android/app/src/androidTest/`, driven by
   - Debug APK: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
   - Instrumentation (or use the runner below, which sets nothing itself):
     `ANDROID_HOME=... JAVA_HOME=... level1/tool/run_android_integration_tests.sh <serial> <fqcn|all>`
-- **Cap command timeouts tightly so hangs surface fast** (full unit suite ~45 s; cold
-  Gradle build ~2 min):
-  - Gradle build/test commands: **5 min max** (`timeout 300 ./gradlew ...`). Never use
-    10–15 min timeouts — a hanging test should fail the command in minutes.
-  - adb/emulator operations (install, boot wait, UI automation): **2–3 min max per step**
-    (the runner script itself needs a ≥900 s budget because the motion poll alone allows
-    6 min).
-  - If a timeout fires, diagnose the hang before rerunning; don't just raise the timeout.
+- **Cap command timeouts tightly so hangs surface fast.** Measured baselines:
+  full unit suite ~45 s; cold Gradle build ~2 min (minified release ~4.5 min);
+  emulator boot ~30 s; warm APK install ~35 s; the whole instrumentation "all"
+  pass typically finishes in **4–6 min**.
+  - Gradle build/test commands: **5 min max** (`timeout 300 ./gradlew ...`).
+    Never use 10–15 min timeouts — a hanging test should fail the command in
+    minutes.
+  - adb/emulator operations (install, boot wait, UI automation): **2–3 min max
+    per step**.
+  - The runner script's own budget: **600 s** (`timeout 600`). Its worst case is
+    bounded by the motion poll inside `MonitoringInstrumentedTest`
+    (`pollTimeoutMs`, 3 min) plus install and the screen-off sleeps — anything
+    beyond ~8 minutes means something hung; kill and diagnose rather than wait.
+  - If a timeout fires, diagnose the hang before rerunning; don't just raise the
+    timeout.
 - Parse unit failures from `android/app/build/test-results/testDebugUnitTest/TEST-*.xml`
   (python ElementTree) instead of scrolling Gradle output.
 
@@ -38,12 +46,29 @@ Prefer the fastest platform that can validate the change:
    instant, no emulator; covers detectors, pipeline, channels, storage, Settings/UI logic.
    Robolectric has no Keystore/Room-server: inject fakes via the view-model factories
    (`SecurityCamApp(eventsFactory=…, settingsFactory=…)` pattern).
-2. **`pixel_28_aosp`** — on-device instrumentation when native behavior must run (min-API
-   baseline checks; the leanest AOSP image). minSdk is 28 because MediaPipe's tasks-vision
-   JNI needs `aligned_alloc` (bionic API 28) plus `strtod_l`/`newlocale` (API 26); every
-   x86_64-capable release carries both.
-3. **`pixel_34_aosp`** — only when the task is API-34-specific (foreground service type,
-   notification runtime permission, MediaStore `RELATIVE_PATH`, camera capabilities).
+2. **`pixel_34_aosp` instrumentation vs the minified `staging` build** — the default
+   target of `tool/run_android_integration_tests.sh` (override with
+   `BUILD_TYPE=debug`). Staging is shrink-only R8 (no obfuscation/optimization; see
+   `app/staging-rules.pro`) so the unshrunk test APK can link into it; it exists to
+   catch over-shrinking regressions in reflective third-party code (this is how the
+   MediaPipe consumer-rules gap was found). Cold first pass may exceed 5 min (two R8
+   runs + 90 MB install); prewarm with `:app:assembleStaging
+   :app:assembleStagingAndroidTest` when needed.
+3. **`pixel_34_aosp` release smoke** after touching build rules or dependencies:
+   uninstall debug/staging packages, `adb install app-release.apk`, pm grant the three
+   permissions, launch, tap the monitor start button, confirm state reaches
+   "Hallway — Monitoring" with no FATAL/link errors in logcat (~2 min).
+4. **`pixel_28_aosp`** — min-API baseline checks only (minSdk 28: MediaPipe's JNI needs
+   `aligned_alloc`, bionic API 28).
+5. Never use Google-APIs images (`pixel_34`); their System UI wedges under load.
+
+## Release signing
+
+- Keystore lives outside the repo at `~/.keystores/level1-release.jks`; credentials in
+  user-global `~/.gradle/gradle.properties` as `LEVEL1_RELEASE_STORE_FILE`,
+  `LEVEL1_RELEASE_STORE_PASSWORD`, `LEVEL1_RELEASE_KEY_ALIAS`,
+  `LEVEL1_RELEASE_KEY_PASSWORD`. Without them, release falls back to the debug key.
+- Verify signatures with `apksigner verify --print-certs` (jarsigner cannot see v2/v3).
 
 ## Emulator discipline
 

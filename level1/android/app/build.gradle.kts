@@ -75,9 +75,16 @@ android {
             initWith(getByName("release"))
             // Minified like release but debug-signed so instrumentation can
             // install alongside; proves R8 keeps on every emulator run.
+            // Lenient cross-APK link rules live in staging-rules.pro (tests
+            // reference app classes by original name — see that file).
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             applicationIdSuffix = ".staging"
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+                "staging-rules.pro",
+            )
         }
     }
 
