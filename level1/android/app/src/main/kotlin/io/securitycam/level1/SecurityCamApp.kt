@@ -30,6 +30,7 @@ import io.securitycam.level1.ui.monitor.MonitorScreen
 import io.securitycam.level1.ui.regions.RegionEditorScreen
 import io.securitycam.level1.ui.settings.SettingsScreen
 import io.securitycam.level1.ui.settings.SettingsViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 enum class Level1Tab(val label: String, val icon: ImageVector) {
@@ -39,10 +40,18 @@ enum class Level1Tab(val label: String, val icon: ImageVector) {
     Settings("Settings", Icons.Filled.Settings),
 }
 
+/**
+ * Injectable view-model factories default to the production singletons so
+ * Robolectric shell tests can swap in fakes (Keystore and Room are not
+ * available on the JVM).
+ */
 @Composable
-fun SecurityCamApp() {
+fun SecurityCamApp(
+    eventsFactory: ViewModelProvider.Factory = EventsViewModel.Factory,
+    settingsFactory: ViewModelProvider.Factory = SettingsViewModel.Factory,
+) {
     var tab by remember { mutableStateOf(Level1Tab.Monitor) }
-    val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+    val settingsViewModel: SettingsViewModel = viewModel(factory = settingsFactory)
     var showRegionEditor by remember { mutableStateOf(false) }
     Scaffold(
         bottomBar = {
@@ -77,7 +86,7 @@ fun SecurityCamApp() {
                 when (tab) {
                     Level1Tab.Monitor -> MonitorScreen()
                     Level1Tab.Events -> EventsScreen(
-                        viewModel = viewModel(factory = EventsViewModel.Factory),
+                        viewModel = viewModel(factory = eventsFactory),
                     )
                     Level1Tab.History -> HistoryScreen(
                         viewModel = viewModel(factory = HistoryViewModel.Factory),

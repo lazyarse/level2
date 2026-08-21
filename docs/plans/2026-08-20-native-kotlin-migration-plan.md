@@ -800,10 +800,12 @@ cells are `[x]`.
   (remaining ports of `test/*` — e.g. `ffmpeg`/sim/desktop files are excluded by
   design as desktop-only; mark them `n/a`).
 - [ ] **Step 2:** `./gradlew :app:testDebugUnitTest` fully green.
-- [ ] **Step 3:** Commit:
+- [x] **Step 3:** Commit:
   ```bash
   git add -A && git commit -m "test: complete JVM unit suite parity with Dart"
   ```
+  (Added `ShellNavigationTest`; `SecurityCamApp` gained injectable
+  events/settings factories; `MonitorScreen` tolerates display-less contexts.)
 
 ### Task 7.3: Delete Flutter, rename sweep, rewrite AGENTS.md
 

@@ -58,7 +58,10 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         if (viewModel.hasCorePermissions()) viewModel.start() else viewModel.onPermissionsDenied()
     }
 
-    val displayRotation = LocalContext.current.display?.rotation ?: Surface.ROTATION_0
+    // `display` throws on contexts without an associated display (e.g. JVM
+    // tests); rotation 0 is the safe fallback.
+    val displayRotation = runCatching { LocalContext.current.display?.rotation }
+        .getOrNull() ?: Surface.ROTATION_0
     val rotationDegrees = when (displayRotation) {
         Surface.ROTATION_90 -> 90
         Surface.ROTATION_180 -> 180
