@@ -87,7 +87,7 @@ class MonitoringRuntime private constructor(
                 configs = settings.detectorConfigs.values.toList(),
             )
             runtime.pipeline.init()
-            runtime.pipeline.setRegions(settings.detectionRegions)
+            runtime.pipeline.setRegions(settings.detectionRegions, settings.exclusionRegions)
             runtime.eventPipeline = EventPipeline(
                 cameraName = settings.cameraName,
                 detectorConfigs = settings.detectorConfigs,

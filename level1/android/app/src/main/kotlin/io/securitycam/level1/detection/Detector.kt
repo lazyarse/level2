@@ -74,9 +74,10 @@ interface Detector {
     suspend fun dispose()
 }
 
-/** Frame-based detector; [regions] are set by the pipeline (empty = everywhere). */
+/** Frame-based detector; [regions]/[exclusionRegions] are set by the pipeline. */
 abstract class FrameDetector : Detector {
     var regions: List<DetectionRegion> = emptyList()
+    var exclusionRegions: List<DetectionRegion> = emptyList()
 
     abstract fun analyzeFrame(frame: AnalysisFrame): DetectionResult
 

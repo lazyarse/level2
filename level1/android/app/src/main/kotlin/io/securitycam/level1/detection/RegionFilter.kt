@@ -177,4 +177,41 @@ object RegionFilter {
         }
         return mask to count
     }
+
+    /**
+     * Builds a byte mask honoring exclusion zones: starts from the inclusion mask
+     * (all ones when [inclusions] is empty), then clears every pixel whose center
+     * lies inside any region of [exclusions]. Exclusion wins over inclusion.
+     */
+    fun pixelMaskExcluding(
+        inclusions: List<DetectionRegion>,
+        exclusions: List<DetectionRegion>,
+        width: Int,
+        height: Int,
+    ): Pair<ByteArray, Int> {
+        val (mask, _) = pixelMask(inclusions, width, height)
+        if (exclusions.isEmpty()) return mask to mask.count { it == 1.toByte() }
+        var count = 0
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val index = y * width + x
+                if (mask[index] != 1.toByte()) continue
+                val nx = (x + 0.5) / width
+                val ny = (y + 0.5) / height
+                var excluded = false
+                for (region in exclusions) {
+                    if (pointInRegion(region, nx, ny)) {
+                        excluded = true
+                        break
+                    }
+                }
+                if (!excluded) {
+                    count++
+                } else {
+                    mask[index] = 0
+                }
+            }
+        }
+        return mask to count
+    }
 }

@@ -214,6 +214,12 @@ class DetectorPipelineTest {
         val region = DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))
         pipeline.setRegions(listOf(region))
         assertEquals(listOf(region), motion.regions)
+        assertEquals(emptyList<DetectionRegion>(), motion.exclusionRegions)
+
+        val exclusion = DetectionRegion("e1", "rect", "privacy", listOf(0.6, 0.6, 0.9, 0.9))
+        pipeline.setRegions(listOf(region), listOf(exclusion))
+        assertEquals(listOf(region), motion.regions)
+        assertEquals(listOf(exclusion), motion.exclusionRegions)
         pipeline.dispose()
     }
 }

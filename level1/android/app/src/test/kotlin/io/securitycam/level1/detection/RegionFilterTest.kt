@@ -104,4 +104,50 @@ class RegionFilterTest {
         )
         assertEquals(7, count)
     }
+
+    @Test
+    fun pixelMaskExcludingWithoutExclusionsMatchesPixelMask() {
+        val inclusions = listOf(rect, poly)
+        val plain = RegionFilter.pixelMask(inclusions, 8, 8)
+        val excluding = RegionFilter.pixelMaskExcluding(inclusions, emptyList(), 8, 8)
+        assertEquals(plain.first.toList(), excluding.first.toList())
+        assertEquals(plain.second, excluding.second)
+    }
+
+    @Test
+    fun pixelMaskExcludingClearsPixelsInsideExclusion() {
+        val inclusion = DetectionRegion("i", "rect", "in", listOf(0.0, 0.0, 1.0, 1.0))
+        val exclusion = DetectionRegion("e", "rect", "out", listOf(0.4, 0.4, 0.6, 0.6))
+        val (mask, count) = RegionFilter.pixelMaskExcluding(listOf(inclusion), listOf(exclusion), 10, 10)
+        // Pixel centers strictly inside the exclusion zone are cleared.
+        for (y in 4..5) {
+            for (x in 4..5) {
+                assertEquals(0.toByte(), mask[y * 10 + x])
+            }
+        }
+        // Centers just outside stay enabled.
+        assertEquals(1.toByte(), mask[3 * 10 + 3])
+        assertEquals(1.toByte(), mask[6 * 10 + 6])
+        assertEquals(100 - 4, count)
+    }
+
+    @Test
+    fun pixelMaskExcludingWithNoInclusionsStartsFromFullFrame() {
+        val exclusion = DetectionRegion("e", "rect", "out", listOf(0.0, 0.0, 0.5, 0.5))
+        val (mask, count) = RegionFilter.pixelMaskExcluding(emptyList(), listOf(exclusion), 4, 4)
+        assertEquals(
+            listOf<Byte>(0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+            mask.toList(),
+        )
+        assertEquals(12, count)
+    }
+
+    @Test
+    fun fullFrameExclusionYieldsEmptyMask() {
+        val inclusion = DetectionRegion("i", "rect", "in", listOf(0.0, 0.0, 1.0, 1.0))
+        val exclusion = DetectionRegion("e", "rect", "all", listOf(0.0, 0.0, 1.0, 1.0))
+        val (mask, count) = RegionFilter.pixelMaskExcluding(listOf(inclusion), listOf(exclusion), 6, 6)
+        assertEquals(ByteArray(36).toList(), mask.toList())
+        assertEquals(0, count)
+    }
 }

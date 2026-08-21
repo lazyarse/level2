@@ -97,6 +97,7 @@ data class AppSettings(
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
     val detectionRegions: List<DetectionRegion> = emptyList(),
+    val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
 ) {
     fun copyWith(
@@ -118,6 +119,7 @@ data class AppSettings(
         analysisResolution: String? = null,
         screenOrientation: String? = null,
         detectionRegions: List<DetectionRegion>? = null,
+        exclusionRegions: List<DetectionRegion>? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraSource = cameraSource ?: this.cameraSource,
@@ -135,6 +137,7 @@ data class AppSettings(
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
         detectionRegions = detectionRegions ?: this.detectionRegions,
+        exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
     )
 
@@ -156,6 +159,7 @@ data class AppSettings(
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
         json["detectionRegions"] = detectionRegions.map { it.toJson() }
+        json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         return json
     }
@@ -282,6 +286,9 @@ data class AppSettings(
                 screenOrientation = json["screenOrientation"] as? String
                     ?: defaults.screenOrientation,
                 detectionRegions = (json["detectionRegions"] as? List<*>)
+                    ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                    ?: emptyList(),
+                exclusionRegions = (json["exclusionRegions"] as? List<*>)
                     ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
                 scheduleExclusions = (json["scheduleExclusions"] as? List<*>)

@@ -56,10 +56,14 @@ class DetectorPipeline(
         frameDetectorsInternal.add(detector)
     }
 
-    /** Sets the global inclusion regions and fans them out to frame detectors. */
-    fun setRegions(regions: List<DetectionRegion>) {
+    /** Sets the global inclusion/exclusion regions and fans them out to frame detectors. */
+    fun setRegions(
+        regions: List<DetectionRegion>,
+        exclusionRegions: List<DetectionRegion> = emptyList(),
+    ) {
         for (d in frameDetectorsInternal) {
             d.regions = regions
+            d.exclusionRegions = exclusionRegions
         }
     }
 

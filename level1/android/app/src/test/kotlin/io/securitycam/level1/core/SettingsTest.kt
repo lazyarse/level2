@@ -374,6 +374,39 @@ class SettingsTest {
     }
 
     @Test
+    fun exclusionRegionsDefaultToEmpty() {
+        val s = AppSettings.defaults()
+        assertEquals(emptyList<DetectionRegion>(), s.exclusionRegions)
+    }
+
+    @Test
+    fun exclusionRegionsJsonRoundTrip() {
+        val s = AppSettings.defaults().copyWith(
+            detectionRegions = listOf(DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))),
+            exclusionRegions = listOf(
+                DetectionRegion("e1", "poly", "privacy", listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6)),
+            ),
+        )
+        val back = AppSettings.fromJson(s.toJson())
+        assertEquals(1, back.exclusionRegions.size)
+        assertEquals("privacy", back.exclusionRegions[0].label)
+        assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6), back.exclusionRegions[0].points)
+        assertEquals(1, back.detectionRegions.size)
+    }
+
+    @Test
+    fun oldJsonWithoutExclusionRegionsFallsBackToEmpty() {
+        val legacy = AppSettings.defaults()
+            .copyWith(detectionRegions = listOf(DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))))
+            .toJson()
+            .toMutableMap()
+        legacy.remove("exclusionRegions")
+        val back = AppSettings.fromJson(legacy)
+        assertEquals(emptyList<DetectionRegion>(), back.exclusionRegions)
+        assertEquals(1, back.detectionRegions.size)
+    }
+
+    @Test
     fun notificationMergeWindowDefaultIsThreeSeconds() {
         val s = AppSettings.defaults()
         assertEquals(Duration.ofSeconds(3), s.notificationMergeWindow)
