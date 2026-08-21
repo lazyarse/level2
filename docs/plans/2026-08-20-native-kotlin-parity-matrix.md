@@ -26,7 +26,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `event_log_test.dart` | `EventStoreTest.kt` | Phase 4 | Task 4.2 | [ ] |
 | `event_pipeline_test.dart` | `EventPipelineTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `events_screen_test.dart` | `EventsScreenTest.kt` | Phase 5 | Task 5.3 | [ ] |
-| `face_detector_test.dart` | `FaceEngineTest.kt` | Phase 3 | Task 3.4 | [ ] |
+| `face_detector_test.dart` | `FaceEngineTest.kt` | Phase 3 | Task 3.4 | [x] |
 | `ffmpeg_args_test.dart` | `FfmpegArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
 | `ffmpeg_audio_args_test.dart` | `FfmpegAudioArgsTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |
 | `ffmpeg_live_test.dart` | `FfmpegLiveTest.kt` (n/a — desktop-only) | Phase 7 | Task 7.2 | [ ] |

@@ -72,6 +72,8 @@ dependencies {
 
     // LiteRT 2.2.0 (single artifact with Interpreter + CompiledModel)
     implementation("com.google.ai.edge.litert:litert:2.2.0")
+    // MediaPipe Tasks face detection (BlazeFace short-range model asset)
+    implementation("com.google.mediapipe:tasks-vision:1.0.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")

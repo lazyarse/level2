@@ -26,6 +26,9 @@ object DetectorRegistry {
         TriggerType.person to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.PersonDetector(c)
         },
+        TriggerType.face to { c: DetectorConfig ->
+            io.securitycam.level1.detection.face.FaceDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {
