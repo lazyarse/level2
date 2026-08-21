@@ -153,14 +153,14 @@ private fun EventRow(
     ) {
         if (event.snapshotName == null) {
             Icon(
-                iconFor(iconType),
+                eventIconFor(iconType),
                 contentDescription = null,
                 modifier = Modifier.testTag("eventIcon_$index"),
             )
         } else {
             SnapshotThumb(
                 name = event.snapshotName,
-                fallbackIcon = iconFor(iconType),
+                fallbackIcon = eventIconFor(iconType),
                 title = typeLabel,
                 loader = snapshotLoader,
                 tag = "eventThumb_$index",
@@ -197,111 +197,3 @@ private fun EventRow(
     }
 }
 
-/**
- * 48dp thumbnail; falls back to [fallbackIcon] while loading or when the
- * snapshot is missing. Tap opens the zoomable full view.
- */
-@Composable
-private fun SnapshotThumb(
-    name: String,
-    fallbackIcon: ImageVector,
-    title: String,
-    loader: suspend (String) -> Snapshot?,
-    tag: String,
-) {
-    val snapshot by produceState<Snapshot?>(initialValue = null, key1 = name) {
-        value = loader(name)
-    }
-    val bitmap = snapshot?.bytes?.let { bytes ->
-        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-    }
-    var showFull by remember { mutableStateOf(false) }
-
-    if (bitmap == null) {
-        Icon(
-            fallbackIcon,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp).testTag("${tag}Fallback"),
-        )
-    } else {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { showFull = true }
-                .testTag(tag),
-        )
-    }
-    if (showFull) {
-        ZoomableSnapshotDialog(
-            snapshot = snapshot,
-            title = title,
-            onClose = { showFull = false },
-        )
-    }
-}
-
-@Composable
-private fun ZoomableSnapshotDialog(
-    snapshot: Snapshot?,
-    title: String,
-    onClose: () -> Unit,
-) {
-    Dialog(onDismissRequest = onClose) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, modifier = Modifier.padding(8.dp))
-            var scale by remember { mutableFloatStateOf(1f) }
-            var offsetX by remember { mutableFloatStateOf(0f) }
-            var offsetY by remember { mutableFloatStateOf(0f) }
-            val bitmap = snapshot?.bytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(360.dp)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer(
-                                scaleX = scale,
-                                scaleY = scale,
-                                translationX = offsetX,
-                                translationY = offsetY,
-                            )
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(1f, 8f)
-                                    offsetX += pan.x
-                                    offsetY += pan.y
-                                }
-                            },
-                    )
-                }
-            }
-            TextButton(
-                onClick = onClose,
-                modifier = Modifier.testTag("eventClose"),
-            ) { Text("Close") }
-        }
-    }
-}
-
-private fun iconFor(type: String): ImageVector = when (type) {
-    "motion" -> Icons.Filled.DirectionsRun
-    "baby_cry" -> Icons.Filled.ChildCare
-    "glass_break" -> Icons.Filled.BrokenImage
-    "loud_noise" -> Icons.Filled.VolumeUp
-    "tamper" -> Icons.Filled.VideocamOff
-    else -> Icons.Filled.NotificationImportant
-}

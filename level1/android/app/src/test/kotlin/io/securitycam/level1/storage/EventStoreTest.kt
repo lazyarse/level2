@@ -99,4 +99,62 @@ class EventStoreTest {
         assertEquals(setOf("a.png", "b.png"), deleted.snapshotNames.toSet())
         assertTrue(store.recent().isEmpty())
     }
+
+    // ---- History day-scoped queries (`between`) ----
+
+    @Test
+    fun betweenReturnsRowsInsideBoundsNewestFirst() = runBlocking {
+        val store = log()
+        store.record(event(base))
+        store.record(event(base.plusSeconds(10)))
+        store.record(event(base.minusSeconds(10)))
+        store.record(event(base.plusSeconds(100))) // outside
+
+        val start = base.minusSeconds(30)
+        val end = base.plusSeconds(30)
+        val rows = store.between(start, end)
+
+        assertEquals(3, rows.size)
+        assertEquals(base.plusSeconds(10), rows[0].timestamp)
+        assertEquals(base, rows[1].timestamp)
+        assertEquals(base.minusSeconds(10), rows[2].timestamp)
+    }
+
+    @Test
+    fun betweenBoundsAreStartInclusiveEndExclusive() = runBlocking {
+        val store = log()
+        store.record(event(base)) // == start
+        store.record(event(base.plusSeconds(60))) // == end
+
+        val rows = store.between(base, base.plusSeconds(60))
+
+        assertEquals(1, rows.size)
+        assertEquals(base, rows.single().timestamp)
+    }
+
+    @Test
+    fun betweenWithSnapshotsKeepsOnlySnapshotRows() = runBlocking {
+        val store = log()
+        store.record(event(base, snapshotName = "a.png"))
+        store.record(event(base.plusSeconds(5)))
+        store.record(event(base.plusSeconds(10), snapshotName = "c.png"))
+
+        val rows = store.between(
+            base.minusSeconds(1),
+            base.plusSeconds(60),
+            withSnapshots = true,
+        )
+
+        assertEquals(listOf("c.png", "a.png"), rows.map { it.snapshotName })
+    }
+
+    @Test
+    fun betweenRespectsLimit() = runBlocking {
+        val store = log()
+        for (s in 0 until 5) store.record(event(base.plusSeconds(s.toLong())))
+
+        val rows = store.between(base.minusSeconds(1), base.plusSeconds(60), limit = 3)
+
+        assertEquals(3, rows.size)
+    }
 }

@@ -42,6 +42,20 @@ interface EventDao {
     @Query("SELECT * FROM events ORDER BY timestamp DESC LIMIT :limit")
     fun recentFlow(limit: Int): Flow<List<EventEntity>>
 
+    /** Day-scoped query for the history timeline; bounds are [start, end). */
+    @Query(
+        "SELECT * FROM events WHERE timestamp >= :startIso AND timestamp < :endIso " +
+            "ORDER BY timestamp DESC LIMIT :limit",
+    )
+    suspend fun between(startIso: String, endIso: String, limit: Int): List<EventEntity>
+
+    /** Same as [between] but only rows that carry a snapshot (gallery). */
+    @Query(
+        "SELECT * FROM events WHERE timestamp >= :startIso AND timestamp < :endIso " +
+            "AND snapshot_name IS NOT NULL ORDER BY timestamp DESC LIMIT :limit",
+    )
+    suspend fun betweenWithSnapshots(startIso: String, endIso: String, limit: Int): List<EventEntity>
+
     @Query("SELECT snapshot_name, video_name FROM events WHERE timestamp < :olderThanIso")
     suspend fun mediaOlderThan(olderThanIso: String): List<MediaRef>
 
@@ -116,6 +130,27 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
 
     fun recentFlow(limit: Int = 100): Flow<List<RecordedEventRow>> =
         dao.recentFlow(limit).map { rows -> rows.map { it.toRow() } }
+
+    /**
+     * Events with [start] <= timestamp < [end], newest first (port of the
+     * planned `SqliteEventLog.between`); [withSnapshots] keeps only rows that
+     * carry a snapshot for the gallery grid.
+     */
+    suspend fun between(
+        start: Instant,
+        end: Instant,
+        limit: Int = 500,
+        withSnapshots: Boolean = false,
+    ): List<RecordedEventRow> {
+        val startIso = start.toString()
+        val endIso = end.toString()
+        val rows = if (withSnapshots) {
+            dao.betweenWithSnapshots(startIso, endIso, limit)
+        } else {
+            dao.between(startIso, endIso, limit)
+        }
+        return rows.map { it.toRow() }
+    }
 
     private fun EventEntity.toRow(): RecordedEventRow = RecordedEventRow(
         id = id,
