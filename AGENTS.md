@@ -1,44 +1,65 @@
 # AGENTS.md
 
-Flutter security-cam app in `level1/` (Android + CameraX), with an emulator-based integration suite under `level1/integration_test/`. Design docs in `docs/plans/`. **Migration in progress (2026-08-20):** the app is being converted to 100% native Kotlin + Compose under `level1/android/` (package `io.securitycam.level1`) per `docs/plans/2026-08-20-native-kotlin-migration-plan.md`; the Flutter tree at `level1/` remains the desktop-only reference harness until the Phase 7 cutover.
+Native Android security-camera app in `level1/android/` (100% Kotlin + Jetpack Compose,
+package `io.securitycam.level1`); the Flutter tree was removed after the Phase 7 cutover
+(2026-08-21). Design docs in `docs/plans/`; the Dart→Kotlin test mapping lives in
+`docs/plans/2026-08-20-native-kotlin-parity-matrix.md`. Emulator-based instrumentation
+suite under `level1/android/app/src/androidTest/`, driven by
+`level1/tool/run_android_integration_tests.sh`.
 
 ## Commands
 
 - Run `date -R` before every command.
-- **Prefix with `ANDROID_HOME=/home/tpa/code/android-env/android-sdk` for every Android build** that runs native-assets hooks — that is, any Android build since `face_detection_tflite` was added (`dartcv4`/`opencv_dart` → `package:toolchain`). The native-assets toolchain locates the Android NDK via **`ANDROID_HOME`** (NOT `ANDROID_SDK_ROOT`), and the shell only exports `ANDROID_SDK_ROOT=/home/tpa/code/android-env/android-sdk`. Without it the build fails with `Bad state: No element`. Examples:
-  - `ANDROID_HOME=... flutter build apk --debug`
-  - `ANDROID_HOME=... flutter test integration_test/<file>.dart -d <serial>` (the tool runner `level1/tool/run_android_integration_tests.sh` also needs it: `ANDROID_HOME=... level1/tool/run_android_integration_tests.sh <serial>`)
-  - (Linux desktop builds and `flutter analyze`/unit tests need no prefix.)
-- **Prefix with `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` for every native Gradle build** in `level1/android/`. The host default `java` is 25.0.4, which Gradle 8.14 refuses to run on (`BUILD FAILED` with the bare version string `25.0.4`). Example:
-  - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
-- **Cap command timeouts tightly so hangs surface fast** (the full native unit suite takes ~45 s; a cold Gradle build ~2 min):
-  - Gradle build/test commands: **5 min max** (`timeout 300 ./gradlew ...`). Never use 10–15 min timeouts — a hanging test (e.g. a non-daemon thread blocking shutdown, as happened with OkHttp keep-alive + MockWebServer) should fail the command in minutes, not eat a quarter hour.
-  - adb/emulator operations (install, boot wait, UI automation): **2–3 min max** per step.
+- **All Gradle builds** run from `level1/android/` with both env prefixes:
+  `ANDROID_HOME=/home/tpa/code/android-env/android-sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
+  The native-assets toolchain locates the NDK via `ANDROID_HOME` (NOT `ANDROID_SDK_ROOT`;
+  the shell only exports the latter), and host default Java is 25 which Gradle 8.14 refuses.
+  Examples:
+  - Unit suite: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testDebugUnitTest`
+  - Debug APK: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
+  - Instrumentation (or use the runner below, which sets nothing itself):
+    `ANDROID_HOME=... JAVA_HOME=... level1/tool/run_android_integration_tests.sh <serial> <fqcn|all>`
+- **Cap command timeouts tightly so hangs surface fast** (full unit suite ~45 s; cold
+  Gradle build ~2 min):
+  - Gradle build/test commands: **5 min max** (`timeout 300 ./gradlew ...`). Never use
+    10–15 min timeouts — a hanging test should fail the command in minutes.
+  - adb/emulator operations (install, boot wait, UI automation): **2–3 min max per step**
+    (the runner script itself needs a ≥900 s budget because the motion poll alone allows
+    6 min).
   - If a timeout fires, diagnose the hang before rerunning; don't just raise the timeout.
+- Parse unit failures from `android/app/build/test-results/testDebugUnitTest/TEST-*.xml`
+  (python ElementTree) instead of scrolling Gradle output.
 
 ## Dev/test target preference
 
 Prefer the fastest platform that can validate the change:
 
-1. **Linux desktop app** (`flutter test -d linux`, or `flutter run -d linux` for a quick smoke) —
-   unit tests + simulated camera/audio run instantly with no emulator; use for iteration,
-   pure-Dart logic, Settings/UI, and everything not exercising the native `camera_service`.
-2. **`pixel_28_aosp`** — Android on-device integration tests when they must run (min-API 28
+1. **JVM unit tests** (`./gradlew :app:testDebugUnitTest`, Robolectric for Compose UI) —
+   instant, no emulator; covers detectors, pipeline, channels, storage, Settings/UI logic.
+   Robolectric has no Keystore/Room-server: inject fakes via the view-model factories
+   (`SecurityCamApp(eventsFactory=…, settingsFactory=…)` pattern).
+2. **`pixel_28_aosp`** — on-device instrumentation when native behavior must run (min-API
    baseline checks; the leanest AOSP image). minSdk is 28 because MediaPipe's tasks-vision
    JNI needs `aligned_alloc` (bionic API 28) plus `strtod_l`/`newlocale` (API 26); every
-   x86_64-capable release carries both. The old `pixel_24_aosp` AVD predates that decision.
+   x86_64-capable release carries both.
 3. **`pixel_34_aosp`** — only when the task is API-34-specific (foreground service type,
-   notification runtime permission, MediaStore `RELATIVE_PATH`, camera capabilities on API 34).
+   notification runtime permission, MediaStore `RELATIVE_PATH`, camera capabilities).
 
-Avoid emulators unless the change touches native Android behavior.
+## Emulator discipline
 
-## Emulator integration tests
-
-- Run via `level1/tool/run_android_integration_tests.sh` (host-driven: waits for boot, grants permissions via `pm grant`, coordinates the screen-off test through `[itest]` markers).
-- Use the **AOSP system image**, never the Google-APIs one (`pixel_34`): the `google_apis` image's System UI is heavy and wedges under load (ANR → package service dies → streamed install fails with "Broken pipe"), especially in headless CI. Launch headless in the background: `nohup <sdk>/emulator/emulator -avd <pixel_28_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`.
-- Do **not** run the `pixel_28_aosp` and `pixel_34_aosp` emulators at the same time, nor run the two images in parallel — shut one down before launching the other.
+- Run via `level1/tool/run_android_integration_tests.sh <serial> <fqcn|all>` (waits for
+  boot, grants CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant`, coordinates the
+  screen-off test through `[itest]` logcat markers, parses the final `OK (N tests)` line).
+  Set `EXPECT_CLIP_AUDIO=true` in the environment to assert clip audio tracks too.
+- Use the **AOSP system image**, never Google-APIs (`pixel_34`): the `google_apis` image's
+  System UI wedges under load (ANR → package service dies → streamed install fails with
+  "Broken pipe"), especially headless. Launch headless in the background:
+  `nohup <sdk>/emulator/emulator -avd <pixel_28_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`
+- Do **not** run two emulators at once, nor the two images in parallel — shut one down
+  before launching the other.
 - Before running any emulator test, verify the host has enough free resources:
-  - RAM: at least 4 GiB free (see `free -h`, `Mem: available`).
-  - CPU: load average (see `cat /proc/loadavg`) below ~75% of core count.
-- If the host does not have enough free RAM/CPU, do NOT start the emulator test. Poll `free -h` / `/proc/loadavg` every 5 minutes until resources are available, then proceed.
-- **After the tests complete, kill the emulator and qemu processes** (they keep consuming CPU/RAM in the background and can wedge subsequent runs): `adb -s <serial> emu kill` if responsive, then `pkill -9 -f qemu-system` (and `pkill -f 'emulator.*<avd>'` if needed), and optionally `adb kill-server`. Verify nothing lingers with `ps aux | rg 'qemu-system'`.
+  RAM at least 4 GiB available (`free -h`) and load average below ~75% of core count
+  (`cat /proc/loadavg`). Otherwise poll every 5 minutes until resources free up.
+- **After tests complete, kill the emulator and qemu processes**: `adb -s <serial> emu kill`,
+  then `pkill -9 -f qemu-system`; verify with `pgrep -c qemu-system` (expect 0). Note:
+  `pkill` can wedge the calling shell — follow it with a separate short-status check.
