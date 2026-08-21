@@ -2,6 +2,7 @@ package io.securitycam.level1.event
 
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.core.TriggerEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
@@ -63,6 +64,8 @@ class TriggerBatcher(
                     pendingSnapshot = scope.async {
                         try {
                             captureSnapshot()
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             null
                         }
@@ -70,6 +73,8 @@ class TriggerBatcher(
                     pendingVideo = scope.async {
                         try {
                             captureVideo(event.timestamp)
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             null
                         }
@@ -90,7 +95,11 @@ class TriggerBatcher(
         val videoFuture: Deferred<String?>?
         val batchOpenedAt: Instant
         mutex.withLock {
-            timer?.cancel()
+            // flush() runs INSIDE the timer coroutine, so cancelling `timer`
+            // here would cancel this very coroutine: the next real suspension
+            // point (awaiting a capture below) would throw
+            // CancellationException and silently drop the batch. Just drop
+            // the reference; dispose() cancels a still-pending timer.
             timer = null
             if (pending.isEmpty()) return
             batchOpenedAt = openedAt!!

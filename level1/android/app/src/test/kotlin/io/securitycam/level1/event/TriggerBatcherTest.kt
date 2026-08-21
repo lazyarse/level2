@@ -2,6 +2,7 @@ package io.securitycam.level1.event
 
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.core.TriggerEvent
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -136,6 +137,32 @@ class TriggerBatcherTest {
         delay(200)
         assertEquals(1, batches.size)
         assertNull(batches.single().videoName)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun emitsTheBatchWhenVideoCaptureOutlivesTheWindow() = runBlocking {
+        // Regression: flush() runs inside the timer coroutine; cancelling the
+        // timer there used to kill flush at its next suspension point, so any
+        // capture still in flight when the window elapsed silently dropped
+        // the batch (only reproducible on device where captures take time).
+        val videoDone = CompletableDeferred<String?>()
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(100),
+            captureSnapshot = { null },
+            captureVideo = { videoDone.await() },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        delay(200)
+        assertEquals(0, batches.size)
+        videoDone.complete("clip.mp4")
+        delay(100)
+        assertEquals(1, batches.size)
+        assertEquals("clip.mp4", batches.single().videoName)
         collector.cancel()
         batcher.dispose()
     }
