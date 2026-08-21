@@ -23,6 +23,9 @@ object DetectorRegistry {
         TriggerType.loudNoise to { c: DetectorConfig ->
             io.securitycam.level1.detection.audio.LoudNoiseDetector(c)
         },
+        TriggerType.person to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.PersonDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

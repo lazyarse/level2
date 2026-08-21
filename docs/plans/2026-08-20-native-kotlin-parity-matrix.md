@@ -35,7 +35,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `monitor_controller_test.dart` | `MonitorViewModelTest.kt` | Phase 1 | Task 1.5 | [x] |
 | `motion_detector_test.dart` | `MotionDetectorTest.kt` | Phase 2 | Task 2.3 | [x] |
 | `pcm_window_accumulator_test.dart` | `PcmWindowAccumulatorTest.kt` | Phase 3 | Task 3.2 | [x] |
-| `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [ ] |
+| `person_detector_test.dart` | `PersonDetectorTest.kt` | Phase 3 | Task 3.3 | [x] |
 | `pipeline_test.dart` | `DetectorPipelineTest.kt` | Phase 2 | Task 2.2 | [x] |
 | `pushover_channel_test.dart` | `PushoverChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
 | `region_editor_screen_test.dart` | `RegionEditorScreenTest.kt` | Phase 5 | Task 5.2 | [ ] |
@@ -48,7 +48,7 @@ in `docs/plans/2026-08-20-native-kotlin-migration-plan.md`.
 | `trigger_batcher_test.dart` | `TriggerBatcherTest.kt` | Phase 2 | Task 2.4 | [x] |
 | `webhook_channel_test.dart` | `WebhookChannelTest.kt` | Phase 4 | Task 4.3 | [ ] |
 | `yamnet_audio_event_classifier_test.dart` | `YamnetClassifierTest.kt` | Phase 3 | Task 3.2 | [x] |
-| `yolo_person_engine_test.dart` | `YoloPersonEngineTest.kt` | Phase 3 | Task 3.3 | [ ] |
+| `yolo_person_engine_test.dart` | `YoloPostprocessTest.kt` | Phase 3 | Task 3.3 | [x] |
 
 ## Integration tests (4)
 
