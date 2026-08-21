@@ -79,7 +79,14 @@ Prefer the fastest platform that can validate the change:
 - Use the **AOSP system image**, never Google-APIs (`pixel_34`): the `google_apis` image's
   System UI wedges under load (ANR → package service dies → streamed install fails with
   "Broken pipe"), especially headless. Launch headless in the background:
-  `nohup <sdk>/emulator/emulator -avd <pixel_28_aosp|pixel_34_aosp> -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`
+  `nohup <sdk>/emulator/emulator -avd <pixel_28_aosp|pixel_34_aosp> -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &`
+- **Always launch with `-no-snapshot`** (cold boot). Quickboot snapshots silently
+  restore sick states after crash loops or long sessions: adb responses crawl
+  (ddmlib `TimeoutException` inside gradle installs), `pm` wedges (installs take
+  minutes then fail with "Failed to install on any devices"), and uiautomator
+  dumps hang. If a running emulator shows those symptoms, kill it (`adb emu kill`,
+  then verify `pgrep -c qemu-system` → 0) and relaunch cold — do not debug the
+  device state first.
 - Do **not** run two emulators at once, nor the two images in parallel — shut one down
   before launching the other.
 - Before running any emulator test, verify the host has enough free resources:
