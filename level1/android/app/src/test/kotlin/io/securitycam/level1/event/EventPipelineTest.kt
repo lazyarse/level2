@@ -116,6 +116,46 @@ class EventPipelineTest {
     }
 
     @Test
+    fun tamperDetailDrivesTheAlertText() = runBlocking {
+        val builder = PipelineBuilder()
+        val log = FakeChannel("log", "log")
+        builder.channels = mapOf("log" to logConfig())
+        builder.detectors = mapOf("tamper" to config("tamper", routes = listOf("log")))
+        builder.factories = mapOf("log" to { _: ChannelConfig -> log })
+        val p = builder.build()
+
+        p.handleBatch(
+            batch(
+                listOf(
+                    TriggerEvent(
+                        timestamp = base,
+                        triggerType = TriggerType.tamper,
+                        score = 0.9,
+                        detectorId = "tamper",
+                        detail = "covered",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(log.sent.single().text.startsWith("Camera covered detected in Hallway"))
+
+        p.handleBatch(
+            batch(
+                listOf(
+                    TriggerEvent(
+                        timestamp = base,
+                        triggerType = TriggerType.tamper,
+                        score = 0.6,
+                        detectorId = "tamper",
+                        detail = "moved",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(log.sent[1].text.startsWith("Camera moved detected in Hallway"))
+    }
+
+    @Test
     fun mergesTriggersRoutesOnceRecordsMergedEntryAndSavesSnapshot() = runBlocking {
         val builder = PipelineBuilder()
         val tg = FakeChannel("telegram", "telegram")

@@ -15,4 +15,6 @@ data class DetectionResult(
     val score: Double,
     val triggered: Boolean,
     val detections: List<Detection> = emptyList(),
+    /** Optional qualifier, e.g. tamper's "covered"/"moved". */
+    val detail: String? = null,
 )

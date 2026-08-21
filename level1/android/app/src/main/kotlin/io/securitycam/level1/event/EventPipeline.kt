@@ -47,7 +47,7 @@ class EventPipeline(
             }
         }
 
-        val text = alertText(types, batch.timestamp, snapshot)
+        val text = alertText(batch, snapshot)
         val message = AlertMessage(
             timestamp = batch.timestamp,
             triggerType = type,
@@ -110,17 +110,18 @@ class EventPipeline(
     }
 
     private fun alertText(
-        types: List<String>,
-        timestamp: Instant,
+        batch: TriggerBatch,
         snapshot: Snapshot?,
     ): String {
+        val types = batch.triggers.map { it.triggerType }.distinct()
         val label = if (types.size == 1) {
-            triggerLabel(types.first())
+            tamperDetailLabel(types.first(), batch.triggers.firstOrNull()?.detail)
+                ?: triggerLabel(types.first())
         } else {
             types.joinToString(" + ") { triggerLabel(it) }
         }
         val time = DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
-            timestamp.atZone(ZoneId.systemDefault()),
+            batch.timestamp.atZone(ZoneId.systemDefault()),
         )
         return "$label detected in $cameraName at $time"
     }
@@ -143,5 +144,16 @@ fun triggerLabel(triggerType: String): String = when (triggerType) {
     TriggerType.merged -> "Multiple triggers"
     TriggerType.person -> "Person"
     TriggerType.face -> "Face"
+    TriggerType.tamper -> "Tamper"
     else -> "Activity"
+}
+
+/** Tamper detail label ("Camera covered"/"Camera moved"), or null for other types. */
+fun tamperDetailLabel(triggerType: String, detail: String?): String? {
+    if (triggerType != TriggerType.tamper) return null
+    return when (detail) {
+        io.securitycam.level1.detection.TamperDetector.DETAIL_COVERED -> "Camera covered"
+        io.securitycam.level1.detection.TamperDetector.DETAIL_MOVED -> "Camera moved"
+        else -> null
+    }
 }

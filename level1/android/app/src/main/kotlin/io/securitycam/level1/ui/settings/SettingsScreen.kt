@@ -495,6 +495,7 @@ private fun detectorLabel(type: String): String = when (type) {
     TriggerType.loudNoise -> "Loud noise"
     TriggerType.face -> "Face"
     TriggerType.person -> "Person"
+    TriggerType.tamper -> "Tamper"
     else -> type
 }
 

@@ -29,6 +29,9 @@ object DetectorRegistry {
         TriggerType.face to { c: DetectorConfig ->
             io.securitycam.level1.detection.face.FaceDetector(c)
         },
+        TriggerType.tamper to { c: DetectorConfig ->
+            TamperDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

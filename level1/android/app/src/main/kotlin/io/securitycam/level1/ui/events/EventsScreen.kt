@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -301,5 +302,6 @@ private fun iconFor(type: String): ImageVector = when (type) {
     "baby_cry" -> Icons.Filled.ChildCare
     "glass_break" -> Icons.Filled.BrokenImage
     "loud_noise" -> Icons.Filled.VolumeUp
+    "tamper" -> Icons.Filled.VideocamOff
     else -> Icons.Filled.NotificationImportant
 }

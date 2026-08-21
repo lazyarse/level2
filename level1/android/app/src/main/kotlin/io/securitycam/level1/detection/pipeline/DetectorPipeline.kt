@@ -112,6 +112,7 @@ class DetectorPipeline(
                 triggerType = result.triggerType,
                 score = result.score,
                 detectorId = detector.id,
+                detail = result.detail,
             ),
         )
     }

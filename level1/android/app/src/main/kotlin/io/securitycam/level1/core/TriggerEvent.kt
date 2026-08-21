@@ -11,6 +11,7 @@ object TriggerType {
     const val merged = "merged"
     const val person = "person"
     const val face = "face"
+    const val tamper = "tamper"
 }
 
 /** A single detector firing, before batching (port of `lib/core/models.dart`). */
@@ -19,4 +20,6 @@ data class TriggerEvent(
     val triggerType: String,
     val score: Double,
     val detectorId: String,
+    /** Optional qualifier, e.g. tamper's "covered"/"moved". */
+    val detail: String? = null,
 )

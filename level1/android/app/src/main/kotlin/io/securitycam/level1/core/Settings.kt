@@ -203,6 +203,14 @@ data class AppSettings(
                     motionGated = true,
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.tamper to DetectorConfig(
+                    type = TriggerType.tamper,
+                    threshold = 0.5,
+                    persistenceFrames = 3,
+                    cooldown = Duration.ofSeconds(120),
+                    enabled = false,
+                    routeToChannelIds = listOf("telegram"),
+                ),
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),
