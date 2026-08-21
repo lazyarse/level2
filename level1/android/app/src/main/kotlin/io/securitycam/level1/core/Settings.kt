@@ -211,6 +211,12 @@ data class AppSettings(
                     enabled = false,
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.health to DetectorConfig(
+                    type = TriggerType.health,
+                    enabled = true,
+                    cooldown = Duration.ofMinutes(5),
+                    routeToChannelIds = listOf("telegram"),
+                ),
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),

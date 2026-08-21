@@ -117,6 +117,17 @@ class DetectorPipeline(
         )
     }
 
+    /**
+     * Public escape hatch for non-detector triggers (e.g. health events):
+     * guarded by the shared cooldown map under [id], bypassing detectors.
+     */
+    fun emitTrigger(id: String, cooldown: Duration, event: TriggerEvent) {
+        val last = lastTriggerAt[id]
+        if (last != null && Duration.between(last, event.timestamp) < cooldown) return
+        lastTriggerAt[id] = event.timestamp
+        triggerFlow.tryEmit(event)
+    }
+
     suspend fun dispose() {
         classifier.dispose()
         for (d in frameDetectorsInternal) d.dispose()

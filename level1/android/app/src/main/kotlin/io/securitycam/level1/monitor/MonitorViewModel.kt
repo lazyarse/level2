@@ -79,7 +79,11 @@ class MonitorViewModel(
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
 
+    private val _healthStalled = MutableStateFlow(false)
+    val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
+
     private var runtime: MonitoringRuntime? = null
+    private var healthJob: kotlinx.coroutines.Job? = null
 
     private val previewStatusListener: (Boolean) -> Unit = { active ->
         _previewActive.value = active
@@ -153,6 +157,9 @@ class MonitorViewModel(
                 _detectionRegions.value = settings.detectionRegions
                 MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
                     runtime = it
+                    healthJob = viewModelScope.launch {
+                        it.healthStalled.collect { stalled -> _healthStalled.value = stalled }
+                    }
                     it.begin()
                 }
                 purgeOldEvents(settings)
@@ -166,8 +173,11 @@ class MonitorViewModel(
         if (_state.value == MonitorState.Idle) return
         stopMonitoring()
         _state.value = MonitorState.Idle
+        _healthStalled.value = false
         val current = runtime
         runtime = null
+        healthJob?.cancel()
+        healthJob = null
         viewModelScope.launch { current?.stop() }
     }
 

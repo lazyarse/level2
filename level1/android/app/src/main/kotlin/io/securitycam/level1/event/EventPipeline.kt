@@ -116,6 +116,7 @@ class EventPipeline(
         val types = batch.triggers.map { it.triggerType }.distinct()
         val label = if (types.size == 1) {
             tamperDetailLabel(types.first(), batch.triggers.firstOrNull()?.detail)
+                ?: healthDetailLabel(batch.triggers.firstOrNull()?.detail)
                 ?: triggerLabel(types.first())
         } else {
             types.joinToString(" + ") { triggerLabel(it) }
@@ -145,6 +146,7 @@ fun triggerLabel(triggerType: String): String = when (triggerType) {
     TriggerType.person -> "Person"
     TriggerType.face -> "Face"
     TriggerType.tamper -> "Tamper"
+    TriggerType.health -> "Health"
     else -> "Activity"
 }
 
@@ -156,4 +158,11 @@ fun tamperDetailLabel(triggerType: String, detail: String?): String? {
         io.securitycam.level1.detection.TamperDetector.DETAIL_MOVED -> "Camera moved"
         else -> null
     }
+}
+
+/** Health detail label ("Camera feed stalled"/"Camera feed recovered"), or null. */
+fun healthDetailLabel(detail: String?): String? = when (detail) {
+    io.securitycam.level1.detection.HealthWatchdog.DETAIL_STALL -> "Camera feed stalled"
+    io.securitycam.level1.detection.HealthWatchdog.DETAIL_RECOVERED -> "Camera feed recovered"
+    else -> null
 }

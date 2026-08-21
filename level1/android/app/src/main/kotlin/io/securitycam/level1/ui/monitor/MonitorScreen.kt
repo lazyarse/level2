@@ -46,6 +46,7 @@ import io.securitycam.level1.monitor.MonitorViewModel
 fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewModel.Factory)) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val healthStalled by viewModel.healthStalled.collectAsStateWithLifecycle()
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
@@ -107,6 +108,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             state = state,
             previewActive = previewActive,
             error = error,
+            healthStalled = healthStalled,
             onStart = {
                 val missing = viewModel.missingPermissions()
                 if (missing.isEmpty()) viewModel.start()
@@ -131,6 +133,7 @@ private fun MonitorStatusBar(
     state: MonitorState,
     previewActive: Boolean,
     error: String?,
+    healthStalled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -184,6 +187,18 @@ private fun MonitorStatusBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("monitorErrorBanner"),
+            )
+        }
+        if (healthStalled) {
+            Text(
+                text = "Camera feed stalled",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Red.copy(alpha = 0.75f))
+                    .padding(4.dp)
+                    .testTag("healthBanner"),
             )
         }
     }

@@ -12,6 +12,7 @@ object TriggerType {
     const val person = "person"
     const val face = "face"
     const val tamper = "tamper"
+    const val health = "health"
 }
 
 /** A single detector firing, before batching (port of `lib/core/models.dart`). */

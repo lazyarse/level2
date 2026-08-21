@@ -116,11 +116,14 @@ class EventPipelineTest {
     }
 
     @Test
-    fun tamperDetailDrivesTheAlertText() = runBlocking {
+    fun detectorDetailDrivesTheAlertText() = runBlocking {
         val builder = PipelineBuilder()
         val log = FakeChannel("log", "log")
         builder.channels = mapOf("log" to logConfig())
-        builder.detectors = mapOf("tamper" to config("tamper", routes = listOf("log")))
+        builder.detectors = mapOf(
+            "tamper" to config("tamper", routes = listOf("log")),
+            "health" to config("health", routes = listOf("log")),
+        )
         builder.factories = mapOf("log" to { _: ChannelConfig -> log })
         val p = builder.build()
 
@@ -153,6 +156,36 @@ class EventPipelineTest {
             ),
         )
         assertTrue(log.sent[1].text.startsWith("Camera moved detected in Hallway"))
+
+        p.handleBatch(
+            batch(
+                listOf(
+                    TriggerEvent(
+                        timestamp = base,
+                        triggerType = TriggerType.health,
+                        score = 1.0,
+                        detectorId = "health",
+                        detail = "stall",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(log.sent[2].text.startsWith("Camera feed stalled detected in Hallway"))
+
+        p.handleBatch(
+            batch(
+                listOf(
+                    TriggerEvent(
+                        timestamp = base,
+                        triggerType = TriggerType.health,
+                        score = 1.0,
+                        detectorId = "health",
+                        detail = "recovered",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(log.sent[3].text.startsWith("Camera feed recovered detected in Hallway"))
     }
 
     @Test
