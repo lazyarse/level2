@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.securitycam.level1.ui.monitor.MonitorScreen
+import io.securitycam.level1.ui.regions.RegionEditorScreen
 import io.securitycam.level1.ui.settings.SettingsScreen
 import io.securitycam.level1.ui.settings.SettingsViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,16 +36,20 @@ enum class Level1Tab(val label: String, val icon: ImageVector) {
 @Composable
 fun SecurityCamApp() {
     var tab by remember { mutableStateOf(Level1Tab.Monitor) }
+    val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+    var showRegionEditor by remember { mutableStateOf(false) }
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                Level1Tab.entries.forEach { t ->
-                    NavigationBarItem(
-                        selected = tab == t,
-                        onClick = { tab = t },
-                        icon = { Icon(t.icon, contentDescription = t.label) },
-                        label = { Text(t.label) },
-                    )
+            if (!showRegionEditor) {
+                NavigationBar {
+                    Level1Tab.entries.forEach { t ->
+                        NavigationBarItem(
+                            selected = tab == t,
+                            onClick = { tab = t },
+                            icon = { Icon(t.icon, contentDescription = t.label) },
+                            label = { Text(t.label) },
+                        )
+                    }
                 }
             }
         },
@@ -54,16 +59,27 @@ fun SecurityCamApp() {
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            when (tab) {
-                Level1Tab.Monitor -> MonitorScreen()
-                Level1Tab.Events -> Text(
-                    text = "Events — Phase 5",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(16.dp),
+            if (showRegionEditor) {
+                RegionEditorScreen(
+                    initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
+                    onSave = { regions ->
+                        settingsViewModel.update { it.copy(detectionRegions = regions) }
+                    },
+                    onClose = { showRegionEditor = false },
                 )
-                Level1Tab.Settings -> SettingsScreen(
-                    viewModel = viewModel(factory = SettingsViewModel.Factory),
-                )
+            } else {
+                when (tab) {
+                    Level1Tab.Monitor -> MonitorScreen()
+                    Level1Tab.Events -> Text(
+                        text = "Events — Phase 5",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                    Level1Tab.Settings -> SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onOpenRegionEditor = { showRegionEditor = true },
+                    )
+                }
             }
         }
     }
