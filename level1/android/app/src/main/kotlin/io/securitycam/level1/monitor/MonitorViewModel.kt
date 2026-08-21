@@ -90,6 +90,8 @@ class MonitorViewModel(
 
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
+    private val _exclusionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
+    val exclusionRegions: StateFlow<List<DetectionRegion>> = _exclusionRegions.asStateFlow()
 
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
@@ -191,6 +193,7 @@ class MonitorViewModel(
                 scheduleSettings = settings
                 _cameraName.value = settings.cameraName
                 _detectionRegions.value = settings.detectionRegions
+                _exclusionRegions.value = settings.exclusionRegions
                 MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
                     runtime = it
                     healthJob = viewModelScope.launch {

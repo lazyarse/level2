@@ -1,14 +1,17 @@
 package io.securitycam.level1.monitor
 
 import android.app.Application
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.ScheduleWindow
+import io.securitycam.level1.detection.DetectionRegion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -55,7 +58,6 @@ class MonitorViewModelTest {
     fun start_whenAlreadyMonitoring_isNoOp() {
         val startRan = mutableListOf<Int>()
         val vm = viewModel(startRan = startRan)
-        vm.start()
         vm.start()
         assertEquals(1, startRan.size)
         assertEquals(MonitorState.Monitoring, vm.state.value)
@@ -161,5 +163,36 @@ class MonitorViewModelTest {
         assertTrue(vm.schedulePaused.value)
         vm.stop()
         assertTrue(!vm.schedulePaused.value)
+    }
+
+    @Test
+    fun startLoadsBothRegionListsIntoFlows() {
+        val inclusion = listOf(
+            DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8)),
+        )
+        val exclusions = listOf(
+            DetectionRegion("e1", "rect", "private", listOf(0.6, 0.6, 0.9, 0.9)),
+        )
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = {},
+            stopMonitoring = {},
+            settingsLoader = {
+                AppSettings.defaults().copyWith(
+                    detectionRegions = inclusion,
+                    exclusionRegions = exclusions,
+                )
+            },
+            scheduleCheckInterval = null,
+        )
+        assertEquals(emptyList<DetectionRegion>(), vm.exclusionRegions.value)
+        vm.start()
+        // Pump the main-looper coroutine; runtime creation may fail under
+        // Robolectric (no native MediaPipe) but is swallowed after the flows
+        // are populated.
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(inclusion, vm.detectionRegions.value)
+        assertEquals(exclusions, vm.exclusionRegions.value)
     }
 }

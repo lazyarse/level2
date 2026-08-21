@@ -89,15 +89,19 @@ private val RegionPalette = listOf(
     Color(0xCCD7AEFB),
 )
 
-/** Draws [regions] over the preview in display space. */
+/** Distinct overlay color for exclusion (privacy) zones. */
+private val ExclusionOverlay = Color(0xCCEA4335)
+
+/** Draws [regions] over the preview in display space, plus [exclusionRegions] in red. */
 @Composable
 fun RegionOverlay(
     regions: List<DetectionRegion>,
     rotationDegrees: Int,
     modifier: Modifier = Modifier,
     show: Boolean = true,
+    exclusionRegions: List<DetectionRegion> = emptyList(),
 ) {
-    if (!show || regions.isEmpty()) return
+    if (!show || (regions.isEmpty() && exclusionRegions.isEmpty())) return
     Canvas(modifier = modifier) {
         val size = this.size
         regions.forEachIndexed { index, region ->
@@ -107,6 +111,16 @@ fun RegionOverlay(
             drawPath(
                 path = path,
                 color = RegionPalette[index % RegionPalette.size],
+                style = Stroke(width = 1.5f),
+            )
+        }
+        exclusionRegions.forEach { region ->
+            val path = RegionDisplayMapper.regionPath(
+                region, rotationDegrees, size.width, size.height,
+            )
+            drawPath(
+                path = path,
+                color = ExclusionOverlay,
                 style = Stroke(width = 1.5f),
             )
         }

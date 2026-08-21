@@ -50,6 +50,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
+    val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -89,6 +90,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 rotationDegrees = rotationDegrees,
                 modifier = Modifier.fillMaxSize(),
                 show = showRegions,
+                exclusionRegions = exclusionRegions,
             )
             ZoomBadge(
                 zoomRatio = zoomRatio,
