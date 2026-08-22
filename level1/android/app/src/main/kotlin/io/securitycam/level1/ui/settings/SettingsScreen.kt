@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -66,6 +67,8 @@ import io.securitycam.level1.channels.TelegramChannelSettings
 import io.securitycam.level1.channels.WebhookChannelSettings
 import io.securitycam.level1.channels.webhookPresets
 import io.securitycam.level1.core.AnalysisResolution
+import io.securitycam.level1.core.AppSettings
+import io.securitycam.level1.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level1.core.ScheduleWindow
 import io.securitycam.level1.core.ScreenOrientation
 import io.securitycam.level1.core.VideoQuality
@@ -156,8 +159,39 @@ fun SettingsScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            SectionTitle("Face recognition")
+            Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Face, contentDescription = null)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Recognize known faces")
+                        BodyText(
+                            if (current.knownFaces.isEmpty()) {
+                                "Nobody enrolled yet — use Enroll on the monitor screen"
+                            } else {
+                                "${current.knownFaces.size} enrolled"
+                            },
+                        )
+                    }
+                    Switch(
+                        checked = AppSettings.faceRecognitionEnabled(current),
+                        onCheckedChange = { on ->
+                            viewModel.update { it.withFaceRecognition(on) }
+                        },
+                        modifier = Modifier.testTag("faceRecognitionSwitch"),
+                    )
+                }
+            }
             SectionTitle("Detectors")
             for ((type, config) in current.detectorConfigs) {
+                // Routing-only configs owned by the recognition toggle above.
+                if (type == TriggerType.faceKnown || type == TriggerType.faceUnknown) continue
                 DetectorCard(
                     config = config,
                     channelIds = current.channelConfigs.map { it.id },
@@ -644,6 +678,8 @@ private fun detectorLabel(type: String): String = when (type) {
     TriggerType.glassBreak -> "Glass break"
     TriggerType.loudNoise -> "Loud noise"
     TriggerType.face -> "Face"
+    TriggerType.faceKnown -> "Known face"
+    TriggerType.faceUnknown -> "Unknown face"
     TriggerType.person -> "Person"
     TriggerType.tamper -> "Tamper"
     else -> type
