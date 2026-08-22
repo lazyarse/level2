@@ -97,3 +97,19 @@ dedicated coverage in the same Kotlin files plus one new suite.
 - **Sources:** `docs/plans/2026-08-20-native-kotlin-migration-plan.md` (Phase/Task
   assignment; Task 0.2/0.5 define this matrix) and
   `docs/plans/port-parity-manifest.txt` (the 37 Dart unit files + 4 integration files).
+
+### Face-recognition port additions (2026-08-22, `2026-08-21-face-recognition-plan.md`)
+
+Face recognition is a native-only feature (no Dart-era counterpart); coverage
+maps to the FR plan tasks.
+
+| Coverage | Native test | Source task | Done |
+|---|---|---|---|
+| crop/BGR→RGB/normalization + cosine/l2 math | `FaceEmbeddingEngineTest.kt` | Task 1 | [x] |
+| centroid merge/normalize/corrupt-bin/id safety | `KnownFaceStoreTest.kt` | Task 2 | [x] |
+| labels, migration idempotency, JSON round-trip | `FaceRecognitionSettingsTest.kt` | Task 3 | [x] |
+| known/unknown/plain-fallback + persistence | `FaceRecognizerTest.kt` | Task 4 | [x] |
+| result-level detectorId routing override | `DetectorPipelineTest.kt` (`resultDetectorIdOverridesDetectorId`) | Task 4 | [x] |
+| enrollment add/refold/fail paths | `FaceEnrollmentCoordinatorTest.kt` | Task 5 | [x] |
+| enrollment UI state via VM | `MonitorViewModelTest.kt` (`startEnrollment_*`) | Task 5 | [x] |
+| recognition toggle on settings screen | manual + `FaceRecognitionSettingsTest.kt` migration tests | Task 6 | [x] |

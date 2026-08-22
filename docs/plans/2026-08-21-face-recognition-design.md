@@ -1,5 +1,7 @@
 # Face Recognition (known/unknown triggers) — Design
 
+**Status:** Implemented (2026-08-22); see `2026-08-21-face-recognition-plan.md` and the parity matrix.
+
 > Status: Draft (implementation plan follows in
 > `2026-08-21-face-recognition-plan.md`). Roadmap-future item from the master
 > design, now specified natively against the Kotlin tree.
