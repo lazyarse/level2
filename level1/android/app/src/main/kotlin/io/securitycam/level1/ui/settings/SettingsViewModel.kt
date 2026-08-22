@@ -9,7 +9,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
+import io.securitycam.level1.core.KnownFace
+import io.securitycam.level1.detection.face.FaceEmbeddingEngine
+import io.securitycam.level1.detection.face.MediaPipeFaceEngine
 import io.securitycam.level1.event.ChannelFactory
+import io.securitycam.level1.identity.FaceEnrollmentCoordinator
+import io.securitycam.level1.identity.KnownFaceStore
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
 import io.securitycam.level1.storage.FileSnapshotStore
@@ -34,6 +39,7 @@ class SettingsViewModel(
     private val settingsSaver: suspend (AppSettings) -> Unit,
     private val eventsClearer: suspend (Duration?) -> Unit,
     private val channelFactories: Map<String, ChannelFactory> = ChannelRegistry.factories,
+    private val enrollmentFactory: () -> FaceEnrollmentCoordinator? = { null },
 ) : ViewModel() {
 
     /** Null until the stored settings finish loading. */
@@ -47,6 +53,10 @@ class SettingsViewModel(
     /** Channel id whose "Send test" is in flight (button disabled). */
     private val _sendingTestId = MutableStateFlow<String?>(null)
     val sendingTestId: StateFlow<String?> = _sendingTestId.asStateFlow()
+
+    /** Enrollment progress: the label being enrolled, or null when idle. */
+    private val _enrollingLabel = MutableStateFlow<String?>(null)
+    val enrollingLabel: StateFlow<String?> = _enrollingLabel.asStateFlow()
 
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
@@ -110,6 +120,39 @@ class SettingsViewModel(
         }
     }
 
+    /** Enrol [label] using the live camera bus; requires monitoring to be active. */
+    fun startEnrollment(label: String) {
+        val coordinator = enrollmentFactory() ?: return
+        if (_enrollingLabel.value != null) return
+        viewModelScope.launch {
+            _enrollingLabel.value = label
+            _enrollingLabel.value = try {
+                val result = coordinator.enroll(label)
+                _message.value = if (result.isSuccess) {
+                    "Enrolled ${result.getOrThrow().label}"
+                } else {
+                    "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+                }
+                null
+            } catch (e: Exception) {
+                _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
+                null
+            }
+        }
+    }
+
+    /** Remove a face from the enrolled list and delete its centroid file. */
+    fun deleteFace(face: KnownFace, store: KnownFaceStore) {
+        viewModelScope.launch {
+            val current = _draft.value ?: return@launch
+            store.delete(face.id)
+            _draft.value = current.copy(
+                knownFaces = current.knownFaces.filterNot { it.id == face.id },
+            )
+            _message.value = "Removed ${face.label}"
+        }
+    }
+
     companion object {
         /**
          * Default event purge used by the Settings screen buttons (and the same
@@ -142,6 +185,21 @@ class SettingsViewModel(
                         SettingsStore(app, EncryptedSecretStore(app)).save(settings)
                     },
                     eventsClearer = defaultEventsClearer(app),
+                    enrollmentFactory = {
+                        FaceEnrollmentCoordinator(
+                            store = KnownFaceStore(app),
+                            embedder = FaceEmbeddingEngine.load(app),
+                            faceFinder = FaceEnrollmentCoordinator.busFinder(
+                                engineFactory = { MediaPipeFaceEngine(app) },
+                            ),
+                            settingsLoader = {
+                                SettingsStore(app, EncryptedSecretStore(app)).load()
+                            },
+                            settingsSaver = {
+                                SettingsStore(app, EncryptedSecretStore(app)).save(it)
+                            },
+                        )
+                    },
                 )
             }
         }

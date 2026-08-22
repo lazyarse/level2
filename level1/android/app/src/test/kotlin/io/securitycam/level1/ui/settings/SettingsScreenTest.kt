@@ -202,7 +202,7 @@ class SettingsScreenTest {
         assertTrue(harness.viewModel.draft.value!!.recordVideo)
 
         expandSection("Video clips")
-        compose.onNodeWithTag(switchTag("Record video locally")).performClick()
+        compose.onNodeWithTag(switchTag("Record video locally")).performScrollTo().performClick()
         compose.onNodeWithTag("saveSettings").performClick()
         compose.waitUntil(5000) { harness.saved.isNotEmpty() }
 
@@ -231,7 +231,7 @@ class SettingsScreenTest {
         setContent(harness)
 
         expandSection("Video clips")
-        compose.onNodeWithTag(switchTag("Record video locally")).performClick()
+        compose.onNodeWithTag(switchTag("Record video locally")).performScrollTo().performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag("videoQualityDropdown").performScrollTo()
