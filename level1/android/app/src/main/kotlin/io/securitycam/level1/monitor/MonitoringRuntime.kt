@@ -16,7 +16,12 @@ import io.securitycam.level1.detection.HealthEpisode
 import io.securitycam.level1.detection.HealthWatchdog
 import io.securitycam.level1.core.TriggerEvent
 import io.securitycam.level1.core.TriggerType
+import io.securitycam.level1.detection.DetectorRegistry
 import io.securitycam.level1.detection.audio.AudioClassifierFactory
+import io.securitycam.level1.detection.face.FaceDetector
+import io.securitycam.level1.detection.face.FaceEmbeddingEngine
+import io.securitycam.level1.detection.face.FaceRecognizer
+import io.securitycam.level1.identity.KnownFaceStore
 import io.securitycam.level1.detection.pipeline.AnalysisDispatcher
 import io.securitycam.level1.detection.pipeline.DetectorPipeline
 import io.securitycam.level1.event.EventPipeline
@@ -82,6 +87,25 @@ class MonitoringRuntime private constructor(
         ): MonitoringRuntime {
             val appContext = context.applicationContext
             val runtime = MonitoringRuntime(appContext, settings, scope)
+            // While recognition is enabled the face factory builds the
+            // recognizing variant; registering unconditionally keeps repeated
+            // create() calls consistent with the current settings.
+            val recognitionOn = AppSettings.faceRecognitionEnabled(settings)
+            val faceStore = if (recognitionOn) KnownFaceStore(appContext) else null
+            val embedder = if (recognitionOn) FaceEmbeddingEngine.load(appContext) else null
+            val matchThreshold = if (recognitionOn) {
+                settings.detectorConfigs[TriggerType.faceKnown]?.threshold
+                    ?: AppSettings.FACE_MATCH_THRESHOLD
+            } else {
+                0.0
+            }
+            DetectorRegistry.register(TriggerType.face) { c ->
+                if (recognitionOn) {
+                    FaceRecognizer(c, faceStore!!, embedder, { settings.knownFaces }, matchThreshold)
+                } else {
+                    FaceDetector(c)
+                }
+            }
             runtime.pipeline = DetectorPipeline(
                 classifier = AudioClassifierFactory.build(appContext),
                 configs = settings.detectorConfigs.values.toList(),

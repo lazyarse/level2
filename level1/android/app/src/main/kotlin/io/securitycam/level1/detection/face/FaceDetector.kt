@@ -2,6 +2,7 @@ package io.securitycam.level1.detection.face
 
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.detection.AnalysisFrame
+import io.securitycam.level1.detection.ColorBitmap
 import io.securitycam.level1.detection.DetectionResult
 import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.detection.FrameDetector
@@ -16,7 +17,7 @@ import io.securitycam.level1.detection.person.AppContextHolder
  * Detection is async, so the real work lives in [analyzeFrameAsync];
  * [analyzeFrame] is a no-op non-trigger for the sync path.
  */
-class FaceDetector(
+open class FaceDetector(
     override val config: DetectorConfig,
     engine: FaceEngine? = null,
 ) : FrameDetector() {
@@ -43,7 +44,24 @@ class FaceDetector(
         result(frame.timestamp, 0.0, false)
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
-        val color = frame.color ?: return result(frame.timestamp, 0.0, false)
+        val top = topFace(frame)
+        if (top == null) {
+            persistenceCount = 0
+            return result(frame.timestamp, 0.0, false)
+        }
+        val (color, best) = top
+        val above = best.score >= config.threshold
+        persistenceCount = if (above) persistenceCount + 1 else 0
+        if (persistenceCount >= config.persistenceFrames) {
+            persistenceCount = 0
+            return result(frame.timestamp, best.score, true)
+        }
+        return result(frame.timestamp, best.score, false)
+    }
+
+    /** Highest-confidence region-filtered face, with its frame; null if none. */
+    protected suspend fun topFace(frame: AnalysisFrame): Pair<ColorBitmap, FaceDetection>? {
+        val color = frame.color ?: return null
         var faces = engine.detectFaces(color)
         faces = faces.filter { f ->
             val bx = f.x1 / color.width
@@ -55,18 +73,8 @@ class FaceDetector(
             RegionFilter.rectOverlapsAny(regions, bx, by, bw, bh) &&
                 !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
         }
-        if (faces.isEmpty()) {
-            persistenceCount = 0
-            return result(frame.timestamp, 0.0, false)
-        }
-        val maxScore = faces.maxOf { it.score }
-        val above = maxScore >= config.threshold
-        persistenceCount = if (above) persistenceCount + 1 else 0
-        if (persistenceCount >= config.persistenceFrames) {
-            persistenceCount = 0
-            return result(frame.timestamp, maxScore, true)
-        }
-        return result(frame.timestamp, maxScore, false)
+        val best = faces.maxByOrNull { it.score } ?: return null
+        return color to best
     }
 
     private fun result(ts: java.time.Instant, score: Double, triggered: Boolean): DetectionResult =

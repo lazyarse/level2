@@ -17,12 +17,17 @@ import org.tensorflow.lite.InterpreterFactory
  * model-load failures yield null embeddings (callers fall back to plain
  * face-detection behavior).
  */
+/** Face-box -> embedding seam (fakes in JVM tests). */
+interface FaceEmbedder {
+    fun embed(frame: ColorBitmap, box: DoubleArray): FloatArray?
+}
+
 class FaceEmbeddingEngine private constructor(
     private val interpreter: InterpreterApi,
-) {
+) : FaceEmbedder {
 
     /** Highest-confidence face only; one extra inference per frame at most. */
-    fun embed(frame: ColorBitmap, box: DoubleArray): FloatArray? {
+    override fun embed(frame: ColorBitmap, box: DoubleArray): FloatArray? {
         if (box.size < 4) return null
         val input = buildInput(frame, box)
         val output = Array(1) { FloatArray(EMBEDDING_DIM) }

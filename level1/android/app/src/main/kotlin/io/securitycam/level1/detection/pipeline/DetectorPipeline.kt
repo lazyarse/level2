@@ -115,7 +115,7 @@ class DetectorPipeline(
                 timestamp = now,
                 triggerType = result.triggerType,
                 score = result.score,
-                detectorId = detector.id,
+                detectorId = result.detectorId ?: detector.id,
                 detail = result.detail,
             ),
         )

@@ -17,4 +17,6 @@ data class DetectionResult(
     val detections: List<Detection> = emptyList(),
     /** Optional qualifier, e.g. tamper's "covered"/"moved". */
     val detail: String? = null,
+    /** Overrides the emitting detector's id in the TriggerEvent (routing). */
+    val detectorId: String? = null,
 )

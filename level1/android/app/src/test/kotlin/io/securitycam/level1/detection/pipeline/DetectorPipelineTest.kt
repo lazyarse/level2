@@ -5,6 +5,7 @@ import io.securitycam.level1.core.TriggerEvent
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.detection.AnalysisFrame
 import io.securitycam.level1.detection.AudioWindow
+import io.securitycam.level1.detection.DetectorRegistry
 import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectionResult
 import io.securitycam.level1.detection.FrameDetector
@@ -60,6 +61,53 @@ class DetectorPipelineTest {
             ),
         ),
     )
+
+    /** A result-level detectorId must win over the detector instance id. */
+    @Test
+    fun resultDetectorIdOverridesDetectorId() = runBlocking {
+        val detector = object : FrameDetector() {
+            override val id: String get() = TriggerType.face
+            override val triggerType: String get() = TriggerType.face
+            override val config =
+                DetectorConfig(type = TriggerType.face, persistenceFrames = 1)
+
+            override fun analyzeFrame(frame: AnalysisFrame): DetectionResult =
+                DetectionResult(
+                    timestamp = base,
+                    triggerType = TriggerType.faceKnown,
+                    score = 0.9,
+                    triggered = true,
+                    detectorId = TriggerType.faceKnown,
+                )
+
+            override suspend fun init() {}
+
+            override fun reset() {}
+
+            override suspend fun dispose() {}
+        }
+        DetectorRegistry.register(TriggerType.face) { detector }
+        val pipeline = DetectorPipeline(
+            classifier = MockAudioEventClassifier(),
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.face,
+                    enabled = true,
+                    threshold = 0.5,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.init()
+        val events = mutableListOf<TriggerEvent>()
+        val collector = scope().launch { pipeline.triggers.collect { events.add(it) } }
+        yield()
+        pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
+        yield()
+        assertEquals(1, events.size)
+        assertEquals(TriggerType.faceKnown, events.first().detectorId)
+        collector.cancel()
+    }
 
     private fun babyCryWindow(timestamp: Instant): AudioWindow {
         val samples = FloatArray(windowSamples)
