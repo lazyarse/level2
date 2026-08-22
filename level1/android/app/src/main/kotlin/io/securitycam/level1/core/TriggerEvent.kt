@@ -11,6 +11,8 @@ object TriggerType {
     const val merged = "merged"
     const val person = "person"
     const val face = "face"
+    const val faceKnown = "face_known"
+    const val faceUnknown = "face_unknown"
     const val tamper = "tamper"
     const val health = "health"
 }

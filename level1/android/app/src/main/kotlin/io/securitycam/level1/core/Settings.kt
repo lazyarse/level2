@@ -243,6 +243,54 @@ data class AppSettings(
             ),
         )
 
+        /** Default cosine-distance cutoff for known-face matching. */
+        const val FACE_MATCH_THRESHOLD = 0.65
+
+        /** Recognition is on iff its routing configs exist. */
+        fun faceRecognitionEnabled(settings: AppSettings): Boolean =
+            settings.detectorConfigs.containsKey(TriggerType.faceKnown)
+
+        /**
+         * Face-recognition migration: enabling ensures a live `face` detector
+         * and seeds `face_known`/`face_unknown` routing configs (channels
+         * copied from the face config); disabling removes them, leaving the
+         * plain face detector untouched. Idempotent both ways.
+         */
+        fun AppSettings.withFaceRecognition(enabled: Boolean): AppSettings {
+            val configs = detectorConfigs.toMutableMap()
+            if (!enabled) {
+                if (!configs.containsKey(TriggerType.faceKnown) &&
+                    !configs.containsKey(TriggerType.faceUnknown)
+                ) {
+                    return this
+                }
+                configs.remove(TriggerType.faceKnown)
+                configs.remove(TriggerType.faceUnknown)
+                return copy(detectorConfigs = configs)
+            }
+            if (configs.containsKey(TriggerType.faceKnown)) return this
+            val face = (configs[TriggerType.face] ?: defaultFaceConfig()).copy(enabled = true)
+            configs[TriggerType.face] = face
+            for (type in listOf(TriggerType.faceKnown, TriggerType.faceUnknown)) {
+                configs[type] = face.copy(
+                    type = type,
+                    threshold = if (type == TriggerType.faceKnown) FACE_MATCH_THRESHOLD else face.threshold,
+                    persistenceFrames = 1,
+                )
+            }
+            return copy(detectorConfigs = configs)
+        }
+
+        private fun defaultFaceConfig(): DetectorConfig =
+            DetectorConfig(
+                type = TriggerType.face,
+                threshold = 0.7,
+                persistenceFrames = 2,
+                enabled = false,
+                motionGated = true,
+                routeToChannelIds = listOf("telegram"),
+            )
+
         fun fromJson(json: Map<String, Any?>): AppSettings {
             val defaults = defaults()
             val detectors = (json["detectorConfigs"] as? Map<*, *>)

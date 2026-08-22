@@ -145,6 +145,8 @@ fun triggerLabel(triggerType: String): String = when (triggerType) {
     TriggerType.merged -> "Multiple triggers"
     TriggerType.person -> "Person"
     TriggerType.face -> "Face"
+    TriggerType.faceKnown -> "Known face"
+    TriggerType.faceUnknown -> "Unknown face"
     TriggerType.tamper -> "Tamper"
     TriggerType.health -> "Health"
     else -> "Activity"
