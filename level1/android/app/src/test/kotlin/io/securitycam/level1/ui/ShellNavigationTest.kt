@@ -1,6 +1,7 @@
 package io.securitycam.level1.ui
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,8 @@ import io.securitycam.level1.storage.RecordedEventRow
 import io.securitycam.level1.ui.events.EventsViewModel
 import io.securitycam.level1.ui.settings.SettingsViewModel
 import java.time.Instant
+import java.time.ZoneId
+import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -19,6 +22,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
 import org.junit.Assert.assertEquals
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -51,17 +55,24 @@ class ShellNavigationTest {
         Dispatchers.resetMain()
     }
 
-    private fun row() = RecordedEventRow(
-        id = 1,
-        timestamp = Instant.parse("2026-01-01T12:00:00Z"),
-        cameraName = "Hallway",
-        triggerType = "motion",
-        score = 0.8,
-        snapshotName = null,
-        videoName = null,
-        channelStatuses = emptyMap(),
-        triggerTypes = emptyList(),
-    )
+    /** Enough same-day rows to satisfy the pager's initial-fill threshold. */
+    private fun freshRows(): List<RecordedEventRow> {
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        return (1..25).map { i ->
+            RecordedEventRow(
+                id = i.toLong(),
+                timestamp = today.atTime(10, i).atZone(zone).toInstant(),
+                cameraName = "Hallway",
+                triggerType = "motion",
+                score = 0.8,
+                snapshotName = null,
+                videoName = null,
+                channelStatuses = emptyMap(),
+                triggerTypes = emptyList(),
+            )
+        }
+    }
 
     @Test
     fun eventsTabDoesNotRecreateItsStateOnNavigation() {
@@ -69,11 +80,13 @@ class ShellNavigationTest {
         val instances = mutableListOf<EventsViewModel>()
         val eventsFactory = viewModelFactory {
             initializer {
+                val log = freshRows()
                 EventsViewModel(
-                    loader = {
+                    pageLoader = { start, end ->
                         loads++
-                        listOf(row())
+                        log.filter { !it.timestamp.isBefore(start) && it.timestamp.isBefore(end) }
                     },
+                    floorLoader = { log.minOf { it.timestamp } },
                     snapshotLoader = { null },
                     videoOpener = null,
                 ).also { instances.add(it) }
@@ -102,7 +115,8 @@ class ShellNavigationTest {
         compose.waitForIdle()
         assertEquals(1, instances.size)
         assertEquals(1, loads)
-        compose.onNodeWithText("Motion · score 0.80").assertExists()
+        compose.onAllNodesWithText("Motion · score 0.80", substring = true)
+            .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
 
         compose.onNodeWithText("Monitor").performClick()
         compose.waitForIdle()
@@ -111,6 +125,7 @@ class ShellNavigationTest {
 
         assertEquals("view-model must survive tab switches", 1, instances.size)
         assertEquals("initial load must not re-run on return", 1, loads)
-        compose.onNodeWithText("Motion · score 0.80").assertExists()
+        compose.onAllNodesWithText("Motion · score 0.80", substring = true)
+            .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
     }
 }

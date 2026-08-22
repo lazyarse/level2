@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
@@ -24,8 +23,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.securitycam.level1.ui.events.EventsScreen
 import io.securitycam.level1.ui.events.EventsViewModel
-import io.securitycam.level1.ui.events.HistoryScreen
-import io.securitycam.level1.ui.events.HistoryViewModel
 import io.securitycam.level1.ui.monitor.MonitorScreen
 import io.securitycam.level1.ui.regions.RegionEditorScreen
 import io.securitycam.level1.ui.settings.SettingsScreen
@@ -36,7 +33,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 enum class Level1Tab(val label: String, val icon: ImageVector) {
     Monitor("Monitor", Icons.Filled.Videocam),
     Events("Events", Icons.Filled.Event),
-    History("History", Icons.Filled.History),
     Settings("Settings", Icons.Filled.Settings),
 }
 
@@ -90,9 +86,6 @@ fun SecurityCamApp(
                     Level1Tab.Monitor -> MonitorScreen()
                     Level1Tab.Events -> EventsScreen(
                         viewModel = viewModel(factory = eventsFactory),
-                    )
-                    Level1Tab.History -> HistoryScreen(
-                        viewModel = viewModel(factory = HistoryViewModel.Factory),
                     )
                     Level1Tab.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,

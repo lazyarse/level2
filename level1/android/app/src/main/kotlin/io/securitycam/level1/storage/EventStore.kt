@@ -56,6 +56,9 @@ interface EventDao {
     )
     suspend fun betweenWithSnapshots(startIso: String, endIso: String, limit: Int): List<EventEntity>
 
+    @Query("SELECT MIN(timestamp) FROM events")
+    suspend fun oldestTimestamp(): String?
+
     @Query("SELECT snapshot_name, video_name FROM events WHERE timestamp < :olderThanIso")
     suspend fun mediaOlderThan(olderThanIso: String): List<MediaRef>
 
@@ -130,6 +133,10 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
 
     fun recentFlow(limit: Int = 100): Flow<List<RecordedEventRow>> =
         dao.recentFlow(limit).map { rows -> rows.map { it.toRow() } }
+
+    /** Oldest stored event instant, or null when the log is empty. */
+    suspend fun oldestInstant(): Instant? =
+        dao.oldestTimestamp()?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
     /**
      * Events with [start] <= timestamp < [end], newest first (port of the
