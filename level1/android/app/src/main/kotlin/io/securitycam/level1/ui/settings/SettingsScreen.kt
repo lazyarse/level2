@@ -207,15 +207,50 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                            Text(
+                                "Camera",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                            )
                             for ((type, config) in current.detectorConfigs) {
-                                // Routing-only configs owned by the recognition toggle above.
-                                if (type == TriggerType.faceKnown || type == TriggerType.faceUnknown) continue
+                                if (type !in cameraDetectorTypes) continue
                                 DetectorCard(
                                     config = config,
                                     channelIds = current.channelConfigs.map { it.id },
                                     onChanged = { next ->
                                         viewModel.update {
                                             it.copy(detectorConfigs = it.detectorConfigs + (type to next))
+                                        }
+                                    },
+                                )
+                            }
+                            Text(
+                                "Audio",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                            )
+                            for ((type, config) in current.detectorConfigs) {
+                                if (type !in audioDetectorTypes) continue
+                                DetectorCard(
+                                    config = config,
+                                    channelIds = current.channelConfigs.map { it.id },
+                                    onChanged = { next ->
+                                        viewModel.update {
+                                            it.copy(detectorConfigs = it.detectorConfigs + (type to next))
+                                        }
+                                    },
+                                )
+                            }
+                            // Internal health monitor — shown without a sub-heading.
+                            current.detectorConfigs[TriggerType.health]?.let { config ->
+                                DetectorCard(
+                                    config = config,
+                                    channelIds = current.channelConfigs.map { it.id },
+                                    onChanged = { next ->
+                                        viewModel.update {
+                                            it.copy(detectorConfigs = it.detectorConfigs + (TriggerType.health to next))
                                         }
                                     },
                                 )
@@ -1081,6 +1116,19 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
         }
     }
 }
+
+private val cameraDetectorTypes = setOf(
+    TriggerType.motion,
+    TriggerType.person,
+    TriggerType.face,
+    TriggerType.tamper,
+)
+
+private val audioDetectorTypes = setOf(
+    TriggerType.loudNoise,
+    TriggerType.glassBreak,
+    TriggerType.babyCry,
+)
 
 private fun retentionSummary(days: Int): String =
     if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"

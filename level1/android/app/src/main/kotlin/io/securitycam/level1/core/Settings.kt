@@ -150,6 +150,7 @@ data class AppSettings(
                     type = TriggerType.babyCry,
                     threshold = 0.5,
                     persistenceFrames = 2,
+                    enabled = false,
                     routeToChannelIds = listOf("telegram"),
                 ),
                 TriggerType.glassBreak to DetectorConfig(
