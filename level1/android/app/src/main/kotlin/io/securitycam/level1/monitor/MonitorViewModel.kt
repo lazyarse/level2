@@ -27,10 +27,6 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
-import io.securitycam.level1.detection.face.FaceEmbeddingEngine
-import io.securitycam.level1.detection.face.MediaPipeFaceEngine
-import io.securitycam.level1.identity.FaceEnrollmentCoordinator
-import io.securitycam.level1.identity.KnownFaceStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,17 +44,6 @@ import kotlinx.coroutines.runBlocking
  * The side effects are injectable so state transitions are unit-testable
  * without an emulator (Robolectric).
  */
-/** Enrollment progress surfaced on the monitor screen. */
-sealed interface EnrollmentUi {
-    data object Idle : EnrollmentUi
-
-    data class Working(val label: String) : EnrollmentUi
-
-    data class Done(val label: String) : EnrollmentUi
-
-    data class Failed(val message: String) : EnrollmentUi
-}
-
 class MonitorViewModel(
     application: Application,
     private val permissionsGranted: () -> Boolean = {
@@ -83,17 +68,6 @@ class MonitorViewModel(
     },
     private val scheduleCheckInterval: Duration? = Duration.ofMinutes(1),
     private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
-    private val enrollmentFactory: () -> FaceEnrollmentCoordinator = {
-        FaceEnrollmentCoordinator(
-            store = KnownFaceStore(application),
-            embedder = FaceEmbeddingEngine.load(application),
-            faceFinder = FaceEnrollmentCoordinator.busFinder(
-                engineFactory = { MediaPipeFaceEngine(application) },
-            ),
-            settingsLoader = { SettingsStore(application, EncryptedSecretStore(application)).load() },
-            settingsSaver = { SettingsStore(application, EncryptedSecretStore(application)).save(it) },
-        )
-    },
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MonitorState.Idle)
@@ -118,21 +92,6 @@ class MonitorViewModel(
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
     private val _exclusionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val exclusionRegions: StateFlow<List<DetectionRegion>> = _exclusionRegions.asStateFlow()
-    private val _enrollment = MutableStateFlow<EnrollmentUi>(EnrollmentUi.Idle)
-    val enrollment: StateFlow<EnrollmentUi> = _enrollment.asStateFlow()
-
-    /** Grabs the next face from the preview and enrolls it under [label]. */
-    fun startEnrollment(label: String) {
-        if (_enrollment.value is EnrollmentUi.Working) return
-        viewModelScope.launch {
-            _enrollment.value = EnrollmentUi.Working(label)
-            _enrollment.value = try {
-                EnrollmentUi.Done(enrollmentFactory().enroll(label).getOrThrow().label)
-            } catch (e: Exception) {
-                EnrollmentUi.Failed(e.message ?: "Enrollment failed")
-            }
-        }
-    }
 
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
