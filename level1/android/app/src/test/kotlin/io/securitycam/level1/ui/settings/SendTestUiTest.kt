@@ -68,6 +68,16 @@ class SendTestUiTest {
         compose.waitForIdle()
     }
 
+    private fun expandSection(title: String) {
+        compose.onNodeWithTag(sectionTag(title)).performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
+    private fun expandChannel(id: String) {
+        compose.onNodeWithTag("channelHeader_$id").performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
     @Test
     fun logChannelHasNoSendTestButton() {
         val vm = viewModel(factories = mapOf("log" to { c: ChannelConfig -> LogChannel(id = c.id) }))
@@ -82,6 +92,8 @@ class SendTestUiTest {
         val vm = viewModel(factories = emptyMap())
         setContent(vm)
 
+        expandSection("Channels")
+        expandChannel("telegram")
         compose.onNodeWithTag("sendTest_telegram").assertExists()
         compose.onNodeWithTag("sendTest_telegram").assertIsNotEnabled()
         assertNull(vm.message.value)
@@ -115,6 +127,8 @@ class SendTestUiTest {
         dispatcher.scheduler.advanceUntilIdle()
         compose.waitForIdle()
 
+        expandSection("Channels")
+        expandChannel("telegram")
         compose.onNodeWithTag("sendTest_telegram").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("sendTest_telegram").performClick()
         dispatcher.scheduler.advanceUntilIdle()

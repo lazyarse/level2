@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -53,10 +54,60 @@ class SettingsScreenTest {
         compose.waitForIdle()
     }
 
+    private fun expandSection(title: String) {
+        compose.onNodeWithTag(sectionTag(title)).performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
+    private fun expandChannel(id: String) {
+        compose.onNodeWithTag("channelHeader_$id").performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun sectionsCollapsedByDefaultHideNestedFields() {
+        setContent(Harness())
+
+        // Channel fields are inside collapsed sections/channels.
+        compose.onAllNodesWithTag(fieldTag("Bot token")).fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onAllNodesWithTag(fieldTag("SMTP host")).fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        // Section headers themselves exist.
+        compose.onNodeWithTag(sectionTag("Channels")).assertExists()
+        compose.onNodeWithTag(sectionTag("Detectors")).assertExists()
+        compose.onNodeWithTag(sectionTag("Video clips")).assertExists()
+    }
+
+    @Test
+    fun expandingSectionRevealsChannelCardsAndExpandingCardRevealsFields() {
+        setContent(Harness())
+
+        expandSection("Channels")
+        // Channel cards now visible (header rows).
+        compose.onNodeWithTag("channelHeader_telegram").assertExists()
+
+        expandChannel("telegram")
+        compose.onNodeWithTag(fieldTag("Bot token")).performScrollTo().assertIsDisplayed()
+
+        // Other channels still collapsed.
+        compose.onAllNodesWithTag(fieldTag("SMTP host")).fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
     @Test
     fun rendersEmailWebhookAndPushoverChannelFields() {
         val harness = Harness()
         setContent(harness)
+
+        expandSection("Channels")
+        expandChannel("telegram")
+        expandChannel("email")
+        expandChannel("discord")
+        expandChannel("pushover")
 
         for (label in listOf(
             "Bot token",
@@ -73,10 +124,8 @@ class SettingsScreenTest {
         )) {
             compose.onNodeWithTag(fieldTag(label)).performScrollTo().assertIsDisplayed()
         }
-        // log is internal plumbing, not a user-toggleable channel…
+        // log is internal plumbing, not a user-toggleable channel.
         compose.onNodeWithTag(switchTag("log")).assertDoesNotExist()
-        // …but detectors can still route to it (one checkbox per enabled card).
-        assertTrue(compose.onAllNodesWithText("log").fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test
@@ -84,9 +133,12 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
+        expandSection("Channels")
+        expandChannel("email")
+        expandChannel("discord")
+
         compose.onNodeWithTag(fieldTag("SMTP host")).performScrollTo()
             .performTextInput("smtp.example.com")
-        // Port is pre-seeded from defaults (587) — replace rather than append.
         compose.onNodeWithTag(fieldTag("Port (587 or 465)")).performScrollTo()
             .performTextReplacement("587")
         compose.onNodeWithTag(fieldTag("To address")).performScrollTo()
@@ -98,7 +150,7 @@ class SettingsScreenTest {
         compose.onNodeWithTag(fieldTag("Webhook URL")).performScrollTo()
             .performTextInput("https://discord.com/api/webhooks/1/abc")
 
-        compose.onNodeWithTag("saveSettings").performScrollTo().performClick()
+        compose.onNodeWithTag("saveSettings").performClick()
         compose.waitUntil(5000) { harness.saved.isNotEmpty() }
 
         val settings = harness.saved.single()
@@ -125,12 +177,15 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
+        expandSection("Channels")
+        expandChannel("pushover")
+
         compose.onNodeWithTag(fieldTag("App token")).performScrollTo()
             .performTextInput("apptok123")
         compose.onNodeWithTag(fieldTag("User key")).performScrollTo()
             .performTextInput("userkey456")
 
-        compose.onNodeWithTag("saveSettings").performScrollTo().performClick()
+        compose.onNodeWithTag("saveSettings").performClick()
         compose.waitUntil(5000) { harness.saved.isNotEmpty() }
 
         val pushover = PushoverChannelSettings.fromJson(
@@ -146,9 +201,9 @@ class SettingsScreenTest {
         setContent(harness)
         assertTrue(harness.viewModel.draft.value!!.recordVideo)
 
-        compose.onNodeWithTag(switchTag("Record video locally")).performScrollTo()
-            .performClick()
-        compose.onNodeWithTag("saveSettings").performScrollTo().performClick()
+        expandSection("Video clips")
+        compose.onNodeWithTag(switchTag("Record video locally")).performClick()
+        compose.onNodeWithTag("saveSettings").performClick()
         compose.waitUntil(5000) { harness.saved.isNotEmpty() }
 
         assertFalse(harness.saved.single().recordVideo)
@@ -160,10 +215,11 @@ class SettingsScreenTest {
         setContent(harness)
         assertEquals("lowest", harness.viewModel.draft.value!!.videoQuality)
 
+        expandSection("Video clips")
         compose.onNodeWithTag("videoQualityDropdown").performScrollTo().performClick()
         compose.onNodeWithText("Full HD (1080p)").performClick()
 
-        compose.onNodeWithTag("saveSettings").performScrollTo().performClick()
+        compose.onNodeWithTag("saveSettings").performClick()
         compose.waitUntil(5000) { harness.saved.isNotEmpty() }
 
         assertEquals("fhd", harness.saved.single().videoQuality)
@@ -174,8 +230,8 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
-        compose.onNodeWithTag(switchTag("Record video locally")).performScrollTo()
-            .performClick()
+        expandSection("Video clips")
+        compose.onNodeWithTag(switchTag("Record video locally")).performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag("videoQualityDropdown").performScrollTo()

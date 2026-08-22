@@ -1,6 +1,10 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package io.securitycam.level1.ui.settings
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Delete
@@ -35,6 +40,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,8 +59,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -142,286 +154,305 @@ fun SettingsScreen(
     val current = draft
     var pendingClear by remember { mutableStateOf<ClearRequest?>(null) }
 
+    val scrollState = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             if (current == null) {
-            Text("Loading…")
-        } else {
-            OutlinedTextField(
-                value = current.cameraName,
-                onValueChange = { name -> viewModel.update { it.copy(cameraName = name) } },
-                label = { Text("Camera name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SectionTitle("Face recognition")
-            Card(modifier = Modifier.padding(vertical = 4.dp)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Text("Loading…", modifier = Modifier.padding(16.dp))
+            } else {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                 ) {
-                    Icon(Icons.Filled.Face, contentDescription = null)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Recognize known faces")
-                        BodyText(
-                            if (current.knownFaces.isEmpty()) {
-                                "Nobody enrolled yet — use Enroll on the monitor screen"
-                            } else {
-                                "${current.knownFaces.size} enrolled"
-                            },
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = 16.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = current.cameraName,
+                            onValueChange = { name -> viewModel.update { it.copy(cameraName = name) } },
+                            label = { Text("Camera name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    Switch(
-                        checked = AppSettings.faceRecognitionEnabled(current),
-                        onCheckedChange = { on ->
-                            viewModel.update { it.withFaceRecognition(on) }
-                        },
-                        modifier = Modifier.testTag("faceRecognitionSwitch"),
-                    )
-                }
-            }
-            SectionTitle("Detectors")
-            for ((type, config) in current.detectorConfigs) {
-                // Routing-only configs owned by the recognition toggle above.
-                if (type == TriggerType.faceKnown || type == TriggerType.faceUnknown) continue
-                DetectorCard(
-                    config = config,
-                    channelIds = current.channelConfigs.map { it.id },
-                    onChanged = { next ->
-                        viewModel.update {
-                            it.copy(detectorConfigs = it.detectorConfigs + (type to next))
-                        }
-                    },
-                )
-            }
-            SectionTitle("Detection regions")
-            BodyText(
-                "Optional inclusion zones: motion/face only triggers inside them. " +
-                    "Empty = detect everywhere.",
-            )
-            Spacer(Modifier.height(8.dp))
-            Card {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenRegionEditor)
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.CropFree, contentDescription = null)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        if (current.detectionRegions.isEmpty()) {
-                            "No regions — detecting everywhere"
-                        } else {
-                            "${current.detectionRegions.size} region" +
-                                if (current.detectionRegions.size == 1) "" else "s"
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                }
-            }
-            SectionTitle("Channels")
-            for (config in current.channelConfigs) {
-                if (config.type != "log") {
-                    ChannelCard(
-                        config = config,
-                        fields = fields,
-                        onEnabledChange = { enabled ->
-                            viewModel.update { settings ->
-                                settings.copy(
-                                    channelConfigs = settings.channelConfigs.map {
-                                        if (it.id == config.id) it.copy(enabled = enabled) else it
+                        CollapsibleSection("Detectors", summary = detectorSummary(current)) {
+                            Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Filled.Face, contentDescription = null)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Recognize known faces")
+                                        BodyText(
+                                            if (current.knownFaces.isEmpty()) {
+                                                "Nobody enrolled yet — use Enroll on the monitor screen"
+                                            } else {
+                                                "${current.knownFaces.size} enrolled"
+                                            },
+                                        )
+                                    }
+                                    Switch(
+                                        checked = AppSettings.faceRecognitionEnabled(current),
+                                        onCheckedChange = { on ->
+                                            viewModel.update { it.withFaceRecognition(on) }
+                                        },
+                                        modifier = Modifier.testTag("faceRecognitionSwitch"),
+                                    )
+                                }
+                            }
+                            for ((type, config) in current.detectorConfigs) {
+                                // Routing-only configs owned by the recognition toggle above.
+                                if (type == TriggerType.faceKnown || type == TriggerType.faceUnknown) continue
+                                DetectorCard(
+                                    config = config,
+                                    channelIds = current.channelConfigs.map { it.id },
+                                    onChanged = { next ->
+                                        viewModel.update {
+                                            it.copy(detectorConfigs = it.detectorConfigs + (type to next))
+                                        }
                                     },
                                 )
                             }
-                        },
-                        onSendTest = { merged ->
-                            viewModel.sendTestFromUi(merged)
-                        },
-                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
-                        factories = viewModel.testFactories,
-                    )
+                            BodyText(
+                                "Optional inclusion zones: motion/face only triggers inside them. " +
+                                    "Empty = detect everywhere.",
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Card {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onOpenRegionEditor)
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Filled.CropFree, contentDescription = null)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        if (current.detectionRegions.isEmpty()) {
+                                            "No regions — detecting everywhere"
+                                        } else {
+                                            "${current.detectionRegions.size} region" +
+                                                if (current.detectionRegions.size == 1) "" else "s"
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                                }
+                            }
+                        }
+                        CollapsibleSection(
+                            "Channels",
+                            summary = "${current.channelConfigs.count { it.type != "log" }} channels",
+                        ) {
+                            for (config in current.channelConfigs) {
+                                if (config.type != "log") {
+                                    ChannelCard(
+                                        config = config,
+                                        fields = fields,
+                                        onEnabledChange = { enabled ->
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.map {
+                                                        if (it.id == config.id) it.copy(enabled = enabled) else it
+                                                    },
+                                                )
+                                            }
+                                        },
+                                        onSendTest = { merged ->
+                                            viewModel.sendTestFromUi(merged)
+                                        },
+                                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
+                                        factories = viewModel.testFactories,
+                                    )
+                                }
+                            }
+                        }
+                        CollapsibleSection("Schedule", summary = "${current.scheduleExclusions.size} windows") {
+                            BodyText("Monitoring pauses during these times.")
+                            Spacer(Modifier.height(8.dp))
+                            for (window in current.scheduleExclusions) {
+                                ScheduleWindowCard(
+                                    window = window,
+                                    onChanged = { next ->
+                                        viewModel.update { s ->
+                                            s.copy(
+                                                scheduleExclusions = s.scheduleExclusions.map {
+                                                    if (it.id == window.id) next else it
+                                                },
+                                            )
+                                        }
+                                    },
+                                    onDelete = {
+                                        viewModel.update { s ->
+                                            s.copy(
+                                                scheduleExclusions =
+                                                    s.scheduleExclusions.filterNot { it.id == window.id },
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.update { s ->
+                                        s.copy(
+                                            scheduleExclusions = s.scheduleExclusions + ScheduleWindow(
+                                                id = java.util.UUID.randomUUID().toString(),
+                                                days = 0b1111111,
+                                                startHour = 22,
+                                                startMinute = 0,
+                                                endHour = 6,
+                                                endMinute = 0,
+                                            ),
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.testTag("scheduleAddWindow"),
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add window")
+                            }
+                        }
+                        CollapsibleSection("Video clips", summary = if (current.recordVideo) "on" else "off") {
+                            BodyText(
+                                "Android only: each event captures footage before and after the " +
+                                    "trigger and saves it to your gallery.",
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            SwitchRow(
+                                title = "Record video locally",
+                                subtitle = "Save a clip to your gallery for each event. Off saves storage and battery.",
+                                checked = current.recordVideo,
+                                onCheckedChange = { v -> viewModel.update { it.copy(recordVideo = v) } },
+                            )
+                            DropdownField(
+                                label = "Resolution",
+                                selected = VideoQuality.label(current.videoQuality),
+                                options = VideoQuality.values.map { it to VideoQuality.label(it) },
+                                enabled = current.recordVideo,
+                                testTag = "videoQualityDropdown",
+                                onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
+                            )
+                            Text("Pre-roll: ${current.preRollSeconds}s")
+                            Slider(
+                                value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v ->
+                                    viewModel.update { it.copy(preRollSeconds = v.round()) }
+                                },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                                enabled = current.recordVideo,
+                                modifier = Modifier.testTag("preRollSlider"),
+                            )
+                            Text("Post-roll: ${current.postRollSeconds}s")
+                            Slider(
+                                value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v ->
+                                    viewModel.update { it.copy(postRollSeconds = v.round()) }
+                                },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                                enabled = current.recordVideo,
+                                modifier = Modifier.testTag("postRollSlider"),
+                            )
+                        }
+                        CollapsibleSection("Events", summary = retentionSummary(current.retentionDays)) {
+                            Text(
+                                "Automatic retention: " +
+                                    if (current.retentionDays == 0) "off"
+                                    else "${current.retentionDays} day" + if (current.retentionDays == 1) "" else "s",
+                            )
+                            Slider(
+                                value = current.retentionDays.toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v -> viewModel.update { it.copy(retentionDays = v.round()) } },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                                modifier = Modifier.testTag("retentionSlider"),
+                            )
+                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = false) }) {
+                                Icon(Icons.Filled.DeleteSweep, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Clear events older than 24h")
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = true) }) {
+                                Icon(Icons.Filled.DeleteForever, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Clear all events")
+                            }
+                        }
+                        CollapsibleSection("Advanced") {
+                            Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
+                            Slider(
+                                value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v ->
+                                    viewModel.update {
+                                        it.copy(notificationMergeWindow = Duration.ofSeconds(v.round().toLong()))
+                                    }
+                                },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                            )
+                            BodyText(
+                                "Analysis stream resolution: higher = better far-face detection " +
+                                    "but more battery. Balanced is a good default.",
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            DropdownField(
+                                label = "Analysis resolution",
+                                selected = AnalysisResolution.label(current.analysisResolution),
+                                options = AnalysisResolution.values.map { it to AnalysisResolution.label(it) },
+                                testTag = "analysisResolutionDropdown",
+                                onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
+                            )
+                            BodyText(
+                                "Screen orientation: locks the monitor screen to portrait or " +
+                                    "landscape, or follows the device sensor.",
+                            )
+                            DropdownField(
+                                label = "Screen orientation",
+                                selected = ScreenOrientation.label(current.screenOrientation),
+                                options = ScreenOrientation.values.map { it to ScreenOrientation.label(it) },
+                                testTag = "screenOrientationDropdown",
+                                onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
+                            )
+                        }
+                        Spacer(Modifier.height(24.dp))
+                    }
+                    ScrollbarThumb(scrollState, Modifier.align(Alignment.CenterEnd))
+                }
+                HorizontalDivider()
+                Button(
+                    onClick = {
+                        // Fold raw field state into typed channel configs at commit
+                        // time (Dart `_save`), then persist the draft.
+                        viewModel.update { draftNow ->
+                            draftNow.copy(
+                                channelConfigs = buildChannelConfigs(draftNow.channelConfigs, fields),
+                            )
+                        }
+                        viewModel.save()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .testTag("saveSettings"),
+                ) {
+                    Icon(Icons.Filled.Save, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Save settings")
                 }
             }
-            SectionTitle("Schedule")
-            BodyText("Monitoring pauses during these times.")
-            Spacer(Modifier.height(8.dp))
-            for (window in current.scheduleExclusions) {
-                ScheduleWindowCard(
-                    window = window,
-                    onChanged = { next ->
-                        viewModel.update { s ->
-                            s.copy(
-                                scheduleExclusions = s.scheduleExclusions.map {
-                                    if (it.id == window.id) next else it
-                                },
-                            )
-                        }
-                    },
-                    onDelete = {
-                        viewModel.update { s ->
-                            s.copy(
-                                scheduleExclusions =
-                                    s.scheduleExclusions.filterNot { it.id == window.id },
-                            )
-                        }
-                    },
-                )
-            }
-            Button(
-                onClick = {
-                    viewModel.update { s ->
-                        s.copy(
-                            scheduleExclusions = s.scheduleExclusions + ScheduleWindow(
-                                id = java.util.UUID.randomUUID().toString(),
-                                days = 0b1111111,
-                                startHour = 22,
-                                startMinute = 0,
-                                endHour = 6,
-                                endMinute = 0,
-                            ),
-                        )
-                    }
-                },
-                modifier = Modifier.testTag("scheduleAddWindow"),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("Add window")
-            }
-            SectionTitle("Notifications")
-            Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
-            Slider(
-                value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
-                onValueChange = { v ->
-                    viewModel.update {
-                        it.copy(notificationMergeWindow = Duration.ofSeconds(v.round().toLong()))
-                    }
-                },
-                valueRange = 0f..30f,
-                steps = 29,
-            )
-            SectionTitle("Video clips")
-            BodyText(
-                "Android only: each event captures footage before and after the " +
-                    "trigger and saves it to your gallery.",
-            )
-            Spacer(Modifier.height(8.dp))
-            SwitchRow(
-                title = "Record video locally",
-                subtitle = "Save a clip to your gallery for each event. Off saves storage and battery.",
-                checked = current.recordVideo,
-                onCheckedChange = { v -> viewModel.update { it.copy(recordVideo = v) } },
-            )
-            DropdownField(
-                label = "Resolution",
-                selected = VideoQuality.label(current.videoQuality),
-                options = VideoQuality.values.map { it to VideoQuality.label(it) },
-                enabled = current.recordVideo,
-                testTag = "videoQualityDropdown",
-                onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
-            )
-            Text("Pre-roll: ${current.preRollSeconds}s")
-            Slider(
-                value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
-                onValueChange = { v ->
-                    viewModel.update { it.copy(preRollSeconds = v.round()) }
-                },
-                valueRange = 0f..30f,
-                steps = 29,
-                enabled = current.recordVideo,
-                modifier = Modifier.testTag("preRollSlider"),
-            )
-            Text("Post-roll: ${current.postRollSeconds}s")
-            Slider(
-                value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
-                onValueChange = { v ->
-                    viewModel.update { it.copy(postRollSeconds = v.round()) }
-                },
-                valueRange = 0f..30f,
-                steps = 29,
-                enabled = current.recordVideo,
-                modifier = Modifier.testTag("postRollSlider"),
-            )
-            SectionTitle("Events")
-            Text(
-                "Automatic retention: " +
-                    if (current.retentionDays == 0) "off"
-                    else "${current.retentionDays} day" + if (current.retentionDays == 1) "" else "s",
-            )
-            Slider(
-                value = current.retentionDays.toFloat().coerceIn(0f, 30f),
-                onValueChange = { v -> viewModel.update { it.copy(retentionDays = v.round()) } },
-                valueRange = 0f..30f,
-                steps = 29,
-                modifier = Modifier.testTag("retentionSlider"),
-            )
-            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = false) }) {
-                Icon(Icons.Filled.DeleteSweep, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Clear events older than 24h")
-            }
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = true) }) {
-                Icon(Icons.Filled.DeleteForever, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Clear all events")
-            }
-            SectionTitle("Advanced")
-            BodyText(
-                "Analysis stream resolution: higher = better far-face detection " +
-                    "but more battery. Balanced is a good default.",
-            )
-            Spacer(Modifier.height(8.dp))
-            DropdownField(
-                label = "Analysis resolution",
-                selected = AnalysisResolution.label(current.analysisResolution),
-                options = AnalysisResolution.values.map { it to AnalysisResolution.label(it) },
-                testTag = "analysisResolutionDropdown",
-                onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
-            )
-            BodyText(
-                "Screen orientation: locks the monitor screen to portrait or " +
-                    "landscape, or follows the device sensor.",
-            )
-            DropdownField(
-                label = "Screen orientation",
-                selected = ScreenOrientation.label(current.screenOrientation),
-                options = ScreenOrientation.values.map { it to ScreenOrientation.label(it) },
-                testTag = "screenOrientationDropdown",
-                onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = {
-                    // Fold raw field state into typed channel configs at commit
-                    // time (Dart `_save`), then persist the draft.
-                    viewModel.update { draftNow ->
-                        draftNow.copy(
-                            channelConfigs = buildChannelConfigs(draftNow.channelConfigs, fields),
-                        )
-                    }
-                    viewModel.save()
-                },
-                modifier = Modifier.testTag("saveSettings"),
-            ) {
-                Icon(Icons.Filled.Save, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Save settings")
-            }
         }
-        }
-
         pendingClear?.let { request ->
             val all = request.all
             AlertDialog(
@@ -694,16 +725,62 @@ private fun ChannelCard(
     inFlight: Boolean,
     factories: Map<String, io.securitycam.level1.event.ChannelFactory>,
 ) {
+    var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
+    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_${config.id}")
+    Card(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .testTag("channelCard_${config.id}"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .testTag("channelHeader_${config.id}"),
+            ) {
+                Text(config.type, modifier = Modifier.weight(1f))
+                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "collapse_${config.id}" else "expand_${config.id}",
+                    modifier = Modifier.graphicsLayer { rotationZ = chevron },
+                )
+            }
+            if (expanded) {
+                ChannelBody(
+                    config = config,
+                    fields = fields,
+                    onSendTest = onSendTest,
+                    inFlight = inFlight,
+                    factories = factories,
+                )
+            }
+        }
+    }
+}
+
+/** Expanded channel card contents: type-specific fields plus the test sender. */
+@Composable
+private fun ChannelBody(
+    config: io.securitycam.level1.core.ChannelConfig,
+    fields: MutableMap<String, String>,
+    onSendTest: (io.securitycam.level1.core.ChannelConfig) -> Unit,
+    inFlight: Boolean,
+    factories: Map<String, io.securitycam.level1.event.ChannelFactory>,
+) {
     // Keys are already fully qualified as "<channelId>.<field>".
     val setField: SetField = { key, value -> fields[key] = value }
 
-    Card(modifier = Modifier.padding(vertical = 4.dp)) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(config.type, modifier = Modifier.weight(1f))
-                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
-            }
-            when (config.type) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (config.type) {
                 "telegram" -> {
                     SecretField("Bot token", fields, "${config.id}.token", setField)
                     Field("Chat ID", fields, "${config.id}.chat", setField)
@@ -768,7 +845,6 @@ private fun ChannelCard(
             ) {
                 Text(if (inFlight) "Sending…" else "Send test")
             }
-        }
     }
 }
 
@@ -925,3 +1001,75 @@ private fun mergeLabel(window: Duration): String =
     if (window.isZero) "Off" else "${window.toSeconds()}s"
 
 private fun Float.round(): Int = Math.round(this)
+
+/**
+ * Collapsible settings group: tapping the header toggles a body that is only
+ * composed while expanded (keeps the semantics tree and scroll height small).
+ */
+@Composable
+private fun CollapsibleSection(
+    title: String,
+    summary: String? = null,
+    initiallyExpanded: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
+    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_$title")
+    Column(modifier = Modifier.animateContentSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(top = 20.dp, bottom = 8.dp)
+                .testTag(sectionTag(title)),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            summary?.let {
+                Spacer(Modifier.width(6.dp))
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = if (expanded) "collapse_$title" else "expand_$title",
+                modifier = Modifier.graphicsLayer { rotationZ = chevron },
+            )
+        }
+        if (expanded) content()
+    }
+}
+
+internal fun sectionTag(title: String): String =
+    "section_" + title.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+
+/** Thin overlay thumb for a vertically scrolling column; hidden when it fits. */
+@Composable
+private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifier) {
+    Canvas(modifier.fillMaxSize()) {
+        if (scrollState.maxValue > 0) {
+            val viewport = size.height
+            val thumbHeight = maxOf(
+                viewport * viewport / (viewport + scrollState.maxValue),
+                48.dp.toPx(),
+            )
+            val fraction = scrollState.value.toFloat() / scrollState.maxValue
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.30f),
+                topLeft = Offset(size.width - 10.dp.toPx(), fraction * (viewport - thumbHeight)),
+                size = Size(6.dp.toPx(), thumbHeight),
+                cornerRadius = CornerRadius(3.dp.toPx()),
+            )
+        }
+    }
+}
+
+private fun retentionSummary(days: Int): String =
+    if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"
+
+private fun detectorSummary(settings: AppSettings): String {
+    val active = settings.detectorConfigs.count { (type, config) ->
+        type != TriggerType.faceKnown && type != TriggerType.faceUnknown && config.enabled
+    }
+    return "$active active"
+}
