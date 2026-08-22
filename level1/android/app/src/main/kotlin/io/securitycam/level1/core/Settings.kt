@@ -4,20 +4,6 @@ import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectorConfig
 import java.time.Duration
 
-/** Camera source choices (desktop dev-only; mobile always uses on-device camera). */
-object CameraSource {
-    const val simulated = "simulated"
-    const val webcam = "webcam"
-    const val file = "file"
-}
-
-/** Audio source choices (desktop dev-only; mobile always uses the microphone). */
-object AudioInput {
-    const val simulated = "simulated"
-    const val mic = "mic"
-    const val file = "file"
-}
-
 /** Video clip recording resolution tiers (Android only). */
 object VideoQuality {
     const val lowest = "lowest"
@@ -82,10 +68,6 @@ object ScreenOrientation {
  */
 data class AppSettings(
     val cameraName: String = "Hallway",
-    val cameraSource: String = CameraSource.simulated,
-    val cameraSourcePath: String? = null,
-    val audioSource: String = AudioInput.simulated,
-    val audioSourcePath: String? = null,
     val detectorConfigs: Map<String, DetectorConfig> = emptyMap(),
     val channelConfigs: List<ChannelConfig> = emptyList(),
     val notificationMergeWindow: Duration = Duration.ofSeconds(3),
@@ -103,12 +85,6 @@ data class AppSettings(
 ) {
     fun copyWith(
         cameraName: String? = null,
-        cameraSource: String? = null,
-        cameraSourcePath: String? = null,
-        clearCameraSourcePath: Boolean = false,
-        audioSource: String? = null,
-        audioSourcePath: String? = null,
-        clearAudioSourcePath: Boolean = false,
         detectorConfigs: Map<String, DetectorConfig>? = null,
         channelConfigs: List<ChannelConfig>? = null,
         notificationMergeWindow: Duration? = null,
@@ -124,10 +100,6 @@ data class AppSettings(
         knownFaces: List<KnownFace>? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
-        cameraSource = cameraSource ?: this.cameraSource,
-        cameraSourcePath = if (clearCameraSourcePath) null else cameraSourcePath ?: this.cameraSourcePath,
-        audioSource = audioSource ?: this.audioSource,
-        audioSourcePath = if (clearAudioSourcePath) null else audioSourcePath ?: this.audioSourcePath,
         detectorConfigs = detectorConfigs ?: this.detectorConfigs,
         channelConfigs = channelConfigs ?: this.channelConfigs,
         notificationMergeWindow = notificationMergeWindow ?: this.notificationMergeWindow,
@@ -147,10 +119,6 @@ data class AppSettings(
     fun toJson(): Map<String, Any?> {
         val json = LinkedHashMap<String, Any?>()
         json["cameraName"] = cameraName
-        json["cameraSource"] = cameraSource
-        cameraSourcePath?.let { json["cameraSourcePath"] = it }
-        json["audioSource"] = audioSource
-        audioSourcePath?.let { json["audioSourcePath"] = it }
         json["detectorConfigs"] = detectorConfigs.mapValues { it.value.toJson() }
         json["channelConfigs"] = channelConfigs.map { it.toJson() }
         json["notificationMergeWindowMs"] = notificationMergeWindow.toMillis()
@@ -315,10 +283,6 @@ data class AppSettings(
             }
             return AppSettings(
                 cameraName = json["cameraName"] as? String ?: defaults.cameraName,
-                cameraSource = json["cameraSource"] as? String ?: defaults.cameraSource,
-                cameraSourcePath = json["cameraSourcePath"] as? String,
-                audioSource = json["audioSource"] as? String ?: defaults.audioSource,
-                audioSourcePath = json["audioSourcePath"] as? String,
                 detectorConfigs = detectors ?: defaults.detectorConfigs,
                 channelConfigs = channels,
                 notificationMergeWindow = Duration.ofMillis(

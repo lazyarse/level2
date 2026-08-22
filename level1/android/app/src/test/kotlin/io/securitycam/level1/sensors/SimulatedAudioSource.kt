@@ -7,9 +7,9 @@ import kotlin.math.PI
 enum class AudioScene { silence, babyCry, glassBreak, bang }
 
 /**
- * Deterministic synthetic audio windows for tests and the simulated source
- * (port of `lib/sensors/simulated_audio_source.dart`). The streaming
- * AudioSource wrapper lands with the Phase 4 monitoring wiring.
+ * Deterministic synthetic audio windows — test fixture for the audio
+ * detectors (the Flutter-era desktop "simulated source" was dropped with
+ * the Phase 7 cutover; Android always uses the microphone).
  */
 object SimulatedAudioSource {
     const val sampleRate = 16000

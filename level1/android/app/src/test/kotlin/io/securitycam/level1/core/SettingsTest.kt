@@ -4,7 +4,6 @@ import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectorConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
@@ -19,10 +18,6 @@ class SettingsTest {
     fun defaultsContainMotionBabyCryGlassBreakDetectorsAndLogChannel() {
         val settings = AppSettings.defaults()
         assertEquals("Hallway", settings.cameraName)
-        assertEquals(CameraSource.simulated, settings.cameraSource)
-        assertNull(settings.cameraSourcePath)
-        assertEquals(AudioInput.simulated, settings.audioSource)
-        assertNull(settings.audioSourcePath)
         assertTrue(settings.detectorConfigs.keys.containsAll(listOf("motion", "baby_cry", "glass_break")))
         assertTrue(settings.detectorConfigs[TriggerType.motion]!!.routeToChannelIds.contains("telegram"))
         assertTrue(settings.channelConfigs.any { it.id == "log" })
@@ -30,18 +25,14 @@ class SettingsTest {
 
     @Test
     fun jsonRoundTripPreservesSettings() {
-        val settings = AppSettings.defaults().copyWith(
-            cameraSource = CameraSource.webcam,
-            cameraSourcePath = "/dev/video0",
-            audioSource = AudioInput.file,
-            audioSourcePath = "/tmp/a.wav",
-        )
+        val settings = AppSettings.defaults()
         val restored = AppSettings.fromJson(settings.toJson())
         assertEquals(settings.cameraName, restored.cameraName)
-        assertEquals(CameraSource.webcam, restored.cameraSource)
-        assertEquals("/dev/video0", restored.cameraSourcePath)
-        assertEquals(AudioInput.file, restored.audioSource)
-        assertEquals("/tmp/a.wav", restored.audioSourcePath)
+        // Legacy desktop-source keys are ignored on read.
+        val legacy = settings.toJson().toMutableMap()
+        legacy["cameraSource"] = "webcam"
+        legacy["audioSourcePath"] = "/tmp/a.wav"
+        AppSettings.fromJson(legacy) // must not throw
         assertEquals(settings.detectorConfigs.keys, restored.detectorConfigs.keys)
         assertEquals(
             settings.detectorConfigs[TriggerType.motion]!!.threshold,
@@ -104,21 +95,7 @@ class SettingsTest {
     fun emptyJsonFallsBackToDefaults() {
         val restored = AppSettings.fromJson(emptyMap())
         assertEquals("Hallway", restored.cameraName)
-        assertEquals(CameraSource.simulated, restored.cameraSource)
-        assertNull(restored.cameraSourcePath)
-        assertEquals(AudioInput.simulated, restored.audioSource)
-        assertNull(restored.audioSourcePath)
         assertTrue(restored.detectorConfigs.isNotEmpty())
-    }
-
-    @Test
-    fun oldJsonWithoutSourceFieldsFallsBackToSimulated() {
-        val restored = AppSettings.fromJson(jsonOf("cameraName" to "Nursery"))
-        assertEquals("Nursery", restored.cameraName)
-        assertEquals(CameraSource.simulated, restored.cameraSource)
-        assertEquals(AudioInput.simulated, restored.audioSource)
-        assertNull(restored.cameraSourcePath)
-        assertNull(restored.audioSourcePath)
     }
 
     @Test
@@ -238,42 +215,6 @@ class SettingsTest {
         val updated = settings.copyWith(cameraName = "Nursery")
         assertEquals("Nursery", updated.cameraName)
         assertEquals(settings.detectorConfigs, updated.detectorConfigs)
-        assertEquals(settings.cameraSource, updated.cameraSource)
-    }
-
-    @Test
-    fun copyWithClearsTheSourcePathWhenSwitchingBackToSimulated() {
-        val settings = AppSettings.defaults().copyWith(
-            cameraSource = CameraSource.webcam,
-            cameraSourcePath = "/dev/video0",
-        )
-        val restored = settings.copyWith(
-            cameraSource = CameraSource.simulated,
-            clearCameraSourcePath = true,
-        )
-        assertEquals(CameraSource.simulated, restored.cameraSource)
-        assertNull(restored.cameraSourcePath)
-    }
-
-    @Test
-    fun copyWithClearsTheAudioPathWhenSwitchingBackToSimulated() {
-        val settings = AppSettings.defaults().copyWith(
-            audioSource = AudioInput.file,
-            audioSourcePath = "/tmp/a.wav",
-        )
-        val restored = settings.copyWith(
-            audioSource = AudioInput.simulated,
-            clearAudioSourcePath = true,
-        )
-        assertEquals(AudioInput.simulated, restored.audioSource)
-        assertNull(restored.audioSourcePath)
-    }
-
-    @Test
-    fun toJsonOmitsNullPaths() {
-        val json = AppSettings.defaults().toJson()
-        assertFalse(json.containsKey("cameraSourcePath"))
-        assertFalse(json.containsKey("audioSourcePath"))
     }
 
     @Test
