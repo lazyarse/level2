@@ -99,6 +99,7 @@ data class AppSettings(
     val detectionRegions: List<DetectionRegion> = emptyList(),
     val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
+    val knownFaces: List<KnownFace> = emptyList(),
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -120,6 +121,7 @@ data class AppSettings(
         screenOrientation: String? = null,
         detectionRegions: List<DetectionRegion>? = null,
         exclusionRegions: List<DetectionRegion>? = null,
+        knownFaces: List<KnownFace>? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraSource = cameraSource ?: this.cameraSource,
@@ -139,6 +141,7 @@ data class AppSettings(
         detectionRegions = detectionRegions ?: this.detectionRegions,
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
+        knownFaces = knownFaces ?: this.knownFaces,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -160,6 +163,7 @@ data class AppSettings(
         json["screenOrientation"] = screenOrientation
         json["detectionRegions"] = detectionRegions.map { it.toJson() }
         json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
+        json["knownFaces"] = knownFaces.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         return json
     }
@@ -290,6 +294,9 @@ data class AppSettings(
                     ?: emptyList(),
                 exclusionRegions = (json["exclusionRegions"] as? List<*>)
                     ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                    ?: emptyList(),
+                knownFaces = (json["knownFaces"] as? List<*>)
+                    ?.map { KnownFace.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
                 scheduleExclusions = (json["scheduleExclusions"] as? List<*>)
                     ?.map { ScheduleWindow.fromJson(it as Map<String, Any?>) }
