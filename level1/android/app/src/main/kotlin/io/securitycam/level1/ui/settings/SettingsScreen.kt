@@ -639,13 +639,31 @@ private fun DetectorCard(
     channelIds: List<String>,
     onChanged: (DetectorConfig) -> Unit,
 ) {
+    var expanded by rememberSaveable("detector_${config.type}") { mutableStateOf(false) }
+    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_detector_${config.type}")
     Card(modifier = Modifier.padding(vertical = 4.dp)) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+                .padding(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .testTag("detectorHeader_${config.type}"),
+            ) {
                 Text(detectorLabel(config.type), modifier = Modifier.weight(1f))
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "collapse_${config.type}" else "expand_${config.type}",
+                    modifier = Modifier.graphicsLayer { rotationZ = chevron },
+                )
             }
-            if (config.enabled) {
+            if (expanded && config.enabled) {
                 SwitchRow(
                     title = "Motion-gated",
                     subtitle = "Only check for this after motion is detected (saves battery).",
