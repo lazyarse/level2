@@ -94,6 +94,15 @@ object VideoClipRecorder {
     private val segmentStartWallMicros = ConcurrentHashMap<String, Long>()
     private val audioPcm = AudioPcmBuffer(AUDIO_SAMPLE_RATE, audioWindowSamples)
 
+    /**
+     * Binds the application context so holder-based helpers ([open], [exists],
+     * [delete], ...) work from process start, before any monitoring session.
+     * [configure] re-binds with recording parameters when monitoring starts.
+     */
+    fun attach(ctx: Context) {
+        context = ctx.applicationContext
+    }
+
     fun configure(
         ctx: Context,
         camName: String,
