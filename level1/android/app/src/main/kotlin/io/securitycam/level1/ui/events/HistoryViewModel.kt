@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.FileSnapshotStore
@@ -29,6 +30,9 @@ import kotlinx.coroutines.launch
 class HistoryViewModel(
     private val dayLoader: suspend (LocalDate) -> List<RecordedEventRow>,
     private val snapshotLoader: suspend (String) -> Snapshot?,
+    /** External-player launch; an error string surfaces as a snackbar.
+     *  A null opener hides the per-row play buttons. */
+    private val videoOpener: ((String) -> String?)? = null,
     initialDay: LocalDate = LocalDate.now(),
 ) : ViewModel() {
 
@@ -38,6 +42,27 @@ class HistoryViewModel(
     /** Null while loading; empty when the selected day has no events. */
     private val _events = MutableStateFlow<List<RecordedEventRow>?>(null)
     val events: StateFlow<List<RecordedEventRow>?> = _events.asStateFlow()
+
+    /** One-shot snackbar text; consume with [consumeMessage]. */
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    val hasVideoOpener: Boolean
+        get() = videoOpener != null
+
+    fun playVideo(name: String) {
+        val opener = videoOpener ?: return
+        viewModelScope.launch {
+            val error = opener(name)
+            if (error != null) {
+                _message.value = "Could not play video: $error"
+            }
+        }
+    }
+
+    fun consumeMessage() {
+        _message.value = null
+    }
 
     init {
         reload()
@@ -81,6 +106,7 @@ class HistoryViewModel(
                         FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
                             .load(name)
                     },
+                    videoOpener = { name -> VideoClipRecorder.open(name) },
                 )
             }
         }

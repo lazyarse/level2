@@ -1,7 +1,9 @@
 package io.securitycam.level1.ui.events
 
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +12,7 @@ import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.storage.RecordedEventRow
 import java.time.Instant
 import java.time.LocalDate
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +30,7 @@ class HistoryScreenTest {
         id: Long,
         hour: Int,
         snapshotName: String?,
+        videoName: String? = null,
     ) = RecordedEventRow(
         id = id,
         timestamp = Instant.parse("2026-01-05T%02d:30:00Z".format(hour)),
@@ -34,15 +38,19 @@ class HistoryScreenTest {
         triggerType = "motion",
         score = 0.75,
         snapshotName = snapshotName,
-        videoName = null,
+        videoName = videoName,
         channelStatuses = emptyMap(),
         triggerTypes = emptyList(),
     )
 
-    private fun viewModel(rows: List<RecordedEventRow>): HistoryViewModel =
+    private fun viewModel(
+        rows: List<RecordedEventRow>,
+        videoOpener: ((String) -> String?)? = null,
+    ): HistoryViewModel =
         HistoryViewModel(
             dayLoader = { rows },
             snapshotLoader = { name -> Snapshot(byteArrayOf(1), "image/png", name) },
+            videoOpener = videoOpener,
             initialDay = day,
         )
 
@@ -100,5 +108,62 @@ class HistoryScreenTest {
         compose.onNodeWithTag("historyPrev").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("historyDate").assertTextContains("2026-01-04")
+    }
+
+    @Test
+    fun timelineShowsPlayButtonOnlyForVideoRowsAndRoutesClicks() {
+        val opened = mutableListOf<String>()
+        var failNext = false
+        val vm = viewModel(
+            listOf(row(1, 9, "a.png", videoName = "clip.mp4"), row(2, 10, null)),
+            videoOpener = { name ->
+                opened.add(name)
+                if (failNext) "boom" else null
+            },
+        )
+        compose.setContent { HistoryScreen(viewModel = vm) }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("historyPlay_1").assertExists()
+        compose.onAllNodesWithTag("historyPlay_2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onNodeWithTag("historyPlay_1").performClick()
+        compose.waitUntil { opened.isNotEmpty() }
+        assertEquals(listOf("clip.mp4"), opened)
+
+        // Error path surfaces the snackbar.
+        failNext = true
+        compose.onNodeWithTag("historyPlay_1").performClick()
+        compose.waitUntil { opened.size == 2 }
+        compose.onNodeWithText("Could not play video: boom").assertExists()
+    }
+
+    @Test
+    fun noTimelinePlayButtonWhenNoOpener() {
+        val vm = viewModel(listOf(row(1, 9, "a.png", videoName = "clip.mp4")))
+        compose.setContent { HistoryScreen(viewModel = vm) }
+        compose.waitForIdle()
+
+        compose.onAllNodesWithTag("historyPlay_1").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun galleryTilesShowCornerPlayOnlyForVideoRows() {
+        val vm = viewModel(
+            listOf(row(1, 10, "a.png", videoName = "clip.mp4"), row(2, 11, "b.png")),
+            videoOpener = { null },
+        )
+        compose.setContent { HistoryScreen(viewModel = vm) }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("historyTabGallery").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("galleryPlay_0").assertExists()
+        compose.onAllNodesWithTag("galleryPlay_1").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
     }
 }

@@ -19,16 +19,21 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -55,55 +61,81 @@ import java.time.format.DateTimeFormatter
 fun HistoryScreen(viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)) {
     val day by viewModel.day.collectAsState()
     val events by viewModel.events.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val hasVideoOpener = viewModel.hasVideoOpener
     var subTab by remember { mutableIntStateOf(0) }
+    val snackbar = remember { SnackbarHostState() }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        ) {
-            IconButton(
-                onClick = viewModel::previousDay,
-                modifier = Modifier.testTag("historyPrev"),
-            ) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "Previous day") }
-            Text(
-                text = day.format(DateTimeFormatter.ISO_LOCAL_DATE),
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f).testTag("historyDate"),
-            )
-            IconButton(
-                onClick = viewModel::nextDay,
-                modifier = Modifier.testTag("historyNext"),
-            ) { Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "Next day") }
+    LaunchedEffect(message) {
+        message?.let {
+            snackbar.showSnackbar(it)
+            viewModel.consumeMessage()
         }
-        TabRow(
-            selectedTabIndex = subTab,
-            modifier = Modifier.testTag("historyTabs"),
-        ) {
-            Tab(
-                selected = subTab == 0,
-                onClick = { subTab = 0 },
-                text = { Text("Timeline") },
-                modifier = Modifier.testTag("historyTabTimeline"),
-            )
-            Tab(
-                selected = subTab == 1,
-                onClick = { subTab = 1 },
-                text = { Text("Gallery") },
-                modifier = Modifier.testTag("historyTabGallery"),
-            )
-        }
-        val list = events
-        when {
-            list == null -> Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+    }
 
-            subTab == 0 -> TimelineList(events = list, snapshotLoader = viewModel::loadSnapshot)
-            else -> GalleryGrid(events = list, snapshotLoader = viewModel::loadSnapshot)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            ) {
+                IconButton(
+                    onClick = viewModel::previousDay,
+                    modifier = Modifier.testTag("historyPrev"),
+                ) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "Previous day") }
+                Text(
+                    text = day.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f).testTag("historyDate"),
+                )
+                IconButton(
+                    onClick = viewModel::nextDay,
+                    modifier = Modifier.testTag("historyNext"),
+                ) { Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "Next day") }
+            }
+            TabRow(
+                selectedTabIndex = subTab,
+                modifier = Modifier.testTag("historyTabs"),
+            ) {
+                Tab(
+                    selected = subTab == 0,
+                    onClick = { subTab = 0 },
+                    text = { Text("Timeline") },
+                    modifier = Modifier.testTag("historyTabTimeline"),
+                )
+                Tab(
+                    selected = subTab == 1,
+                    onClick = { subTab = 1 },
+                    text = { Text("Gallery") },
+                    modifier = Modifier.testTag("historyTabGallery"),
+                )
+            }
+            val list = events
+            when {
+                list == null -> Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+
+                subTab == 0 -> TimelineList(
+                    events = list,
+                    snapshotLoader = viewModel::loadSnapshot,
+                    hasVideoOpener = hasVideoOpener,
+                    onPlay = viewModel::playVideo,
+                )
+                else -> GalleryGrid(
+                    events = list,
+                    snapshotLoader = viewModel::loadSnapshot,
+                    hasVideoOpener = hasVideoOpener,
+                    onPlay = viewModel::playVideo,
+                )
+            }
         }
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -112,6 +144,8 @@ fun HistoryScreen(viewModel: HistoryViewModel = viewModel(factory = HistoryViewM
 private fun TimelineList(
     events: List<RecordedEventRow>,
     snapshotLoader: suspend (String) -> Snapshot?,
+    hasVideoOpener: Boolean,
+    onPlay: (String) -> Unit,
 ) {
     if (events.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -136,6 +170,8 @@ private fun TimelineList(
                     row = row,
                     timeText = "%02d:%02d".format(local.hour, local.minute),
                     snapshotLoader = snapshotLoader,
+                    hasVideoOpener = hasVideoOpener,
+                    onPlay = onPlay,
                 )
                 if (index < entries.lastIndex) HorizontalDivider()
             }
@@ -170,6 +206,8 @@ private fun TimelineRow(
     row: RecordedEventRow,
     timeText: String,
     snapshotLoader: suspend (String) -> Snapshot?,
+    hasVideoOpener: Boolean,
+    onPlay: (String) -> Unit,
 ) {
     val typeLabel = if (row.triggerTypes.isEmpty()) {
         triggerLabel(row.triggerType)
@@ -208,6 +246,14 @@ private fun TimelineRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (row.videoName != null && hasVideoOpener) {
+            IconButton(
+                onClick = { onPlay(row.videoName) },
+                modifier = Modifier.testTag("historyPlay_${row.id}"),
+            ) {
+                Icon(Icons.Filled.PlayCircleOutline, contentDescription = "Play video")
+            }
+        }
     }
 }
 
@@ -216,6 +262,8 @@ private fun TimelineRow(
 private fun GalleryGrid(
     events: List<RecordedEventRow>,
     snapshotLoader: suspend (String) -> Snapshot?,
+    hasVideoOpener: Boolean,
+    onPlay: (String) -> Unit,
 ) {
     val withSnapshots = events.filter { it.snapshotName != null }
     if (withSnapshots.isEmpty()) {
@@ -245,6 +293,21 @@ private fun GalleryGrid(
                         tag = "historyGallery_$index",
                         size = 110.dp,
                     )
+                    if (row.videoName != null && hasVideoOpener) {
+                        IconButton(
+                            onClick = { onPlay(row.videoName) },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(32.dp)
+                                .testTag("galleryPlay_$index"),
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayCircleOutline,
+                                contentDescription = "Play video",
+                                tint = Color.White.copy(alpha = 0.9f),
+                            )
+                        }
+                    }
                 }
                 Text(
                     typeLabel,
