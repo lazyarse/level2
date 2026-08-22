@@ -5,7 +5,11 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.ScheduleWindow
+import io.securitycam.level1.core.KnownFace
 import io.securitycam.level1.detection.DetectionRegion
+import io.securitycam.level1.identity.FaceEnrollmentCoordinator
+import io.securitycam.level1.identity.KnownFaceStore
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -44,6 +48,53 @@ class MonitorViewModelTest {
         assertEquals(MonitorState.Error, vm.state.value)
         assertTrue(vm.error.value!!.isNotEmpty())
         assertTrue(startRan.isEmpty())
+    }
+
+    @Test
+    fun startEnrollment_reportsDoneAndKeepsIdleElsewhere() {
+        val enrolled = mutableListOf<String>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            enrollmentFactory = {
+                FakeEnrollmentCoordinator { label ->
+                    enrolled.add(label)
+                    Result.success(KnownFace(id = "fake", label = label))
+                }
+            },
+        )
+        vm.startEnrollment("Alice")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf("Alice"), enrolled)
+        assertTrue(vm.enrollment.value is EnrollmentUi.Done)
+    }
+
+    @Test
+    fun startEnrollment_failureSurfacesMessage() {
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            enrollmentFactory = {
+                FakeEnrollmentCoordinator { _ ->
+                    Result.failure(IllegalStateException("No face seen"))
+                }
+            },
+        )
+        vm.startEnrollment("Bob")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("No face seen", (vm.enrollment.value as EnrollmentUi.Failed).message)
+    }
+
+    class FakeEnrollmentCoordinator(
+        private val enrollFn: suspend (String) -> Result<KnownFace>,
+    ) : FaceEnrollmentCoordinator(
+        store = KnownFaceStore(java.io.File("/nonexistent")),
+        embedder = null,
+        faceFinder = { null },
+        settingsLoader = { AppSettings.defaults() },
+        settingsSaver = {},
+    ) {
+        override suspend fun enroll(label: String): Result<KnownFace> = enrollFn(label)
     }
 
     @Test

@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.securitycam.level1.camera_service.MonitoringServiceController
+import io.securitycam.level1.monitor.EnrollmentUi
 import io.securitycam.level1.monitor.MonitorState
 import io.securitycam.level1.monitor.MonitorViewModel
 
@@ -51,6 +53,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
     val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
+    val enrollment by viewModel.enrollment.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -112,6 +115,8 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             cameraName = cameraName,
             state = state,
             previewActive = previewActive,
+            enrollment = enrollment,
+            onEnroll = viewModel::startEnrollment,
             error = error,
             healthStalled = healthStalled,
             onStart = {
@@ -141,6 +146,8 @@ private fun MonitorStatusBar(
     healthStalled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    enrollment: EnrollmentUi,
+    onEnroll: (String) -> Unit,
 ) {
     val monitoring = state == MonitorState.Monitoring
     Column(
@@ -184,6 +191,35 @@ private fun MonitorStatusBar(
                 Text(if (monitoring) "Stop" else "Start")
             }
         }
+        var enrollLabel by remember { mutableStateOf("") }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = enrollLabel,
+                onValueChange = { enrollLabel = it },
+                label = { Text("Enroll face as") },
+                singleLine = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("enrollmentField"),
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    onEnroll(enrollLabel)
+                    enrollLabel = ""
+                },
+                enabled = enrollment !is EnrollmentUi.Working,
+                modifier = Modifier.testTag("enrollButton"),
+            ) {
+                Text("Enroll")
+            }
+        }
+        when (val e = enrollment) {
+            EnrollmentUi.Idle -> Unit
+            is EnrollmentUi.Working -> StatusLine("Enrolling ${e.label}…")
+            is EnrollmentUi.Done -> StatusLine("Enrolled ${e.label}")
+            is EnrollmentUi.Failed -> StatusLine("Enroll failed: ${e.message}", error = true)
+        }
         if (state == MonitorState.Error && error != null) {
             Text(
                 text = "Error: $error",
@@ -207,4 +243,16 @@ private fun MonitorStatusBar(
             )
         }
     }
+}
+
+@Composable
+private fun StatusLine(text: String, error: Boolean = false) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("enrollmentStatus"),
+    )
 }
