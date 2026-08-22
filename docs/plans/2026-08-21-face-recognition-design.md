@@ -36,11 +36,14 @@ routable to channels (e.g. "notify only about strangers").
 
 ### 1. Model & embedding engine
 
-- Bundled asset `mobile_face_net.tflite` (~5 MB, input 112×112 RGB, output
-  192-d embedding). New `FaceEmbeddingEngine` mirrors `YoloPersonEngine`:
-  lazy `CompiledModel`, `init()`/`dispose()` lifecycle, pure function
-  `embed(colorFrame, box): FloatArray` — crops the box (square-padded to keep
-  aspect), resizes to 112×112, normalizes pixels to [-1, 1].
+- Bundled asset `mobilefacenet.tflite` (5,233,552 bytes, SHA-256
+  `be4bc7cf…54854`, sourced from pub.dev `face_detection_tflite` 6.8.0 — the
+  same package the Flutter app used; signature verified
+  `[1,112,112,3]` float32 → `[1,192]`). New `FaceEmbeddingEngine` mirrors
+  `YoloPersonEngine`: lazy `CompiledModel`, `init()`/`dispose()` lifecycle,
+  pure function `embed(colorFrame, box): FloatArray` — crops the box
+  (square-padded to keep aspect), resizes to 112×112, normalizes pixels to
+  [-1, 1].
 - Cosine similarity/distance helper in the engine (embedding L2-normalized).
 
 ### 2. Identity storage
