@@ -32,6 +32,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleService
 import io.securitycam.level1.MainActivity
+import io.securitycam.level1.core.LiveViewSettings
+import io.securitycam.level1.storage.EncryptedSecretStore
+import io.securitycam.level1.storage.SettingsStore
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,6 +142,13 @@ object MonitoringServiceController {
     private var analysisWidth = 320
     private var analysisHeight = 240
 
+    // Live View state
+    private var liveViewEncoder: LiveViewEncoder? = null
+    private var liveViewServer: LiveViewServer? = null
+    private var liveViewPushClient: LiveViewPushClient? = null
+    private var liveViewPacketizer: RtpPacketizer? = null
+    private var liveViewActive = false
+
     // Preview use case bound into the CameraX group; its surface provider is
     // supplied/cleared by the UI via [setPreviewSurfaceProvider].
     private var boundPreview: Preview? = null
@@ -188,10 +199,13 @@ object MonitoringServiceController {
             micCapture.start { pcm, startSample ->
                 CameraEvents.publishMicPcm(pcm, startSample)
                 VideoClipRecorder.onMicPcm(pcm, startSample)
+                liveViewEncoder?.feedAudioData(pcm, startSample)
             }
         } else {
             Log.w(TAG, "RECORD_AUDIO permission not granted; running video-only")
         }
+        // Start Live View if enabled in settings
+        startLiveView(service)
         bindCamera(service, cameraId)
     }
 
@@ -206,6 +220,7 @@ object MonitoringServiceController {
         _zoomRatio.value = 1f
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
+        stopLiveView()
         releaseWakeLock()
     }
 
@@ -238,6 +253,7 @@ object MonitoringServiceController {
         _zoomRatio.value = 1f
         micCapture.stop()
         VideoClipRecorder.onMonitoringStopped()
+        stopLiveView()
         releaseWakeLock()
         val service = activeService
         if (service != null) {
@@ -352,6 +368,86 @@ object MonitoringServiceController {
         wakeLock = null
     }
 
+    private fun startLiveView(context: Context) {
+        try {
+            val settingsStore = SettingsStore(context, EncryptedSecretStore(context))
+            val lv = runBlocking { settingsStore.load().liveView }
+            if (!lv.enabled) return
+
+            val packetizer = RtpPacketizer()
+            liveViewPacketizer = packetizer
+
+            val encoder = LiveViewEncoder(object : LiveViewEncoderCallback {
+                override fun onVideoData(nalUnit: ByteArray, presentationTimeUs: Long, isKeyFrame: Boolean) {
+                    val packets = packetizer.packetize(nalUnit, presentationTimeUs, isKeyFrame)
+                    for (p in packets) {
+                        liveViewServer?.sendRtpPacket(p.data)
+                    }
+                }
+
+                override fun onVideoConfig(sps: ByteArray, pps: ByteArray) {
+                    packetizer.setParameterSets(sps, pps)
+                    liveViewServer?.setParameterSets(sps, pps)
+                }
+
+                override fun onAudioData(data: ByteArray, presentationTimeUs: Long) {
+                    liveViewServer?.sendRtpPacket(data)
+                    liveViewPushClient?.onAudioFrame(data, presentationTimeUs)
+                }
+            })
+
+            val (w, h) = resolutionToSize(lv.resolution)
+            encoder.configure(w, h, lv.fps, 2_000_000, lv.audioEnabled)
+            liveViewEncoder = encoder
+            encoder.start()
+
+            if (lv.mode == "server") {
+                val server = LiveViewServer(
+                    port = lv.port,
+                    username = lv.username,
+                    password = lv.password,
+                    videoStream = { Log.i(TAG, "LiveView client connected") },
+                    stopStream = { Log.i(TAG, "LiveView client disconnected") },
+                    requestKeyFrame = { encoder.requestKeyFrame() },
+                )
+                liveViewServer = server
+                server.start()
+                Log.i(TAG, "LiveView server started on port ${lv.port}")
+            } else if (lv.mode == "push" && lv.relayUrl.isNotEmpty()) {
+                val pushClient = LiveViewPushClient(
+                    relayUrl = lv.relayUrl,
+                    username = lv.username,
+                    password = lv.password,
+                    packetizer = packetizer,
+                )
+                liveViewPushClient = pushClient
+                pushClient.connect()
+                Log.i(TAG, "LiveView push client connected to ${lv.relayUrl}")
+            }
+            liveViewActive = true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start Live View", e)
+            stopLiveView()
+        }
+    }
+
+    private fun stopLiveView() {
+        liveViewActive = false
+        try { liveViewServer?.stop() } catch (_: Exception) {}
+        try { liveViewPushClient?.disconnect() } catch (_: Exception) {}
+        try { liveViewEncoder?.stop() } catch (_: Exception) {}
+        liveViewServer = null
+        liveViewPushClient = null
+        liveViewEncoder = null
+        liveViewPacketizer = null
+    }
+
+    private fun resolutionToSize(resolution: String): Pair<Int, Int> = when (resolution) {
+        "480p" -> 854 to 480
+        "1080p" -> 1920 to 1080
+        else -> 1280 to 720
+    }
+
     private fun bindCamera(
         service: LifecycleService,
         cameraId: String,
@@ -371,6 +467,14 @@ object MonitoringServiceController {
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     val now = System.currentTimeMillis()
+                    if (liveViewActive) {
+                        try {
+                            val pts = System.nanoTime() / 1000
+                            liveViewEncoder?.feedVideoFrame(image.image!!, pts)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "LiveView feed failed", e)
+                        }
+                    }
                     if (active && now - lastPublishMs >= 250L) {
                         lastPublishMs = now
                         frameCount++

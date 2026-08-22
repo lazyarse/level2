@@ -47,6 +47,46 @@ object AnalysisResolution {
     }
 }
 
+/** Live View streaming settings. */
+data class LiveViewSettings(
+    val enabled: Boolean = false,
+    val mode: String = "server",       // "server" | "push"
+    val port: Int = 8554,
+    val username: String = "",
+    val password: String = "",         // routed through SecretStore
+    val relayUrl: String = "",         // rtsp://user:pass@host/path
+    val resolution: String = "720p",   // "480p" | "720p" | "1080p"
+    val fps: Int = 15,
+    val audioEnabled: Boolean = true,
+) {
+    fun toJson(): Map<String, Any?> = mapOf(
+        "enabled" to enabled,
+        "mode" to mode,
+        "port" to port,
+        "username" to username,
+        "relayUrl" to relayUrl,
+        "resolution" to resolution,
+        "fps" to fps,
+        "audioEnabled" to audioEnabled,
+    )
+
+    companion object {
+        const val SECRET_FIELD = "password"
+
+        fun fromJson(json: Map<String, Any?>): LiveViewSettings = LiveViewSettings(
+            enabled = json["enabled"] as? Boolean ?: false,
+            mode = json["mode"] as? String ?: "server",
+            port = (json["port"] as? Number)?.toInt() ?: 554,
+            username = json["username"] as? String ?: "",
+            password = json["password"] as? String ?: "",
+            relayUrl = json["relayUrl"] as? String ?: "",
+            resolution = json["resolution"] as? String ?: "720p",
+            fps = (json["fps"] as? Number)?.toInt() ?: 15,
+            audioEnabled = json["audioEnabled"] as? Boolean ?: true,
+        )
+    }
+}
+
 /** Screen orientation lock (Android only). */
 object ScreenOrientation {
     const val portrait = "portrait"
@@ -82,6 +122,7 @@ data class AppSettings(
     val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
     val knownFaces: List<KnownFace> = emptyList(),
+    val liveView: LiveViewSettings = LiveViewSettings(),
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -98,6 +139,7 @@ data class AppSettings(
         detectionRegions: List<DetectionRegion>? = null,
         exclusionRegions: List<DetectionRegion>? = null,
         knownFaces: List<KnownFace>? = null,
+        liveView: LiveViewSettings? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         detectorConfigs = detectorConfigs ?: this.detectorConfigs,
@@ -114,6 +156,7 @@ data class AppSettings(
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
         knownFaces = knownFaces ?: this.knownFaces,
+        liveView = liveView ?: this.liveView,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -133,6 +176,7 @@ data class AppSettings(
         json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
         json["knownFaces"] = knownFaces.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
+        json["liveView"] = liveView.toJson()
         return json
     }
 
@@ -314,6 +358,9 @@ data class AppSettings(
                 scheduleExclusions = (json["scheduleExclusions"] as? List<*>)
                     ?.map { ScheduleWindow.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
+                liveView = (json["liveView"] as? Map<*, *>)
+                    ?.let { LiveViewSettings.fromJson(it as Map<String, Any?>) }
+                    ?: LiveViewSettings(),
             )
         }
     }

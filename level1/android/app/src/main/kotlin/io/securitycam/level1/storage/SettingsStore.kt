@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.ChannelConfig
+import io.securitycam.level1.core.LiveViewSettings
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,15 +34,21 @@ class SettingsStore(
     suspend fun load(): AppSettings {
         val raw = dataStore.data.first()[KEY]
         val settings = if (raw == null) AppSettings.defaults() else tryParse(raw)
-        return injectSecrets(settings)
+        val withChannelSecrets = injectSecrets(settings)
+        return injectLiveViewSecret(withChannelSecrets)
     }
 
     /** Saves settings with all channel secrets stripped into the secret store. */
     suspend fun save(settings: AppSettings) {
+        val lv = settings.liveView
+        if (lv.password.isNotEmpty()) {
+            secrets.write(liveViewSecretKey(), lv.password)
+        }
         val sanitized = settings.copyWith(
             channelConfigs = settings.channelConfigs.map { c ->
                 c.copyWith(settingsJson = stripSecrets(c))
             },
+            liveView = lv.copy(password = ""),
         )
         dataStore.edit { it[KEY] = mapToJsonString(sanitized.toJson()) }
     }
@@ -94,6 +101,22 @@ class SettingsStore(
         val next = settings.copyWith(channelConfigs = channels)
         if (migrated) save(next)
         return next
+    }
+
+    private fun liveViewSecretKey(): String = "liveview.password"
+
+    private suspend fun injectLiveViewSecret(settings: AppSettings): AppSettings {
+        val lv = settings.liveView
+        val inline = lv.password
+        if (inline.isNotEmpty()) {
+            secrets.write(liveViewSecretKey(), inline)
+            return settings
+        }
+        val stored = secrets.read(liveViewSecretKey())
+        if (!stored.isNullOrEmpty()) {
+            return settings.copyWith(liveView = lv.copy(password = stored))
+        }
+        return settings
     }
 
     private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {

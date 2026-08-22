@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.ChannelConfig
+import io.securitycam.level1.core.LiveViewSettings
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -93,5 +94,39 @@ class SettingsStoreTest {
         val loaded = s.load()
         assertTrue(loaded.channelConfigs.map { it.id }.contains("log"))
         assertTrue(secrets.all.isEmpty())
+    }
+
+    @Test
+    fun liveViewPasswordStrippedAndInjectedViaSecretStore() = runBlocking {
+        val s = store()
+        val settings = AppSettings.defaults().copyWith(
+            liveView = LiveViewSettings(
+                enabled = true,
+                mode = "server",
+                port = 8554,
+                username = "admin",
+                password = "s3cret",
+            ),
+        )
+        s.save(settings)
+
+        val raw = s.rawJson()
+        assertTrue(raw != null)
+        assertFalse(raw!!.contains("s3cret"))
+        assertTrue(raw.contains("\"port\":8554"))
+
+        val loaded = s.load()
+        assertEquals("s3cret", loaded.liveView.password)
+        assertEquals("admin", loaded.liveView.username)
+        assertEquals(8554, loaded.liveView.port)
+    }
+
+    @Test
+    fun liveViewDefaultsRoundTrip() = runBlocking {
+        val s = store()
+        s.save(AppSettings.defaults())
+
+        val loaded = s.load()
+        assertEquals(LiveViewSettings(), loaded.liveView)
     }
 }

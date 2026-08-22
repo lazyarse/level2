@@ -83,6 +83,7 @@ import io.securitycam.level1.core.AnalysisResolution
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level1.core.KnownFace
+import io.securitycam.level1.core.LiveViewSettings
 import io.securitycam.level1.core.ScheduleWindow
 import io.securitycam.level1.core.ScreenOrientation
 import io.securitycam.level1.core.VideoQuality
@@ -449,6 +450,147 @@ fun SettingsScreen(
                                 enabled = current.recordVideo,
                                 modifier = Modifier.testTag("postRollSlider"),
                             )
+                        }
+                        CollapsibleSection(
+                            "Live View",
+                            summary = liveViewSummary(current.liveView),
+                        ) {
+                            Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                                SwitchRow(
+                                    title = "Enable live stream",
+                                    subtitle = "RTSP stream while monitoring",
+                                    checked = current.liveView.enabled,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(enabled = v)) }
+                                    },
+                                )
+                            }
+                            if (current.liveView.enabled) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Mode",
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                                Text(
+                                    "Server runs a local RTSP server you connect to. " +
+                                        "Push streams to a remote RTSP relay.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    listOf("server" to "Server", "push" to "Push").forEach { (value, label) ->
+                                        val selected = current.liveView.mode == value
+                                        FilterChip(
+                                            selected = selected,
+                                            onClick = {
+                                                viewModel.update { it.copy(liveView = it.liveView.copy(mode = value)) }
+                                            },
+                                            label = { Text(label) },
+                                        )
+                                    }
+                                }
+                                if (current.liveView.mode == "server") {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = current.liveView.port.toString(),
+                                        onValueChange = { v ->
+                                            v.toIntOrNull()?.let { port ->
+                                                viewModel.update { it.copy(liveView = it.liveView.copy(port = port)) }
+                                            }
+                                        },
+                                        label = { Text("Port") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("liveViewPort"),
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    SwitchRow(
+                                        title = "Require authentication",
+                                        subtitle = "",
+                                        checked = current.liveView.username.isNotEmpty(),
+                                        onCheckedChange = { v ->
+                                            viewModel.update {
+                                                it.copy(liveView = it.liveView.copy(
+                                                    username = if (v) "admin" else "",
+                                                    password = if (v) it.liveView.password else "",
+                                                ))
+                                            }
+                                        },
+                                    )
+                                    if (current.liveView.username.isNotEmpty()) {
+                                        OutlinedTextField(
+                                            value = current.liveView.username,
+                                            onValueChange = { v ->
+                                                viewModel.update { it.copy(liveView = it.liveView.copy(username = v)) }
+                                            },
+                                            label = { Text("Username") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("liveViewUsername"),
+                                        )
+                                        OutlinedTextField(
+                                            value = current.liveView.password,
+                                            onValueChange = { v ->
+                                                viewModel.update { it.copy(liveView = it.liveView.copy(password = v)) }
+                                            },
+                                            label = { Text("Password") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("liveViewPassword"),
+                                        )
+                                    }
+                                }
+                                if (current.liveView.mode == "push") {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = current.liveView.relayUrl,
+                                        onValueChange = { v ->
+                                            viewModel.update { it.copy(liveView = it.liveView.copy(relayUrl = v)) }
+                                        },
+                                        label = { Text("Relay URL") },
+                                        placeholder = { Text("rtsp://host:port/path") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("liveViewRelayUrl"),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                DropdownField(
+                                    label = "Resolution",
+                                    selected = current.liveView.resolution,
+                                    options = listOf("480p", "720p", "1080p").map { it to it },
+                                    enabled = true,
+                                    testTag = "liveViewResolution",
+                                    onSelect = { q ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(resolution = q)) }
+                                    },
+                                )
+                                Text("FPS: ${current.liveView.fps}")
+                                Slider(
+                                    value = current.liveView.fps.toFloat().coerceIn(5f, 30f),
+                                    onValueChange = { v ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(fps = v.round())) }
+                                    },
+                                    valueRange = 5f..30f,
+                                    steps = 24,
+                                    modifier = Modifier.testTag("liveViewFps"),
+                                )
+                                SwitchRow(
+                                    title = "Include audio",
+                                    subtitle = "Stream microphone audio",
+                                    checked = current.liveView.audioEnabled,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(audioEnabled = v)) }
+                                    },
+                                )
+                            }
                         }
                         CollapsibleSection("Events", summary = retentionSummary(current.retentionDays)) {
                             Text(
@@ -1215,10 +1357,10 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
             )
             val fraction = scrollState.value.toFloat() / scrollState.maxValue
             drawRoundRect(
-                color = Color.Black.copy(alpha = 0.30f),
-                topLeft = Offset(size.width - 10.dp.toPx(), fraction * (viewport - thumbHeight)),
-                size = Size(6.dp.toPx(), thumbHeight),
-                cornerRadius = CornerRadius(3.dp.toPx()),
+                color = Color.Black.copy(alpha = 0.50f),
+                topLeft = Offset(size.width - 12.dp.toPx(), fraction * (viewport - thumbHeight)),
+                size = Size(8.dp.toPx(), thumbHeight),
+                cornerRadius = CornerRadius(4.dp.toPx()),
             )
         }
     }
@@ -1251,4 +1393,19 @@ private fun faceRecognitionSummary(settings: AppSettings): String {
     val enabled = AppSettings.faceRecognitionEnabled(settings)
     val count = settings.knownFaces.size
     return if (!enabled) "off" else if (count == 0) "on, none enrolled" else "on, $count"
+}
+
+private fun liveViewSummary(lv: LiveViewSettings): String {
+    if (!lv.enabled) return "off"
+    return if (lv.mode == "server") {
+        val auth = if (lv.username.isNotEmpty()) " auth" else ""
+        "server :${lv.port}$auth"
+    } else {
+        val host = try {
+            java.net.URI(lv.relayUrl).host ?: lv.relayUrl
+        } catch (_: Exception) {
+            lv.relayUrl.ifEmpty { "no relay" }
+        }
+        "push -> $host"
+    }
 }
