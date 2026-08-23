@@ -1,5 +1,6 @@
 package io.securitycam.level1.identity
 
+import android.util.Log
 import io.securitycam.level1.camera_service.CameraFrameBus
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.KnownFace
@@ -44,8 +45,15 @@ open class FaceEnrollmentCoordinator(
         } catch (e: Exception) {
             return failure("Camera error: ${e.message}")
         }
-        val embedding = embedder.embed(frame, doubleArrayOf(face.x1, face.y1, face.x2, face.y2))
-            ?: return failure("Embedding failed")
+        // TFLite failures surface as IllegalStateException from run(); report
+        // them as a normal result instead of crashing the caller's snackbar
+        // with a raw native message.
+        val embedding = try {
+            embedder.embed(frame, doubleArrayOf(face.x1, face.y1, face.x2, face.y2))
+        } catch (e: Exception) {
+            Log.w(TAG, "embedding failed", e)
+            return failure("Embedding failed")
+        } ?: return failure("Embedding failed")
         if (embedding.isEmpty()) return failure("Embedding failed")
 
         val settings = settingsLoader()
@@ -64,6 +72,8 @@ open class FaceEnrollmentCoordinator(
     private fun <T> failure(message: String): Result<T> = Result.failure(IllegalStateException(message))
 
     companion object {
+        private const val TAG = "FaceEnroll"
+
         const val DEFAULT_TIMEOUT_MS = 10_000L
 
         /**

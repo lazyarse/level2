@@ -11,7 +11,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class FaceEnrollmentCoordinatorTest {
 
     @get:Rule
@@ -97,6 +102,25 @@ class FaceEnrollmentCoordinatorTest {
             embedder = null,
         )
         assertTrue(c.enroll("Alice").isFailure)
+        assertTrue(saves.isEmpty())
+    }
+
+    @Test
+    fun throwingEmbedderFailsGracefullyWithoutSaving() = runBlocking {
+        val throwing = object : io.securitycam.level1.detection.face.FaceEmbedder {
+            override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =
+                throw IllegalStateException(
+                    "Internal error: Unexpected failure when preparing tensor allocations!"
+                )
+        }
+        val (c, saves) = coordinator(
+            KnownFaceStore(tmp.newFolder("kf")),
+            { frame to face },
+            embedder = throwing,
+        )
+        val result = c.enroll("Alice")
+        assertTrue(result.isFailure)
+        assertEquals("Embedding failed", result.exceptionOrNull()?.message)
         assertTrue(saves.isEmpty())
     }
 }

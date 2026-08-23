@@ -552,7 +552,22 @@ object MonitoringServiceController {
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .build()
-        service.startForeground(NOTIFICATION_ID, notification)
+        // Declare only the FGS types actually backed by runtime grants —
+        // Android 14+ validates every type at call time and throws
+        // SecurityException (crash) otherwise. Preview/enrollment never uses
+        // the mic; monitoring includes it only with RECORD_AUDIO granted.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            var type = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            if (!preview &&
+                ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                type = type or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            service.startForeground(NOTIFICATION_ID, notification, type)
+        } else {
+            service.startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun acquireWakeLock(context: Context) {

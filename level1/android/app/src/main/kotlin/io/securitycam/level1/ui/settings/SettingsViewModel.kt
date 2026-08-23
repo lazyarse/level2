@@ -316,6 +316,11 @@ class SettingsViewModel(
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                     as? Application
                     ?: error("Application missing from initializer")
+                // One interpreter for the app's lifetime: loading per enrollment
+                // tap leaked a native TFLite tensor arena per attempt until
+                // allocations failed. Kept separate from MonitoringRuntime's
+                // instance (interpreters aren't thread-safe across consumers).
+                val enrollmentEmbedder = FaceEmbeddingEngine.load(app)
                 SettingsViewModel(
                     application = app,
                     settingsLoader = {
@@ -328,7 +333,7 @@ class SettingsViewModel(
                     enrollmentFactory = {
                         FaceEnrollmentCoordinator(
                             store = KnownFaceStore(app),
-                            embedder = FaceEmbeddingEngine.load(app),
+                            embedder = enrollmentEmbedder,
                             faceFinder = FaceEnrollmentCoordinator.busFinder(
                                 engineFactory = { MediaPipeFaceEngine(app) },
                             ),
