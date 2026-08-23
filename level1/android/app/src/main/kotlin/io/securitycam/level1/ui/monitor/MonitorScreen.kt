@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,10 +57,17 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
     val activeTriggers by viewModel.activeTriggers.collectAsStateWithLifecycle()
 
+    // Whether Start or Preview initiated the permission request, so the grant
+    // callback resumes the action the user actually tapped.
+    var pendingPermissionAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        if (viewModel.hasCorePermissions()) viewModel.start() else viewModel.onPermissionsDenied()
+        if (viewModel.hasCorePermissions()) {
+            (pendingPermissionAction ?: { viewModel.start() }).invoke()
+        } else {
+            viewModel.onPermissionsDenied()
+        }
     }
 
     // `display` throws on contexts without an associated display (e.g. JVM
@@ -72,7 +80,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         Surface.ROTATION_270 -> 270
         else -> 0
     }
-    var showRegions by remember { mutableStateOf(false) }
+    var showRegions by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -81,8 +89,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 .weight(1f)
                 .zoomGestures(
                     onApplyFactor = { factor ->
-                        val current = MonitoringServiceController.zoomRatio().value
-                        MonitoringServiceController.setZoomRatio(current * factor)
+                        MonitoringServiceController.setZoomRatio(zoomRatio * factor)
                     },
                     onReset = { MonitoringServiceController.setZoomRatio(1f) },
                 ),
@@ -131,13 +138,19 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             onStart = {
                 val missing = viewModel.missingPermissions()
                 if (missing.isEmpty()) viewModel.start()
-                else permissionLauncher.launch(missing.toTypedArray())
+                else {
+                    pendingPermissionAction = { viewModel.start() }
+                    permissionLauncher.launch(missing.toTypedArray())
+                }
             },
             onStop = viewModel::stop,
             onStartPreview = {
                 val missing = viewModel.missingPermissions()
                 if (missing.isEmpty()) viewModel.startPreview()
-                else permissionLauncher.launch(missing.toTypedArray())
+                else {
+                    pendingPermissionAction = { viewModel.startPreview() }
+                    permissionLauncher.launch(missing.toTypedArray())
+                }
             },
             onStopPreview = viewModel::stopPreview,
         )
@@ -214,44 +227,59 @@ private fun MonitorStatusBar(
                 }
                 Spacer(Modifier.width(8.dp))
             }
-            // Idle: Start + Preview buttons
-            if (state == MonitorState.Idle) {
-                Button(onClick = onStart) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Start")
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onStartPreview) {
-                    Icon(
-                        Icons.Filled.Visibility,
-                        contentDescription = "Preview camera",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            // Previewing: Start (promote to monitoring) + Stop preview
-            if (previewing) {
-                Button(onClick = onStart) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Start")
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onStopPreview) {
-                    Icon(
-                        Icons.Filled.Stop,
-                        contentDescription = "Stop preview",
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-            // Monitoring: Stop
             if (monitoring) {
-                Button(onClick = onStop) {
+                Button(onClick = onStop, modifier = Modifier.testTag("stopMonitorButton")) {
                     Icon(Icons.Filled.Stop, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Stop")
+                }
+            } else {
+                Button(
+                    onClick = onStart,
+                    enabled = state != MonitorState.Starting,
+                    modifier = Modifier.testTag("startMonitorButton"),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (state == MonitorState.Error) "Retry" else "Start")
+                }
+                Spacer(Modifier.width(4.dp))
+                when {
+                    state == MonitorState.Idle -> IconButton(
+                        onClick = onStartPreview,
+                        modifier = Modifier.testTag("previewCameraButton"),
+                    ) {
+                        Icon(
+                            Icons.Filled.Visibility,
+                            contentDescription = "Preview camera",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    previewing -> IconButton(
+                        onClick = onStopPreview,
+                        modifier = Modifier.testTag("stopPreviewButton"),
+                    ) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            contentDescription = "Stop preview",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    // Cancel a slow service start; Error relies on Retry above.
+                    state == MonitorState.Starting -> IconButton(
+                        onClick = onStop,
+                        modifier = Modifier.testTag("cancelStartButton"),
+                    ) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            contentDescription = "Cancel startup",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    else -> Unit
                 }
             }
         }
