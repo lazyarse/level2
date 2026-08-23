@@ -77,6 +77,21 @@ object VideoClipRecorder {
     @Volatile private var active = false
     @Volatile private var exporting = false
 
+    /**
+     * Orientation authored into exported clips (degrees). Set at bind time to
+     * `(sensorOrientation - videoTargetRotation + 360) % 360` — exactly what
+     * CameraX wrote into the per-segment headers, which the MediaMuxer
+     * re-mux would otherwise discard.
+     */
+    @Volatile private var orientationHintDegrees: Int = 0
+
+    /** For tests. */
+    internal fun orientationHintForTest(): Int = orientationHintDegrees
+
+    fun setOrientationHintDegrees(degrees: Int) {
+        orientationHintDegrees = ((degrees % 360) + 360) % 360
+    }
+
     // Export coordination: on a trigger the current ring segment is stopped;
     // its Finalize becomes the pre-roll tail, then a post-roll recording is
     // started whose Finalize runs the concat + MediaStore insert.
@@ -464,6 +479,9 @@ object VideoClipRecorder {
             }
         }
         val muxer = MediaMuxer(output.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        // Segment re-muxing strips the per-segment rotation metadata CameraX
+        // wrote; re-apply the authored orientation so exports play upright.
+        muxer.setOrientationHint(orientationHintDegrees)
         val aac = audio
         var videoTrack = -1
         var audioTrack = -1

@@ -752,10 +752,14 @@ object MonitoringServiceController {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .setTargetRotation(rotations.capture)
                     .build()
-                // Same for video: metadata-free upright clips regardless of
-                // live display state or player metadata support.
+                // Same for video: re-apply the authored orientation at export
+                // (segment re-mux strips per-segment metadata), so clips play
+                // upright everywhere.
                 val videoCapture =
                     VideoClipRecorder.buildVideoCapture(rotations.video)
+                VideoClipRecorder.setOrientationHintDegrees(
+                    (sensorOrientation(service, cameraId) - rotations.video + 360) % 360
+                )
                 val preview = if (allowPreview) {
                     Preview.Builder()
                         .setTargetRotation(rotations.preview)
