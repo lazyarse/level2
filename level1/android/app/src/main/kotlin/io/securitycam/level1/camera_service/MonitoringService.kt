@@ -548,14 +548,6 @@ object MonitoringServiceController {
         }
     } ?: 90
 
-    /**
-     * Target rotation that cancels the sensor's orientation: outputs are
-     * physically upright for a portrait-mounted camera and carry no rotation
-     * metadata (EXIF/mp4), sidestepping players/decoders that ignore it.
-     */
-    private fun uprightCaptureRotation(context: Context, cameraId: String): Int =
-        (Surface.ROTATION_0 + sensorOrientation(context, cameraId)) % 360
-
     private inline fun <T> tryOr(fallback: T, block: () -> T): T =
         try {
             block()
@@ -719,11 +711,17 @@ object MonitoringServiceController {
             cameraProvider = provider
             val selector = cameraSelectorFor(cameraId)
             try {
+                val rotations = CameraRotations.resolve(displayRotation(service))
+                Log.i(
+                    TAG,
+                    "bindCamera rotations: display=${rotations.capture} " +
+                        "sensor=${sensorOrientation(service, cameraId)}",
+                )
                 val analysis = ImageAnalysis.Builder()
                     .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
-                    .setTargetRotation(displayRotation(service))
+                    .setTargetRotation(rotations.analysis)
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     // The buffer must be returned even if conversion/publish
@@ -752,32 +750,20 @@ object MonitoringServiceController {
                 }
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    // Baking sensor rotation into the output: EXIF becomes 0
-                    // so snapshots decode upright even without EXIF-aware
-                    // readers (BitmapFactory ignores EXIF).
-                    .setTargetRotation(uprightCaptureRotation(service, cameraId))
+                    .setTargetRotation(rotations.capture)
                     .build()
-                val rotation = displayRotation(service)
-                Log.i(
-                    TAG,
-                    "bindCamera rotations: display=$rotation " +
-                        "sensor=${sensorOrientation(service, cameraId)} " +
-                        "(captures/video authored upright)",
-                )
                 // Same for video: metadata-free upright clips regardless of
                 // live display state or player metadata support.
                 val videoCapture =
-                    VideoClipRecorder.buildVideoCapture(
-                        uprightCaptureRotation(service, cameraId)
-                    )
+                    VideoClipRecorder.buildVideoCapture(rotations.video)
                 val preview = if (allowPreview) {
                     Preview.Builder()
-                        .setTargetRotation(rotation)
+                        .setTargetRotation(rotations.preview)
                         .build()
                         .also { p ->
                             boundPreview = p
                             pendingPreviewProvider?.let { p.setSurfaceProvider(it) }
-                            Log.i(TAG, "preview use case built rotation=$rotation")
+                            Log.i(TAG, "preview use case built rotation=${rotations.preview}")
                         }
                 } else null
                 imageAnalysis = analysis
@@ -824,15 +810,21 @@ object MonitoringServiceController {
     /**
      * Converts to BGR and rotates by the frame's rotationDegrees so every
      * CameraFrameBus consumer (detectors, enrollment, thumbnails) works on
-     * display-upright pixels.
+     * display-upright pixels. Failure-safe: a rotation bug must never kill
+     * frame delivery, so raw frames still flow if rotating throws.
      */
     private fun publishUpright(image: ImageProxy) {
-        val raw = toBgr(image)
-        val rotated = FrameRotation.rotate(
-            raw, image.width, image.height,
-            image.imageInfo.rotationDegrees,
-        )
-        CameraFrameBus.publish(rotated.bgr, rotated.width, rotated.height)
+        try {
+            val raw = toBgr(image)
+            val rotated = FrameRotation.rotate(
+                raw, image.width, image.height,
+                image.imageInfo.rotationDegrees,
+            )
+            CameraFrameBus.publish(rotated.bgr, rotated.width, rotated.height)
+        } catch (t: Throwable) {
+            Log.w(TAG, "publishUpright failed; publishing raw frame", t)
+            runCatching { CameraFrameBus.publish(toBgr(image), image.width, image.height) }
+        }
     }
 
     private fun toBgr(image: ImageProxy): ByteArray {
