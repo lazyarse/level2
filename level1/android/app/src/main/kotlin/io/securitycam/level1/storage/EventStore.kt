@@ -43,6 +43,10 @@ interface EventDao {
     @Query("SELECT * FROM events ORDER BY timestamp DESC LIMIT :limit")
     fun recentFlow(limit: Int): Flow<List<EventEntity>>
 
+    /** Emits the row count on every insert/delete; drives live UI refreshes. */
+    @Query("SELECT COUNT(*) FROM events")
+    fun countFlow(): Flow<Long>
+
     /** Day-scoped query for the history timeline; bounds are [start, end). */
     @Query(
         "SELECT * FROM events WHERE timestamp >= :startIso AND timestamp < :endIso " +
@@ -142,6 +146,9 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
 
     fun recentFlow(limit: Int = 100): Flow<List<RecordedEventRow>> =
         dao.recentFlow(limit).map { rows -> rows.map { it.toRow() } }
+
+    /** Row-count changes; consumed by the events UI for live refresh. */
+    fun countFlow(): Flow<Long> = dao.countFlow()
 
     /** Oldest stored event instant, or null when the log is empty. */
     suspend fun oldestInstant(): Instant? =

@@ -16,7 +16,10 @@ import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -43,6 +46,11 @@ class EventsViewModel(
     private val floorLoader: suspend () -> Instant?,
     private val snapshotLoader: suspend (String) -> Snapshot?,
     private val videoOpener: ((String) -> String?)?,
+    /**
+     * Row-count changes from the event store; every increase triggers a live
+     * reload so freshly recorded events appear without an app restart.
+     */
+    private val countLoader: (() -> kotlinx.coroutines.flow.Flow<Long>)? = null,
     private val todayProvider: () -> LocalDate = LocalDate::now,
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) : ViewModel() {
@@ -72,8 +80,27 @@ class EventsViewModel(
     /** Rows already shown; guards against overlapping windows re-listing them. */
     private val seenIds = HashSet<Long>()
 
+    private var refreshInFlight = false
+
     init {
         reload()
+        countLoader?.let { loader ->
+            viewModelScope.launch {
+                loader()
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collect {
+                        if (!refreshInFlight) {
+                            refreshInFlight = true
+                            try {
+                                reload()
+                            } finally {
+                                refreshInFlight = false
+                            }
+                        }
+                    }
+            }
+        }
     }
 
     val hasVideoOpener: Boolean
@@ -189,6 +216,7 @@ class EventsViewModel(
                 EventsViewModel(
                     pageLoader = { start, end -> log.between(start, end, limit = PAGE_LIMIT) },
                     floorLoader = { log.oldestInstant() },
+                    countLoader = { log.countFlow() },
                     snapshotLoader = { name ->
                         FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
                             .load(name)
