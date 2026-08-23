@@ -60,17 +60,24 @@ class MonitoringService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
-        MonitoringServiceController.onStart(
-            this,
-            intent.getStringExtra(EXTRA_CAMERA_ID) ?: "0",
-            intent.getStringExtra(EXTRA_CAMERA_NAME) ?: "Hallway",
-            intent.getIntExtra(EXTRA_PRE_ROLL, 5) ?: 5,
-            intent.getIntExtra(EXTRA_POST_ROLL, 5) ?: 5,
-            intent.getBooleanExtra(EXTRA_RECORD_VIDEO, true) ?: true,
-            intent.getStringExtra(EXTRA_VIDEO_QUALITY) ?: "lowest",
-            intent.getIntExtra(EXTRA_ANALYSIS_WIDTH, 320) ?: 320,
-            intent.getIntExtra(EXTRA_ANALYSIS_HEIGHT, 240) ?: 240,
-        )
+        if (intent.getBooleanExtra(EXTRA_PREVIEW_ONLY, false)) {
+            MonitoringServiceController.startPreviewOnly(
+                this,
+                intent.getStringExtra(EXTRA_CAMERA_ID) ?: "0",
+            )
+        } else {
+            MonitoringServiceController.onStart(
+                this,
+                intent.getStringExtra(EXTRA_CAMERA_ID) ?: "0",
+                intent.getStringExtra(EXTRA_CAMERA_NAME) ?: "Hallway",
+                intent.getIntExtra(EXTRA_PRE_ROLL, 5) ?: 5,
+                intent.getIntExtra(EXTRA_POST_ROLL, 5) ?: 5,
+                intent.getBooleanExtra(EXTRA_RECORD_VIDEO, true) ?: true,
+                intent.getStringExtra(EXTRA_VIDEO_QUALITY) ?: "lowest",
+                intent.getIntExtra(EXTRA_ANALYSIS_WIDTH, 320) ?: 320,
+                intent.getIntExtra(EXTRA_ANALYSIS_HEIGHT, 240) ?: 240,
+            )
+        }
         return START_STICKY
     }
 
@@ -90,6 +97,7 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_VIDEO_QUALITY = "videoQuality"
         const val EXTRA_ANALYSIS_WIDTH = "analysisWidth"
         const val EXTRA_ANALYSIS_HEIGHT = "analysisHeight"
+        const val EXTRA_PREVIEW_ONLY = "previewOnly"
 
         fun start(
             context: Context,
@@ -111,6 +119,17 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_VIDEO_QUALITY, videoQuality)
                 .putExtra(EXTRA_ANALYSIS_WIDTH, analysisWidth)
                 .putExtra(EXTRA_ANALYSIS_HEIGHT, analysisHeight)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startPreview(context: Context, cameraId: String) {
+            val intent = Intent(context, MonitoringService::class.java)
+                .putExtra(EXTRA_CAMERA_ID, cameraId)
+                .putExtra(EXTRA_PREVIEW_ONLY, true)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -268,6 +287,98 @@ object MonitoringServiceController {
         activeService = null
     }
 
+    // ---- Preview-only mode ----
+
+    fun startPreviewOnly(
+        service: LifecycleService,
+        cameraId: String,
+    ) {
+        Log.i(TAG, "startPreviewOnly cameraId=$cameraId")
+        if (active) return
+        if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.e(TAG, "CAMERA permission not granted")
+            service.stopSelf()
+            return
+        }
+        active = true
+        startForeground(service, preview = true)
+        bindPreviewOnly(service, cameraId)
+    }
+
+    fun stopPreviewOnly() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopPreviewOnlyInternal()
+        } else {
+            val done = java.util.concurrent.CountDownLatch(1)
+            android.os.Handler(Looper.getMainLooper()).post {
+                try {
+                    stopPreviewOnlyInternal()
+                } finally {
+                    done.countDown()
+                }
+            }
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
+    }
+
+    private fun stopPreviewOnlyInternal() {
+        active = false
+        cameraProvider?.unbindAll()
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        boundCamera = null
+        _zoomRatio.value = 1f
+        val service = activeService
+        if (service != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                service.stopForeground(true)
+            }
+            service.stopSelf()
+        }
+        activeService = null
+    }
+
+    private fun bindPreviewOnly(service: LifecycleService, cameraId: String) {
+        val providerFuture = ProcessCameraProvider.getInstance(service)
+        providerFuture.addListener({
+            val provider = providerFuture.get()
+            cameraProvider = provider
+            val selector = when (cameraId) {
+                "front", "1" -> CameraSelector.DEFAULT_FRONT_CAMERA
+                else -> CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            try {
+                val rotation = displayRotation(service)
+                val preview = Preview.Builder()
+                    .setTargetRotation(rotation)
+                    .build()
+                    .also { p ->
+                        boundPreview = p
+                        pendingPreviewProvider?.let { p.setSurfaceProvider(it) }
+                        Log.i(TAG, "previewOnly use case built rotation=$rotation")
+                    }
+                provider.unbindAll()
+                provider.bindToLifecycle(
+                    service, selector, preview
+                ).also { camera ->
+                    onCameraBound(camera)
+                    Log.i(TAG, "previewOnly camera bound id=$cameraId")
+                }
+                CameraEvents.publishPreviewStatus(true)
+            } catch (e: Exception) {
+                Log.e(TAG, "previewOnly camera bind failed", e)
+                CameraEvents.publishPreviewStatus(false)
+            }
+        }, ContextCompat.getMainExecutor(service))
+    }
+
+    // ---- End preview-only mode ----
+
     private var activeService: LifecycleService? = null
 
     /**
@@ -329,11 +440,9 @@ object MonitoringServiceController {
         return rotation ?: Surface.ROTATION_0
     }
 
-    private fun startForeground(service: LifecycleService) {
+    private fun startForeground(service: LifecycleService, preview: Boolean = false) {
         activeService = service
         val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // NotificationChannel only exists on API 26+; pre-O the channel API is
-        // unavailable but notifications work without an explicit channel.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID, "Monitoring", NotificationManager.IMPORTANCE_LOW
@@ -345,8 +454,11 @@ object MonitoringServiceController {
             PendingIntent.FLAG_IMMUTABLE
         )
         val notification: Notification = NotificationCompat.Builder(service, CHANNEL_ID)
-            .setContentTitle("Monitoring active")
-            .setContentText("Camera analysis is running")
+            .setContentTitle(if (preview) "Camera preview" else "Monitoring active")
+            .setContentText(
+                if (preview) "Tap to start monitoring"
+                else "Camera analysis is running"
+            )
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
             .setContentIntent(contentIntent)
@@ -457,8 +569,10 @@ object MonitoringServiceController {
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
-            val selector = CameraSelector.DEFAULT_BACK_CAMERA.takeIf { cameraId != "front" }
-                ?: CameraSelector.DEFAULT_FRONT_CAMERA
+            val selector = when (cameraId) {
+                "front", "1" -> CameraSelector.DEFAULT_FRONT_CAMERA
+                else -> CameraSelector.DEFAULT_BACK_CAMERA
+            }
             try {
                 val analysis = ImageAnalysis.Builder()
                     .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))

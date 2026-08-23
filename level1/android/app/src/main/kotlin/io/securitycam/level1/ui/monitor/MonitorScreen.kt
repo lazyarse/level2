@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
@@ -41,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.securitycam.level1.camera_service.MonitoringServiceController
 import io.securitycam.level1.monitor.MonitorState
 import io.securitycam.level1.monitor.MonitorViewModel
+import io.securitycam.level1.ui.events.eventIconFor
 
 @Composable
 fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewModel.Factory)) {
@@ -52,6 +54,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
     val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
+    val activeTriggers by viewModel.activeTriggers.collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -97,6 +100,16 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 modifier = Modifier.align(Alignment.TopStart),
             )
             IconButton(
+                onClick = { viewModel.cycleCamera() },
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Icon(
+                    Icons.Filled.Cameraswitch,
+                    contentDescription = "Switch camera",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(
                 onClick = { showRegions = !showRegions },
                 modifier = Modifier.align(Alignment.TopEnd),
             ) {
@@ -114,12 +127,19 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             previewActive = previewActive,
             error = error,
             healthStalled = healthStalled,
+            activeTriggers = activeTriggers,
             onStart = {
                 val missing = viewModel.missingPermissions()
                 if (missing.isEmpty()) viewModel.start()
                 else permissionLauncher.launch(missing.toTypedArray())
             },
             onStop = viewModel::stop,
+            onStartPreview = {
+                val missing = viewModel.missingPermissions()
+                if (missing.isEmpty()) viewModel.startPreview()
+                else permissionLauncher.launch(missing.toTypedArray())
+            },
+            onStopPreview = viewModel::stopPreview,
         )
     }
 }
@@ -129,6 +149,7 @@ private val MonitorState.label: String
         MonitorState.Idle -> "Idle"
         MonitorState.Starting -> "Starting"
         MonitorState.Monitoring -> "Monitoring"
+        MonitorState.Previewing -> "Previewing"
         MonitorState.Error -> "Error"
     }
 
@@ -139,10 +160,14 @@ private fun MonitorStatusBar(
     previewActive: Boolean,
     error: String?,
     healthStalled: Boolean,
+    activeTriggers: Set<String>,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onStartPreview: () -> Unit,
+    onStopPreview: () -> Unit,
 ) {
     val monitoring = state == MonitorState.Monitoring
+    val previewing = state == MonitorState.Previewing
     Column(
         Modifier
             .fillMaxWidth()
@@ -175,13 +200,59 @@ private fun MonitorStatusBar(
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            Button(onClick = if (monitoring) onStop else onStart) {
-                Icon(
-                    if (monitoring) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                )
+            // Triggered detector icons
+            if (activeTriggers.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    activeTriggers.forEach { type ->
+                        Icon(
+                            imageVector = eventIconFor(type),
+                            contentDescription = type,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+            // Idle: Start + Preview buttons
+            if (state == MonitorState.Idle) {
+                Button(onClick = onStart) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Start")
+                }
                 Spacer(Modifier.width(4.dp))
-                Text(if (monitoring) "Stop" else "Start")
+                IconButton(onClick = onStartPreview) {
+                    Icon(
+                        Icons.Filled.Visibility,
+                        contentDescription = "Preview camera",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            // Previewing: Start (promote to monitoring) + Stop preview
+            if (previewing) {
+                Button(onClick = onStart) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Start")
+                }
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onStopPreview) {
+                    Icon(
+                        Icons.Filled.Stop,
+                        contentDescription = "Stop preview",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            // Monitoring: Stop
+            if (monitoring) {
+                Button(onClick = onStop) {
+                    Icon(Icons.Filled.Stop, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Stop")
+                }
             }
         }
         if (state == MonitorState.Error && error != null) {

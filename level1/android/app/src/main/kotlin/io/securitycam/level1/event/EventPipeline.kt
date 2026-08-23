@@ -3,6 +3,7 @@ package io.securitycam.level1.event
 import io.securitycam.level1.core.AlertMessage
 import io.securitycam.level1.core.Channel
 import io.securitycam.level1.core.ChannelConfig
+import io.securitycam.level1.core.DetectorType
 import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.core.TriggerType
@@ -137,20 +138,8 @@ class EventPipeline(
 }
 
 /** Human label for a trigger type (port of `lib/event/event_pipeline.dart`). */
-fun triggerLabel(triggerType: String): String = when (triggerType) {
-    TriggerType.motion -> "Motion"
-    TriggerType.babyCry -> "Baby crying"
-    TriggerType.glassBreak -> "Glass breaking"
-    TriggerType.loudNoise -> "Loud noise"
-    TriggerType.merged -> "Multiple triggers"
-    TriggerType.person -> "Person"
-    TriggerType.face -> "Face"
-    TriggerType.faceKnown -> "Known face"
-    TriggerType.faceUnknown -> "Unknown face"
-    TriggerType.tamper -> "Tamper"
-    TriggerType.health -> "Health"
-    else -> "Activity"
-}
+fun triggerLabel(triggerType: String): String =
+    DetectorType.fromKey(triggerType)?.label ?: "Activity"
 
 /** Tamper detail label ("Camera covered"/"Camera moved"), or null for other types. */
 fun tamperDetailLabel(triggerType: String, detail: String?): String? {

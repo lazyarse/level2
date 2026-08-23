@@ -101,8 +101,15 @@ fun RegionOverlay(
     show: Boolean = true,
     exclusionRegions: List<DetectionRegion> = emptyList(),
 ) {
-    if (!show || (regions.isEmpty() && exclusionRegions.isEmpty())) return
+    if (!show) return
     Canvas(modifier = modifier) {
+        if (regions.isEmpty() && exclusionRegions.isEmpty()) {
+            drawRect(
+                color = Color(0x80FFFFFF),
+                style = Stroke(width = 2f),
+            )
+            return@Canvas
+        }
         val size = this.size
         regions.forEachIndexed { index, region ->
             val path = RegionDisplayMapper.regionPath(

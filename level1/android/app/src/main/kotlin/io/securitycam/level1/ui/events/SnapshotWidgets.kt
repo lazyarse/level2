@@ -14,12 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrokenImage
-import androidx.compose.material.icons.filled.ChildCare
-import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.NotificationImportant
-import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,17 +38,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import io.securitycam.level1.core.DetectorType
 import io.securitycam.level1.core.Snapshot
 
-/** Icon for a trigger type, shared by the events/history surfaces. */
-internal fun eventIconFor(type: String): ImageVector = when (type) {
-    "motion" -> Icons.Filled.DirectionsRun
-    "baby_cry" -> Icons.Filled.ChildCare
-    "glass_break" -> Icons.Filled.BrokenImage
-    "loud_noise" -> Icons.Filled.VolumeUp
-    "tamper" -> Icons.Filled.VideocamOff
-    else -> Icons.Filled.NotificationImportant
-}
+/** Icon for a trigger type, shared by the events/history surfaces and monitor status. */
+fun eventIconFor(type: String): ImageVector =
+    DetectorType.fromKey(type)?.icon ?: Icons.Filled.NotificationImportant
 
 /**
  * Snapshot thumbnail with a fallback icon while loading / when missing; tap

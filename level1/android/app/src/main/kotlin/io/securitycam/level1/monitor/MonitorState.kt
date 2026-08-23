@@ -4,5 +4,6 @@ enum class MonitorState {
     Idle,
     Starting,
     Monitoring,
+    Previewing,
     Error,
 }

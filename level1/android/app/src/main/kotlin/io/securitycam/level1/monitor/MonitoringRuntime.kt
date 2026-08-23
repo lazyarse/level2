@@ -72,6 +72,10 @@ class MonitoringRuntime private constructor(
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
 
+    /** Set of trigger types that have fired since monitoring started. */
+    private val _activeTriggerTypes = MutableStateFlow<Set<String>>(emptySet())
+    val activeTriggerTypes: StateFlow<Set<String>> = _activeTriggerTypes.asStateFlow()
+
     @Volatile
     private var stopped = false
 
@@ -175,6 +179,7 @@ class MonitoringRuntime private constructor(
         triggerJob = scope.launch {
             pipeline.triggers.collect {
                 android.util.Log.i(TAG, "trigger type=${it.triggerType} score=${it.score}")
+                _activeTriggerTypes.value = _activeTriggerTypes.value + it.triggerType
                 batcher.add(it)
             }
         }
@@ -198,6 +203,7 @@ class MonitoringRuntime private constructor(
     suspend fun stop() {
         if (stopped) return
         stopped = true
+        _activeTriggerTypes.value = emptySet()
         CameraFrameBus.remove(frameListener)
         CameraEvents.removeMicPcmListener(micListener)
         triggerJob?.cancel()

@@ -108,6 +108,7 @@ object ScreenOrientation {
  */
 data class AppSettings(
     val cameraName: String = "Hallway",
+    val cameraId: String = "0",
     val detectorConfigs: Map<String, DetectorConfig> = emptyMap(),
     val channelConfigs: List<ChannelConfig> = emptyList(),
     val notificationMergeWindow: Duration = Duration.ofSeconds(3),
@@ -126,6 +127,7 @@ data class AppSettings(
 ) {
     fun copyWith(
         cameraName: String? = null,
+        cameraId: String? = null,
         detectorConfigs: Map<String, DetectorConfig>? = null,
         channelConfigs: List<ChannelConfig>? = null,
         notificationMergeWindow: Duration? = null,
@@ -142,6 +144,7 @@ data class AppSettings(
         liveView: LiveViewSettings? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
+        cameraId = cameraId ?: this.cameraId,
         detectorConfigs = detectorConfigs ?: this.detectorConfigs,
         channelConfigs = channelConfigs ?: this.channelConfigs,
         notificationMergeWindow = notificationMergeWindow ?: this.notificationMergeWindow,
@@ -162,6 +165,7 @@ data class AppSettings(
     fun toJson(): Map<String, Any?> {
         val json = LinkedHashMap<String, Any?>()
         json["cameraName"] = cameraName
+        json["cameraId"] = cameraId
         json["detectorConfigs"] = detectorConfigs.mapValues { it.value.toJson() }
         json["channelConfigs"] = channelConfigs.map { it.toJson() }
         json["notificationMergeWindowMs"] = notificationMergeWindow.toMillis()
@@ -328,6 +332,7 @@ data class AppSettings(
             }
             return AppSettings(
                 cameraName = json["cameraName"] as? String ?: defaults.cameraName,
+                cameraId = json["cameraId"] as? String ?: defaults.cameraId,
                 detectorConfigs = detectors ?: defaults.detectorConfigs,
                 channelConfigs = channels,
                 notificationMergeWindow = Duration.ofMillis(

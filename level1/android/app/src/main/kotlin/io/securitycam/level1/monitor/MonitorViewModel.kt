@@ -15,6 +15,7 @@ import io.securitycam.level1.camera_service.CameraEvents
 import io.securitycam.level1.camera_service.MonitoringService
 import io.securitycam.level1.camera_service.MonitoringServiceController
 import io.securitycam.level1.camera_service.VideoClipRecorder
+import io.securitycam.level1.camera_service.availableCameras
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.SchedulePolicy
 import io.securitycam.level1.detection.DetectionRegion
@@ -49,10 +50,10 @@ class MonitorViewModel(
     private val permissionsGranted: () -> Boolean = {
         hasCorePermissions(application)
     },
-    private val startMonitoring: () -> Unit = {
+    private val startMonitoring: (cameraId: String) -> Unit = { cameraId ->
         MonitoringService.start(
             application,
-            cameraId = "0",
+            cameraId = cameraId,
             cameraName = "Hallway",
             preRollSeconds = 5,
             postRollSeconds = 5,
@@ -65,6 +66,9 @@ class MonitorViewModel(
     },
     private val settingsLoader: suspend () -> AppSettings = {
         SettingsStore(application, EncryptedSecretStore(application)).load()
+    },
+    private val settingsSaver: suspend (AppSettings) -> Unit = { settings ->
+        SettingsStore(application, EncryptedSecretStore(application)).save(settings)
     },
     private val scheduleCheckInterval: Duration? = Duration.ofMinutes(1),
     private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
@@ -88,6 +92,9 @@ class MonitorViewModel(
     private val _cameraName = MutableStateFlow("Hallway")
     val cameraName: StateFlow<String> = _cameraName.asStateFlow()
 
+    private val _cameraId = MutableStateFlow("0")
+    val cameraId: StateFlow<String> = _cameraId.asStateFlow()
+
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
     private val _exclusionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
@@ -96,8 +103,12 @@ class MonitorViewModel(
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
 
+    private val _activeTriggers = MutableStateFlow<Set<String>>(emptySet())
+    val activeTriggers: StateFlow<Set<String>> = _activeTriggers.asStateFlow()
+
     private var runtime: MonitoringRuntime? = null
     private var healthJob: kotlinx.coroutines.Job? = null
+    private var triggerJobs: MutableList<kotlinx.coroutines.Job> = mutableListOf()
     private var scheduleJob: kotlinx.coroutines.Job? = null
     private var scheduleSettings: AppSettings? = null
 
@@ -138,6 +149,7 @@ class MonitorViewModel(
 
     companion object {
         private const val TAG = "MonitorViewModel"
+        private const val TRIGGER_ICON_DURATION_MS = 4000L
 
         /** Explicit factory: the default owner factory can't build an AndroidViewModel. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
@@ -170,6 +182,10 @@ class MonitorViewModel(
             onPermissionsDenied()
             return
         }
+        // If previewing, stop preview first so the controller is not active.
+        if (_state.value == MonitorState.Previewing) {
+            MonitoringServiceController.stopPreviewOnly()
+        }
         // Manual start is blocked while a schedule exclusion is active (cached
         // settings only — before the first load we cannot know yet).
         scheduleSettings?.let { cached ->
@@ -183,7 +199,9 @@ class MonitorViewModel(
         _scheduleNote.value = null
         _state.value = MonitorState.Starting
         _error.value = null
-        startMonitoring()
+        // Use cached cameraId (or default "0") for synchronous service start;
+        // full settings are loaded in the coroutine for runtime creation.
+        startMonitoring(_cameraId.value)
         _state.value = MonitorState.Monitoring
         // Build the detection→event runtime off the main thread; the service
         // (camera + mic) is already streaming by the time it subscribes.
@@ -192,6 +210,7 @@ class MonitorViewModel(
                 val settings = settingsLoader()
                 scheduleSettings = settings
                 _cameraName.value = settings.cameraName
+                _cameraId.value = settings.cameraId
                 _detectionRegions.value = settings.detectionRegions
                 _exclusionRegions.value = settings.exclusionRegions
                 MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
@@ -199,6 +218,18 @@ class MonitorViewModel(
                     healthJob = viewModelScope.launch {
                         it.healthStalled.collect { stalled -> _healthStalled.value = stalled }
                     }
+                    triggerJobs.add(viewModelScope.launch {
+                        it.activeTriggerTypes.collect { types ->
+                            _activeTriggers.value = types
+                            // Schedule removal of each trigger type after timeout
+                            for (type in types) {
+                                triggerJobs.add(viewModelScope.launch {
+                                    kotlinx.coroutines.delay(TRIGGER_ICON_DURATION_MS)
+                                    _activeTriggers.value = _activeTriggers.value - type
+                                })
+                            }
+                        }
+                    })
                     it.begin()
                 }
                 purgeOldEvents(settings)
@@ -215,11 +246,61 @@ class MonitorViewModel(
         stopMonitoring()
         _state.value = MonitorState.Idle
         _healthStalled.value = false
+        _activeTriggers.value = emptySet()
         val current = runtime
         runtime = null
         healthJob?.cancel()
         healthJob = null
+        triggerJobs.forEach { it.cancel() }
+        triggerJobs.clear()
         viewModelScope.launch { current?.stop() }
+    }
+
+    fun startPreview() {
+        if (_state.value == MonitorState.Previewing || _state.value == MonitorState.Monitoring) return
+        if (!permissionsGranted()) {
+            onPermissionsDenied()
+            return
+        }
+        _error.value = null
+        _state.value = MonitorState.Previewing
+        MonitoringService.startPreview(getApplication(), _cameraId.value)
+    }
+
+    fun stopPreview() {
+        if (_state.value != MonitorState.Previewing) return
+        MonitoringServiceController.stopPreviewOnly()
+        _state.value = MonitorState.Idle
+    }
+
+    /** Cycle to the next available camera. Stops monitoring, updates the setting, and restarts. */
+    fun cycleCamera() {
+        viewModelScope.launch {
+            val settings = settingsLoader()
+            val cameras = availableCameras(getApplication())
+            if (cameras.size <= 1) return@launch
+            val currentIndex = cameras.indexOfFirst { it.id == settings.cameraId }
+            val nextIndex = (currentIndex + 1) % cameras.size
+            val nextId = cameras[nextIndex].id
+            val updated = settings.copy(cameraId = nextId)
+            settingsSaver(updated)
+            scheduleSettings = updated
+            android.widget.Toast.makeText(
+                getApplication(),
+                cameras[nextIndex].label,
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            // Restart monitoring/preview with the new camera if currently active
+            val currentState = _state.value
+            if (currentState == MonitorState.Monitoring) {
+                stop()
+                start()
+            } else if (currentState == MonitorState.Previewing) {
+                stopPreview()
+                _cameraId.value = nextId
+                startPreview()
+            }
+        }
     }
 
     /**
@@ -275,6 +356,8 @@ class MonitorViewModel(
         CameraEvents.removePreviewStatusListener(previewStatusListener)
         scheduleJob?.cancel()
         scheduleJob = null
+        triggerJobs.forEach { it.cancel() }
+        triggerJobs.clear()
         val current = runtime
         runtime = null
         if (current != null) {

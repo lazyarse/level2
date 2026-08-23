@@ -79,6 +79,7 @@ import io.securitycam.level1.channels.PushoverChannelSettings
 import io.securitycam.level1.channels.TelegramChannelSettings
 import io.securitycam.level1.channels.WebhookChannelSettings
 import io.securitycam.level1.channels.webhookPresets
+import io.securitycam.level1.camera_service.availableCameras
 import io.securitycam.level1.core.AnalysisResolution
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.AppSettings.Companion.withFaceRecognition
@@ -87,6 +88,7 @@ import io.securitycam.level1.core.LiveViewSettings
 import io.securitycam.level1.core.ScheduleWindow
 import io.securitycam.level1.core.ScreenOrientation
 import io.securitycam.level1.core.VideoQuality
+import io.securitycam.level1.core.DetectorType
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.detection.DetectorConfig
 import java.time.Duration
@@ -188,6 +190,17 @@ fun SettingsScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        val cameras = remember(ctx) { availableCameras(ctx) }
+                        if (cameras.size > 1) {
+                            DropdownField(
+                                label = "Camera",
+                                selected = cameras.firstOrNull { it.id == current.cameraId }?.label
+                                    ?: current.cameraId,
+                                options = cameras.map { it.id to it.label },
+                                testTag = "cameraDropdown",
+                                onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
+                            )
+                        }
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             Text(
                                 "Camera",
@@ -939,21 +952,32 @@ private fun DetectorCard(
                     .clickable { expanded = !expanded }
                     .testTag("detectorHeader_${config.type}"),
             ) {
-                Text(detectorLabel(config.type), modifier = Modifier.weight(1f))
-                Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
                 Icon(
                     Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (expanded) "collapse_${config.type}" else "expand_${config.type}",
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
+                Text(detectorLabel(config.type))
+                Spacer(Modifier.width(8.dp))
+                DetectorType.fromKey(config.type)?.let { dt ->
+                    Icon(
+                        dt.icon,
+                        contentDescription = dt.label,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
             if (expanded && config.enabled) {
-                SwitchRow(
-                    title = "Motion-gated",
-                    subtitle = "Only check for this after motion is detected (saves battery).",
-                    checked = config.motionGated,
-                    onCheckedChange = { v -> onChanged(config.copy(motionGated = v)) },
-                )
+                if (config.type != TriggerType.motion) {
+                    SwitchRow(
+                        title = "Motion-gated",
+                        subtitle = "Only check for this after motion is detected (saves battery).",
+                        checked = config.motionGated,
+                        onCheckedChange = { v -> onChanged(config.copy(motionGated = v)) },
+                    )
+                }
                 Text("Threshold: %.2f".format(config.threshold))
                 Slider(
                     value = config.threshold.toFloat().coerceIn(0f, 1f),
@@ -1005,18 +1029,8 @@ private fun DetectorCard(
     }
 }
 
-private fun detectorLabel(type: String): String = when (type) {
-    TriggerType.motion -> "Motion"
-    TriggerType.babyCry -> "Baby cry"
-    TriggerType.glassBreak -> "Glass break"
-    TriggerType.loudNoise -> "Loud noise"
-    TriggerType.face -> "Face"
-    TriggerType.faceKnown -> "Known face"
-    TriggerType.faceUnknown -> "Unknown face"
-    TriggerType.person -> "Person"
-    TriggerType.tamper -> "Tamper"
-    else -> type
-}
+private fun detectorLabel(type: String): String =
+    DetectorType.fromKey(type)?.label ?: type
 
 @Composable
 private fun ChannelCard(
@@ -1048,13 +1062,13 @@ private fun ChannelCard(
                     .clickable { expanded = !expanded }
                     .testTag("channelHeader_${config.id}"),
             ) {
-                Text(config.type, modifier = Modifier.weight(1f))
-                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
                 Icon(
                     Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (expanded) "collapse_${config.id}" else "expand_${config.id}",
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
+                Text(config.type, modifier = Modifier.weight(1f))
+                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
             }
             if (expanded) {
                 ChannelBody(
@@ -1252,13 +1266,13 @@ private fun SwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(switchTag(title)))
         Column(modifier = Modifier.weight(1f)) {
             Text(title)
             if (subtitle.isNotEmpty()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(switchTag(title)))
     }
 }
 
