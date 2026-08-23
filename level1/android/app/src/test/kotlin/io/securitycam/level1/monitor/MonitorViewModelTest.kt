@@ -28,6 +28,9 @@ class MonitorViewModelTest {
         permissionsGranted = { granted },
         startMonitoring = { startRan.add(1) },
         stopMonitoring = { stopRan.add(1) },
+        // Robolectric cannot initialize native detectors; runtime-init failures
+        // are environmental here, not product bugs.
+        surfaceRuntimeStartFailures = false,
     )
 
     @Test
@@ -109,6 +112,7 @@ class MonitorViewModelTest {
             stopMonitoring = { stopRan.add(1) },
             settingsLoader = { scheduleSettings(always = excluded) },
             scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
         )
         vm.start()
         assertEquals(MonitorState.Monitoring, vm.state.value)
@@ -140,6 +144,7 @@ class MonitorViewModelTest {
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
         )
         // Prime the cached settings (as the periodic tick would).
         kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
@@ -158,6 +163,7 @@ class MonitorViewModelTest {
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
         )
         vm.start()
         kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
@@ -186,6 +192,7 @@ class MonitorViewModelTest {
                 )
             },
             scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
         )
         assertEquals(emptyList<DetectionRegion>(), vm.exclusionRegions.value)
         vm.start()

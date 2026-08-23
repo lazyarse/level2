@@ -28,6 +28,8 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import android.widget.Toast
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +37,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Monitor state machine. Ports the Dart `MonitorController` lifecycle for the
@@ -65,13 +68,19 @@ class MonitorViewModel(
         MonitoringServiceController.stop()
     },
     private val settingsLoader: suspend () -> AppSettings = {
-        SettingsStore(application, EncryptedSecretStore(application)).load()
+        settingsStoreFor(application).load()
     },
     private val settingsSaver: suspend (AppSettings) -> Unit = { settings ->
-        SettingsStore(application, EncryptedSecretStore(application)).save(settings)
+        settingsStoreFor(application).save(settings)
     },
     private val scheduleCheckInterval: Duration? = Duration.ofMinutes(1),
     private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
+    /**
+     * Whether a detection-runtime initialization failure flips the session to
+     * [MonitorState.Error] instead of only logging. Robolectric JVM tests cannot
+     * initialize the native detectors, so they opt out.
+     */
+    private val surfaceRuntimeStartFailures: Boolean = true,
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MonitorState.Idle)
@@ -107,9 +116,17 @@ class MonitorViewModel(
     val activeTriggers: StateFlow<Set<String>> = _activeTriggers.asStateFlow()
 
     private var runtime: MonitoringRuntime? = null
-    private var healthJob: kotlinx.coroutines.Job? = null
-    private var triggerJobs: MutableList<kotlinx.coroutines.Job> = mutableListOf()
-    private var scheduleJob: kotlinx.coroutines.Job? = null
+    private var healthJob: Job? = null
+    private var triggerCollectorJob: Job? = null
+
+    // Per-type icon removal timers; replaced (not accumulated) each emission so
+    // long sessions don't leak completed Jobs.
+    private val triggerRemovalJobs = mutableMapOf<String, Job>()
+
+    // Invalidates in-flight start coroutines when stop() wins the race.
+    private var startGeneration = 0
+
+    private var scheduleJob: Job? = null
     private var scheduleSettings: AppSettings? = null
 
     private val previewStatusListener: (Boolean) -> Unit = { active ->
@@ -150,6 +167,16 @@ class MonitorViewModel(
     companion object {
         private const val TAG = "MonitorViewModel"
         private const val TRIGGER_ICON_DURATION_MS = 4000L
+        private const val RUNTIME_STOP_TIMEOUT_MS = 3_000L
+
+        // Memoized per-process: SettingsStore wraps an AndroidKeyStore-backed
+        // secret store whose construction is expensive enough that rebuilding
+        // it on every load/save call (including each schedule tick) is wasteful.
+        private val settingsStores =
+            java.util.concurrent.ConcurrentHashMap<Application, SettingsStore>()
+
+        private fun settingsStoreFor(app: Application): SettingsStore =
+            settingsStores.getOrPut(app) { SettingsStore(app, EncryptedSecretStore(app)) }
 
         /** Explicit factory: the default owner factory can't build an AndroidViewModel. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
@@ -203,57 +230,106 @@ class MonitorViewModel(
         // full settings are loaded in the coroutine for runtime creation.
         startMonitoring(_cameraId.value)
         _state.value = MonitorState.Monitoring
+        val gen = ++startGeneration
         // Build the detection→event runtime off the main thread; the service
         // (camera + mic) is already streaming by the time it subscribes.
         viewModelScope.launch {
+            // Settings load failures are always real bugs — surface them.
+            val settings: AppSettings
             try {
-                val settings = settingsLoader()
+                settings = settingsLoader()
                 scheduleSettings = settings
+                // A stop (manual or scheduled) may have won the race while we
+                // were suspended; abandon this start instead of leaking a live
+                // pipeline into an Idle session.
+                if (gen != startGeneration || _state.value != MonitorState.Monitoring) {
+                    return@launch
+                }
                 _cameraName.value = settings.cameraName
                 _cameraId.value = settings.cameraId
                 _detectionRegions.value = settings.detectionRegions
                 _exclusionRegions.value = settings.exclusionRegions
-                MonitoringRuntime.create(getApplication(), settings, viewModelScope).let {
-                    runtime = it
-                    healthJob = viewModelScope.launch {
-                        it.healthStalled.collect { stalled -> _healthStalled.value = stalled }
+            } catch (t: Throwable) {
+                Log.w(TAG, "settings load failed", t)
+                failStart(gen, t)
+                return@launch
+            }
+            try {
+                MonitoringRuntime.create(getApplication(), settings, viewModelScope).let { created ->
+                    if (gen != startGeneration || _state.value != MonitorState.Monitoring) {
+                        created.stop()
+                        return@let
                     }
-                    triggerJobs.add(viewModelScope.launch {
-                        it.activeTriggerTypes.collect { types ->
+                    runtime = created
+                    healthJob = viewModelScope.launch {
+                        created.healthStalled.collect { stalled -> _healthStalled.value = stalled }
+                    }
+                    triggerCollectorJob = viewModelScope.launch {
+                        created.activeTriggerTypes.collect { types ->
                             _activeTriggers.value = types
-                            // Schedule removal of each trigger type after timeout
-                            for (type in types) {
-                                triggerJobs.add(viewModelScope.launch {
-                                    kotlinx.coroutines.delay(TRIGGER_ICON_DURATION_MS)
-                                    _activeTriggers.value = _activeTriggers.value - type
-                                })
-                            }
+                            rescheduleTriggerRemovals(types)
                         }
-                    })
-                    it.begin()
+                    }
+                    created.begin()
                 }
-                purgeOldEvents(settings)
+                if (gen == startGeneration && _state.value == MonitorState.Monitoring) {
+                    purgeOldEvents(settings)
+                }
             } catch (t: Throwable) {
                 Log.w(TAG, "runtime start failed", t)
+                if (surfaceRuntimeStartFailures) failStart(gen, t)
             }
         }
+    }
+
+    private fun failStart(gen: Int, t: Throwable) {
+        if (gen != startGeneration || _state.value != MonitorState.Monitoring) return
+        _state.value = MonitorState.Error
+        _error.value = "Monitoring failed to start: ${t.message ?: t.javaClass.simpleName}"
+    }
+
+    /** Replaces (not accumulates) the pending removal timer per trigger type. */
+    private fun rescheduleTriggerRemovals(types: Set<String>) {
+        (triggerRemovalJobs.keys - types).forEach { type ->
+            triggerRemovalJobs.remove(type)?.cancel()
+        }
+        for (type in types) {
+            triggerRemovalJobs.remove(type)?.cancel()
+            triggerRemovalJobs[type] = viewModelScope.launch {
+                delay(TRIGGER_ICON_DURATION_MS)
+                triggerRemovalJobs.remove(type)
+                _activeTriggers.value = _activeTriggers.value - type
+            }
+        }
+    }
+
+    private fun cancelTriggerJobs() {
+        triggerCollectorJob?.cancel()
+        triggerCollectorJob = null
+        triggerRemovalJobs.values.forEach { it.cancel() }
+        triggerRemovalJobs.clear()
+    }
+
+    /** Shared post-stop cleanup: cancel collectors/timers and dispose the runtime. */
+    private fun teardownMonitoring() {
+        _healthStalled.value = false
+        _activeTriggers.value = emptySet()
+        healthJob?.cancel()
+        healthJob = null
+        cancelTriggerJobs()
+        val current = runtime
+        runtime = null
+        viewModelScope.launch { current?.stop() }
     }
 
     fun stop() {
         // A manual stop always cancels any pending auto-resume.
         _schedulePaused.value = false
         if (_state.value == MonitorState.Idle) return
+        startGeneration++
         stopMonitoring()
         _state.value = MonitorState.Idle
-        _healthStalled.value = false
-        _activeTriggers.value = emptySet()
-        val current = runtime
-        runtime = null
-        healthJob?.cancel()
-        healthJob = null
-        triggerJobs.forEach { it.cancel() }
-        triggerJobs.clear()
-        viewModelScope.launch { current?.stop() }
+        teardownMonitoring()
     }
 
     fun startPreview() {
@@ -285,10 +361,13 @@ class MonitorViewModel(
             val updated = settings.copy(cameraId = nextId)
             settingsSaver(updated)
             scheduleSettings = updated
-            android.widget.Toast.makeText(
+            // Restart below must bind the NEW camera: start()/startPreview()
+            // read the cached id synchronously.
+            _cameraId.value = nextId
+            Toast.makeText(
                 getApplication(),
                 cameras[nextIndex].label,
-                android.widget.Toast.LENGTH_SHORT,
+                Toast.LENGTH_SHORT,
             ).show()
             // Restart monitoring/preview with the new camera if currently active
             val currentState = _state.value
@@ -297,7 +376,6 @@ class MonitorViewModel(
                 start()
             } else if (currentState == MonitorState.Previewing) {
                 stopPreview()
-                _cameraId.value = nextId
                 startPreview()
             }
         }
@@ -316,14 +394,10 @@ class MonitorViewModel(
             _state.value == MonitorState.Monitoring && excluded -> {
                 _schedulePaused.value = true
                 _scheduleNote.value = "Monitoring paused — scheduled exclusion"
+                startGeneration++
                 stopMonitoring()
                 _state.value = MonitorState.Idle
-                _healthStalled.value = false
-                val current = runtime
-                runtime = null
-                healthJob?.cancel()
-                healthJob = null
-                current?.stop()
+                teardownMonitoring()
             }
 
             _state.value == MonitorState.Idle &&
@@ -356,12 +430,24 @@ class MonitorViewModel(
         CameraEvents.removePreviewStatusListener(previewStatusListener)
         scheduleJob?.cancel()
         scheduleJob = null
-        triggerJobs.forEach { it.cancel() }
-        triggerJobs.clear()
+        startGeneration++
+        cancelTriggerJobs()
         val current = runtime
         runtime = null
         if (current != null) {
-            runBlocking { current.stop() }
+            // viewModelScope is already cancelled here and the runtime teardown
+            // joins work dispatched on the main looper — blocking on the main
+            // thread would deadlock/ANR. Tear down off-main with a bounded wait;
+            // the FGS stop below stays synchronous so the service always dies.
+            Thread {
+                try {
+                    runBlocking {
+                        withTimeoutOrNull(RUNTIME_STOP_TIMEOUT_MS) { current.stop() }
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "runtime teardown on clear failed", t)
+                }
+            }.apply { isDaemon = true }.start()
         }
         stopMonitoring()
         super.onCleared()
