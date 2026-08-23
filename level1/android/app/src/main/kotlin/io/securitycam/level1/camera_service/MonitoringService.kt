@@ -548,6 +548,14 @@ object MonitoringServiceController {
         }
     } ?: 90
 
+    /**
+     * Target rotation that cancels the sensor's orientation: outputs are
+     * physically upright for a portrait-mounted camera and carry no rotation
+     * metadata (EXIF/mp4), sidestepping players/decoders that ignore it.
+     */
+    private fun uprightCaptureRotation(context: Context, cameraId: String): Int =
+        (Surface.ROTATION_0 + sensorOrientation(context, cameraId)) % 360
+
     private inline fun <T> tryOr(fallback: T, block: () -> T): T =
         try {
             block()
@@ -744,19 +752,24 @@ object MonitoringServiceController {
                 }
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    // Baking sensor rotation into the output: EXIF becomes 0
+                    // so snapshots decode upright even without EXIF-aware
+                    // readers (BitmapFactory ignores EXIF).
+                    .setTargetRotation(uprightCaptureRotation(service, cameraId))
                     .build()
                 val rotation = displayRotation(service)
                 Log.i(
                     TAG,
                     "bindCamera rotations: display=$rotation " +
                         "sensor=${sensorOrientation(service, cameraId)} " +
-                        "(video authored portrait-upright)",
+                        "(captures/video authored upright)",
                 )
-                // Portrait-upright output regardless of live display state:
-                // a mounted/static cam must not inherit whatever orientation
-                // the screen happened to have at start time.
+                // Same for video: metadata-free upright clips regardless of
+                // live display state or player metadata support.
                 val videoCapture =
-                    VideoClipRecorder.buildVideoCapture(Surface.ROTATION_0)
+                    VideoClipRecorder.buildVideoCapture(
+                        uprightCaptureRotation(service, cameraId)
+                    )
                 val preview = if (allowPreview) {
                     Preview.Builder()
                         .setTargetRotation(rotation)

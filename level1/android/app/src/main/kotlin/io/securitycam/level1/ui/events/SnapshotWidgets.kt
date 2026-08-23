@@ -46,6 +46,46 @@ fun eventIconFor(type: String): ImageVector =
     DetectorType.fromKey(type)?.icon ?: Icons.Filled.NotificationImportant
 
 /**
+ * Decodes JPEG bytes applying EXIF orientation — BitmapFactory ignores it,
+ * which left pre-2026-08-23 snapshots (authored with a stale target rotation)
+ * rendering 90° off.
+ */
+fun decodeUpright(bytes: ByteArray): android.graphics.Bitmap? {
+    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val orientation = try {
+        androidx.exifinterface.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+            .getAttributeInt(
+                androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL,
+            )
+    } catch (_: Exception) {
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+    }
+    val m = android.graphics.Matrix()
+    when (orientation) {
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> m.postRotate(180f)
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> m.postRotate(270f)
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL ->
+            m.postScale(-1f, 1f)
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSPOSE -> {
+            m.postRotate(90f); m.postScale(-1f, 1f)
+        }
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> {
+            m.postRotate(270f); m.postScale(-1f, 1f)
+        }
+        androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+            m.postRotate(180f); m.postScale(-1f, 1f)
+        }
+    }
+    return if (m.isIdentity) {
+        bmp
+    } else {
+        android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+    }
+}
+
+/**
  * Snapshot thumbnail with a fallback icon while loading / when missing; tap
  * opens the zoomable full view. Shared by Events rows and the History gallery.
  */
@@ -62,7 +102,7 @@ internal fun SnapshotThumb(
         value = loader(name)
     }
     val bitmap = snapshot?.bytes?.let { bytes ->
-        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+        remember(bytes) { decodeUpright(bytes) }
     }
     var showFull by remember { mutableStateOf(false) }
 
@@ -108,7 +148,7 @@ internal fun ZoomableSnapshotDialog(
             var offsetX by remember { mutableFloatStateOf(0f) }
             var offsetY by remember { mutableFloatStateOf(0f) }
             val bitmap = snapshot?.bytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+                remember(bytes) { decodeUpright(bytes) }
             }
             Box(
                 Modifier

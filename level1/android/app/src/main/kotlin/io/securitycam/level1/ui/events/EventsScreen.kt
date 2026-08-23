@@ -326,16 +326,16 @@ private fun EventRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                buildString {
-                    append("$timeText · $typeLabel")
-                    if (faceName != null) append(" · ")
-                    faceName?.let { append(it) }
-                    append(" · score ${"%.2f".format(event.score)}")
-                },
+                "$timeText · $typeLabel · score ${"%.2f".format(event.score)}",
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
                 buildString {
+                    if (faceName != null) {
+                        append("Recognised: ")
+                        append(faceName)
+                        append(" — ")
+                    }
                     append(event.cameraName)
                     if (statuses.isNotEmpty()) {
                         append(" — ")

@@ -76,9 +76,10 @@ class EventPipeline(
                 snapshotName = snapshot?.name,
                 videoName = batch.videoName,
                 channelStatuses = statuses,
+                // Merged batches mix detail-less triggers (motion) with
+                // detail-bearing ones (face_known): prefer any real payload.
                 detail = batch.triggers
-                    .firstOrNull { it.triggerType == type }?.detail
-                    ?: batch.triggers.firstOrNull()?.detail,
+                    .firstOrNull { !it.detail.isNullOrBlank() }?.detail,
             ),
         )
     }
