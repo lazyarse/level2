@@ -400,9 +400,28 @@ object MonitoringServiceController {
                         pendingPreviewProvider?.let { p.setSurfaceProvider(it) }
                         Log.i(TAG, "previewOnly use case built rotation=$rotation")
                     }
+                // Lightweight analysis feed so CameraFrameBus listeners (face
+                // enrollment today, preview-time detectors later) receive
+                // frames without the full monitoring pipeline.
+                val analysis = ImageAnalysis.Builder()
+                    .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                    .build()
+                analysis.setAnalyzer(executor) { image: ImageProxy ->
+                    try {
+                        val now = System.currentTimeMillis()
+                        if (active && now - lastPublishMs >= 250L) {
+                            lastPublishMs = now
+                            CameraFrameBus.publish(toBgr(image), image.width, image.height)
+                        }
+                    } finally {
+                        image.close()
+                    }
+                }
                 provider.unbindAll()
                 provider.bindToLifecycle(
-                    service, selector, preview
+                    service, selector, preview, analysis
                 ).also { camera ->
                     onCameraBound(camera)
                     Log.i(TAG, "previewOnly camera bound id=$cameraId")
@@ -465,6 +484,9 @@ object MonitoringServiceController {
     }
 
     fun previewActive(): Boolean = boundPreview != null
+
+    /** True while either monitoring or preview-only owns the camera. */
+    fun cameraActive(): Boolean = active
 
     private fun displayRotation(context: Context): Int {
         // A background `LifecycleService` has no associated display, so
