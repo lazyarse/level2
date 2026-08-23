@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,12 +19,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.CropFree
@@ -66,13 +70,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -182,9 +189,9 @@ fun SettingsScreen(
         }
     }
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val faceStore = remember(ctx) {
-        io.securitycam.level1.identity.KnownFaceStore(ctx.filesDir)
-    }
+
+    // Pending delete awaiting confirmation.
+    var pendingDeleteFace by remember { mutableStateOf<KnownFace?>(null) }
 
     val scrollState = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
@@ -345,14 +352,28 @@ fun SettingsScreen(
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Icon(Icons.Filled.Face, contentDescription = null)
+                                            FaceThumbnail(
+                                                file = viewModel.thumbFile(face.id),
+                                                label = face.label,
+                                            )
                                             Spacer(Modifier.width(12.dp))
                                             Text(face.label, modifier = Modifier.weight(1f))
                                             IconButton(
-                                                onClick = {
-                                                    viewModel.deleteFace(face)
-                                                },
-                                                modifier = Modifier.testTag("deleteFace_${face.id}"),
+                                                onClick = { viewModel.startSampleCapture(face) },
+                                                enabled = !isEnrolling,
+                                                modifier =
+                                                    Modifier.testTag("addSample_${face.id}"),
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.AddPhotoAlternate,
+                                                    contentDescription =
+                                                        "Add photos of ${face.label}",
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { pendingDeleteFace = face },
+                                                modifier =
+                                                    Modifier.testTag("deleteFace_${face.id}"),
                                             ) {
                                                 Icon(
                                                     Icons.Filled.Delete,
@@ -746,6 +767,31 @@ fun SettingsScreen(
             )
         }
 
+        pendingDeleteFace?.let { face ->
+            AlertDialog(
+                onDismissRequest = { pendingDeleteFace = null },
+                title = { Text("Remove ${face.label}?") },
+                text = {
+                    Text(
+                        "Their saved photo samples will be deleted and they " +
+                            "will no longer be recognised.",
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteFace(face)
+                            pendingDeleteFace = null
+                        },
+                        modifier = Modifier.testTag("confirmDeleteFace"),
+                    ) { Text("Remove") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteFace = null }) { Text("Cancel") }
+                },
+            )
+        }
+
         if (showAddFaceDialog) {
             AlertDialog(
                 onDismissRequest = { showAddFaceDialog = false; faceEnrollName = "" },
@@ -771,16 +817,23 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             val name = faceEnrollName.trim()
-                            if (name.isNotEmpty()) {
-                                showAddFaceDialog = false
-                                faceEnrollName = ""
-                                val missing = viewModel.missingEnrollmentPermissions()
-                                if (missing.isEmpty()) {
-                                    viewModel.startEnrollment(name)
-                                } else {
-                                    pendingFaceName = name
-                                    enrollPermissionLauncher.launch(missing.toTypedArray())
-                                }
+                            if (name.isEmpty()) return@Button
+                            showAddFaceDialog = false
+                            faceEnrollName = ""
+                            // Block duplicates up-front; the row's photos icon
+                            // extends an existing person instead.
+                            if (current?.knownFaces
+                                    ?.any { it.label.equals(name, ignoreCase = true) } == true
+                            ) {
+                                viewModel.notifyDuplicateName(name)
+                                return@Button
+                            }
+                            val missing = viewModel.missingEnrollmentPermissions()
+                            if (missing.isEmpty()) {
+                                viewModel.startEnrollment(name)
+                            } else {
+                                pendingFaceName = name
+                                enrollPermissionLauncher.launch(missing.toTypedArray())
                             }
                         },
                         enabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
@@ -1439,5 +1492,35 @@ private fun liveViewSummary(lv: LiveViewSettings): String {
             lv.relayUrl.ifEmpty { "no relay" }
         }
         "push -> $host"
+    }
+}
+
+/** Enrolled-face thumbnail decoded from disk; falls back to a face icon. */
+@Composable
+private fun FaceThumbnail(file: java.io.File?, label: String) {
+    if (file == null) {
+        Icon(Icons.Filled.Face, contentDescription = label)
+        return
+    }
+    val bitmap = remember(file.absolutePath) {
+        runCatching { android.graphics.BitmapFactory.decodeFile(file.absolutePath) }
+            .getOrNull()
+            ?.takeIf { it.width > 0 }
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = label,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        Icon(
+            Icons.Filled.Face,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
