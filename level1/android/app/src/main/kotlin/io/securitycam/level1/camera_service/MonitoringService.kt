@@ -433,13 +433,14 @@ object MonitoringServiceController {
                     .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                    .setTargetRotation(rotation)
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     try {
                         val now = System.currentTimeMillis()
                         if (active && now - lastPublishMs >= 250L) {
                             lastPublishMs = now
-                            CameraFrameBus.publish(toBgr(image), image.width, image.height)
+                            publishUpright(image)
                         }
                     } finally {
                         image.close()
@@ -515,10 +516,10 @@ object MonitoringServiceController {
     /** True while either monitoring or preview-only owns the camera. */
     fun cameraActive(): Boolean = active
 
-    private fun displayRotation(context: Context): Int {
+    private fun displayRotation(context: Context): Int = tryOr(0) {
         // A background `LifecycleService` has no associated display, so
         // `context.display` throws on API 30+; use the default display instead.
-        val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
                 .getDisplay(Display.DEFAULT_DISPLAY)?.rotation
         } else {
@@ -526,8 +527,33 @@ object MonitoringServiceController {
             (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
                 .defaultDisplay.rotation
         }
-        return rotation ?: Surface.ROTATION_0
-    }
+    } ?: 0
+
+    /** Camera2 sensor orientation for the resolved logical [cameraId]. */
+    private fun sensorOrientation(context: Context, cameraId: String): Int = tryOr(90) {
+        val cm =
+            context.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+        val facingOf: (String) -> Int? = {
+            cm.getCameraCharacteristics(it)
+                .get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+        }
+        val id = when (cameraId) {
+            "front" -> cm.cameraIdList.firstOrNull { facingOf(it) == android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT }
+            "back" -> cm.cameraIdList.firstOrNull { facingOf(it) == android.hardware.camera2.CameraMetadata.LENS_FACING_BACK }
+            else -> cameraId.takeIf { cm.cameraIdList.contains(it) }
+        } ?: cm.cameraIdList.firstOrNull()
+        id?.let {
+            cm.getCameraCharacteristics(it)
+                .get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION)
+        }
+    } ?: 90
+
+    private inline fun <T> tryOr(fallback: T, block: () -> T): T =
+        try {
+            block()
+        } catch (_: Exception) {
+            fallback
+        }
 
     private fun startForeground(service: LifecycleService, preview: Boolean = false) {
         activeService = service
@@ -689,6 +715,7 @@ object MonitoringServiceController {
                     .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                    .setTargetRotation(displayRotation(service))
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     // The buffer must be returned even if conversion/publish
@@ -709,7 +736,7 @@ object MonitoringServiceController {
                             if (frameCount % 30 == 0L) {
                                 Log.i(TAG, "frames=$frameCount (screen-on/off gate)")
                             }
-                            CameraFrameBus.publish(toBgr(image), image.width, image.height)
+                            publishUpright(image)
                         }
                     } finally {
                         image.close()
@@ -719,7 +746,17 @@ object MonitoringServiceController {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
                 val rotation = displayRotation(service)
-                val videoCapture = VideoClipRecorder.buildVideoCapture(rotation)
+                Log.i(
+                    TAG,
+                    "bindCamera rotations: display=$rotation " +
+                        "sensor=${sensorOrientation(service, cameraId)} " +
+                        "(video authored portrait-upright)",
+                )
+                // Portrait-upright output regardless of live display state:
+                // a mounted/static cam must not inherit whatever orientation
+                // the screen happened to have at start time.
+                val videoCapture =
+                    VideoClipRecorder.buildVideoCapture(Surface.ROTATION_0)
                 val preview = if (allowPreview) {
                     Preview.Builder()
                         .setTargetRotation(rotation)
@@ -771,6 +808,20 @@ object MonitoringServiceController {
     }
 
     /** Converts a CameraX YUV_420_888 frame to interleaved BGR. */
+    /**
+     * Converts to BGR and rotates by the frame's rotationDegrees so every
+     * CameraFrameBus consumer (detectors, enrollment, thumbnails) works on
+     * display-upright pixels.
+     */
+    private fun publishUpright(image: ImageProxy) {
+        val raw = toBgr(image)
+        val rotated = FrameRotation.rotate(
+            raw, image.width, image.height,
+            image.imageInfo.rotationDegrees,
+        )
+        CameraFrameBus.publish(rotated.bgr, rotated.width, rotated.height)
+    }
+
     private fun toBgr(image: ImageProxy): ByteArray {
         val yPlane = image.planes[0]
         val uPlane = image.planes[1]
