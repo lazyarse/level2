@@ -39,6 +39,13 @@ class KnownFaceStore(private val facesDir: File) {
 
     fun delete(id: String) {
         fileFor(id).delete()
+        thumbFileFor(id).delete()
+    }
+
+    /** JPEG thumbnail written by [FaceThumbs.writeJpg]; may not exist. */
+    fun thumbFileFor(id: String): File {
+        require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "unsafe face id: $id" }
+        return File(facesDir, "$id.jpg")
     }
 
     private fun fileFor(id: String): File {
