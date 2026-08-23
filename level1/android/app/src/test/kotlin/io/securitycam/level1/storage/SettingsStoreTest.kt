@@ -129,4 +129,44 @@ class SettingsStoreTest {
         val loaded = s.load()
         assertEquals(LiveViewSettings(), loaded.liveView)
     }
+
+    @Test
+    fun legacyCooldownDefaultsMigrateToFiveSeconds() = runBlocking {
+        val s = store()
+        // Blob written by an older build: shipped legacy defaults (motion 120s,
+        // face fallback 60s, loud_noise 5min). Health keeps its long window.
+        val legacyConfigs = listOf(
+            io.securitycam.level1.detection.DetectorConfig(
+                type = io.securitycam.level1.core.TriggerType.motion,
+                threshold = 0.03,
+                cooldown = java.time.Duration.ofSeconds(120),
+            ),
+            io.securitycam.level1.detection.DetectorConfig(
+                type = io.securitycam.level1.core.TriggerType.face,
+                threshold = 0.7,
+                cooldown = java.time.Duration.ofSeconds(60),
+            ),
+            io.securitycam.level1.detection.DetectorConfig(
+                type = io.securitycam.level1.core.TriggerType.loudNoise,
+                threshold = 0.85,
+                cooldown = java.time.Duration.ofMinutes(5),
+            ),
+            io.securitycam.level1.detection.DetectorConfig(
+                type = io.securitycam.level1.core.TriggerType.health,
+                enabled = true,
+                cooldown = java.time.Duration.ofMinutes(5),
+            ),
+        )
+        s.seedRaw(AppSettings.defaults().copyWith(detectorConfigs = legacyConfigs.associateBy { it.type }))
+
+        val loaded = s.load()
+
+        fun cooldown(type: String) =
+            loaded.detectorConfigs.getValue(type).cooldown.toMillis()
+        assertEquals(5_000L, cooldown("motion"))
+        assertEquals(5_000L, cooldown("face"))
+        assertEquals(5_000L, cooldown("loud_noise"))
+        // Health's anti-spam window is intentionally preserved.
+        assertEquals(300_000L, cooldown("health"))
+    }
 }

@@ -215,6 +215,34 @@ class EventPipelineTest {
     }
 
     @Test
+    fun mergedBatchKeepsTheRecognisedFaceNameAsDetail() = runBlocking {
+        val builder = PipelineBuilder()
+        val log = FakeChannel("log", "log")
+        builder.channels = mapOf("log" to logConfig())
+        builder.detectors = mapOf(
+            "motion" to config("motion", routes = listOf("log")),
+            TriggerType.faceKnown to config(TriggerType.faceKnown, routes = listOf("log")),
+        )
+        builder.factories = mapOf("log" to { _: ChannelConfig -> log })
+        val p = builder.build()
+
+        val face = TriggerEvent(
+            timestamp = base,
+            triggerType = TriggerType.faceKnown,
+            score = 0.9,
+            detectorId = TriggerType.faceKnown,
+            detail = "Alice",
+        )
+        p.handleBatch(batch(listOf(trigger("motion", "motion"), face)))
+
+        assertEquals(1, builder.recorder.recorded.size)
+        val recorded = builder.recorder.recorded.single()
+        // The recognised name must survive the merge — motion carries none.
+        assertEquals("Alice", recorded.detail)
+        assertTrue(recorded.triggerTypes.contains(TriggerType.faceKnown))
+    }
+
+    @Test
     fun recordsTheBatchVideoNameOnTheEvent() = runBlocking {
         val builder = PipelineBuilder()
         val log = FakeChannel("log", "log")

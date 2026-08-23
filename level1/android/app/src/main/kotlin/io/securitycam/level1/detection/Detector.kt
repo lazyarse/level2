@@ -12,7 +12,7 @@ data class DetectorConfig(
     val enabled: Boolean = true,
     val threshold: Double = 0.5,
     val persistenceFrames: Int = 2,
-    val cooldown: Duration = Duration.ofSeconds(60),
+    val cooldown: Duration = Duration.ofSeconds(5),
     val routeToChannelIds: List<String> = emptyList(),
     val motionGated: Boolean = false,
 ) {
@@ -51,7 +51,7 @@ data class DetectorConfig(
             threshold = (json["threshold"] as? Number)?.toDouble() ?: 0.5,
             persistenceFrames = (json["persistenceFrames"] as? Number)?.toInt() ?: 2,
             cooldown = Duration.ofMillis(
-                (json["cooldownMs"] as? Number)?.toLong() ?: 60_000L,
+                (json["cooldownMs"] as? Number)?.toLong() ?: 5_000L,
             ),
             routeToChannelIds = (json["routeToChannelIds"] as? List<*>)
                 ?.map { it as String }

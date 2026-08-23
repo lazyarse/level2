@@ -10,6 +10,8 @@ import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.ChannelConfig
 import io.securitycam.level1.core.LiveViewSettings
+import io.securitycam.level1.core.TriggerType
+import java.time.Duration
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +37,29 @@ class SettingsStore(
         val raw = dataStore.data.first()[KEY]
         val settings = if (raw == null) AppSettings.defaults() else tryParse(raw)
         val withChannelSecrets = injectSecrets(settings)
-        return injectLiveViewSecret(withChannelSecrets)
+        return migrateLegacyCooldowns(injectLiveViewSecret(withChannelSecrets))
+    }
+
+    /**
+     * One-way normalization for blobs written before the 2026-08-23 cooldown
+     * change: any detector still carrying a shipped legacy default (60s/120s/
+     * 5min) is moved to the new 5s baseline. Health keeps its long anti-spam
+     * window. Re-applies harmlessly on every load; user-tuned values that
+     * don't equal a legacy default pass through untouched.
+     */
+    private fun migrateLegacyCooldowns(settings: AppSettings): AppSettings {
+        val legacy = setOf(60_000L, 120_000L, 300_000L)
+        var changed = false
+        val configs = settings.detectorConfigs.mapValues { (type, cfg) ->
+            val ms = cfg.cooldown.toMillis()
+            if (ms in legacy && type != io.securitycam.level1.core.TriggerType.health) {
+                changed = true
+                cfg.copy(cooldown = Duration.ofSeconds(5))
+            } else {
+                cfg
+            }
+        }
+        return if (changed) settings.copyWith(detectorConfigs = configs) else settings
     }
 
     /** Saves settings with all channel secrets stripped into the secret store. */

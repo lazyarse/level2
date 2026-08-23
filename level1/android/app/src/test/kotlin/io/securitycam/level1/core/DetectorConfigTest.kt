@@ -35,7 +35,7 @@ class DetectorConfigTest {
         assertEquals(true, c.enabled)
         assertEquals(0.5, c.threshold, 0.0)
         assertEquals(2, c.persistenceFrames)
-        assertEquals(Duration.ofSeconds(60), c.cooldown)
+        assertEquals(Duration.ofSeconds(5), c.cooldown)
         assertEquals(emptyList<String>(), c.routeToChannelIds)
         assertFalse(c.motionGated)
     }
