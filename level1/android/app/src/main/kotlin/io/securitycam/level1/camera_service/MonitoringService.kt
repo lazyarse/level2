@@ -99,6 +99,12 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_ANALYSIS_HEIGHT = "analysisHeight"
         const val EXTRA_PREVIEW_ONLY = "previewOnly"
 
+        /** Gate before dispatching: a denied grant must never start an FGS that
+         * is then obligated to reach startForeground() within ~5 s. */
+        private fun hasCameraPermission(context: Context): Boolean =
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+
         fun start(
             context: Context,
             cameraId: String,
@@ -110,6 +116,7 @@ class MonitoringService : LifecycleService() {
             analysisWidth: Int = 320,
             analysisHeight: Int = 240,
         ) {
+            if (!hasCameraPermission(context)) return
             val intent = Intent(context, MonitoringService::class.java)
                 .putExtra(EXTRA_CAMERA_ID, cameraId)
                 .putExtra(EXTRA_CAMERA_NAME, cameraName)
@@ -127,6 +134,7 @@ class MonitoringService : LifecycleService() {
         }
 
         fun startPreview(context: Context, cameraId: String) {
+            if (!hasCameraPermission(context)) return
             val intent = Intent(context, MonitoringService::class.java)
                 .putExtra(EXTRA_CAMERA_ID, cameraId)
                 .putExtra(EXTRA_PREVIEW_ONLY, true)
@@ -192,11 +200,13 @@ object MonitoringServiceController {
         Log.i(TAG, "onStart cameraId=$cameraId")
         if (active) return
         // Permission gate before any foreground/wakelock side effects (design
-        // doc gap 6): a missing CAMERA grant must not leave a phantom FGS.
+        // doc gap 6). Exceptional here (starters pre-check), but if hit the FGS
+        // obligation must still be satisfied: post the notification, then stop.
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
             Log.e(TAG, "CAMERA permission not granted")
+            startForeground(service)
             service.stopSelf()
             return
         }
@@ -230,17 +240,16 @@ object MonitoringServiceController {
 
     fun onServiceDestroyed(service: Service) {
         active = false
-        cameraProvider?.unbindAll()
-        imageAnalysis = null
-        imageCapture = null
-        boundPreview?.setSurfaceProvider(null)
-        boundPreview = null
-        boundCamera = null
-        _zoomRatio.value = 1f
-        micCapture.stop()
-        VideoClipRecorder.onMonitoringStopped()
-        stopLiveView()
-        releaseWakeLock()
+        try {
+            teardownCameraState()
+        } finally {
+            runCatching { micCapture.stop() }
+            runCatching { VideoClipRecorder.onMonitoringStopped() }
+            runCatching { stopLiveView() }
+            releaseWakeLock()
+            // Never let the singleton retain a destroyed service instance.
+            activeService = null
+        }
     }
 
     fun stop() {
@@ -263,6 +272,25 @@ object MonitoringServiceController {
 
     private fun stopInternal() {
         active = false
+        try {
+            teardownCameraState()
+        } finally {
+            // Exception-safe: a throwing unbind/mic/recorder must never leak
+            // the wake lock or leave the foreground service running.
+            runCatching { micCapture.stop() }
+            runCatching { VideoClipRecorder.onMonitoringStopped() }
+            runCatching { stopLiveView() }
+            releaseWakeLock()
+            val service = activeService
+            if (service != null) {
+                stopForegroundAndService(service)
+            }
+            activeService = null
+        }
+    }
+
+    /** Unbinds CameraX and clears camera-related controller state. */
+    private fun teardownCameraState() {
         cameraProvider?.unbindAll()
         imageAnalysis = null
         imageCapture = null
@@ -270,21 +298,16 @@ object MonitoringServiceController {
         boundPreview = null
         boundCamera = null
         _zoomRatio.value = 1f
-        micCapture.stop()
-        VideoClipRecorder.onMonitoringStopped()
-        stopLiveView()
-        releaseWakeLock()
-        val service = activeService
-        if (service != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                service.stopForeground(true)
-            }
-            service.stopSelf()
+    }
+
+    private fun stopForegroundAndService(service: Service) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            service.stopForeground(true)
         }
-        activeService = null
+        service.stopSelf()
     }
 
     // ---- Preview-only mode ----
@@ -299,6 +322,7 @@ object MonitoringServiceController {
             != PackageManager.PERMISSION_GRANTED
         ) {
             Log.e(TAG, "CAMERA permission not granted")
+            startForeground(service, preview = true)
             service.stopSelf()
             return
         }
@@ -325,27 +349,25 @@ object MonitoringServiceController {
 
     private fun stopPreviewOnlyInternal() {
         active = false
-        cameraProvider?.unbindAll()
-        boundPreview?.setSurfaceProvider(null)
-        boundPreview = null
-        boundCamera = null
-        _zoomRatio.value = 1f
-        val service = activeService
-        if (service != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                service.stopForeground(true)
+        try {
+            teardownCameraState()
+        } finally {
+            // No wake lock / mic / recorder / live view were acquired for
+            // preview-only; just drop the foreground service.
+            val service = activeService
+            if (service != null) {
+                stopForegroundAndService(service)
             }
-            service.stopSelf()
+            activeService = null
         }
-        activeService = null
     }
 
     private fun bindPreviewOnly(service: LifecycleService, cameraId: String) {
         val providerFuture = ProcessCameraProvider.getInstance(service)
         providerFuture.addListener({
+            // Stop may have won the race while the provider future resolved;
+            // never bind into a torn-down session.
+            if (!active) return@addListener
             val provider = providerFuture.get()
             cameraProvider = provider
             val selector = when (cameraId) {
@@ -372,6 +394,8 @@ object MonitoringServiceController {
                 CameraEvents.publishPreviewStatus(true)
             } catch (e: Exception) {
                 Log.e(TAG, "previewOnly camera bind failed", e)
+                boundPreview?.setSurfaceProvider(null)
+                boundPreview = null
                 CameraEvents.publishPreviewStatus(false)
             }
         }, ContextCompat.getMainExecutor(service))
@@ -482,8 +506,15 @@ object MonitoringServiceController {
 
     private fun startLiveView(context: Context) {
         try {
-            val settingsStore = SettingsStore(context, EncryptedSecretStore(context))
-            val lv = runBlocking { settingsStore.load().liveView }
+            // Keystore-backed settings load is blocking IO; keep it off the
+            // main thread (we're called synchronously from onStartCommand).
+            val lv = java.util.concurrent.CompletableFuture
+                .supplyAsync {
+                    kotlinx.coroutines.runBlocking {
+                        SettingsStore(context, EncryptedSecretStore(context)).load().liveView
+                    }
+                }
+                .get(5, java.util.concurrent.TimeUnit.SECONDS)
             if (!lv.enabled) return
 
             val packetizer = RtpPacketizer()
@@ -567,6 +598,9 @@ object MonitoringServiceController {
     ) {
         val providerFuture = ProcessCameraProvider.getInstance(service)
         providerFuture.addListener({
+            // Stop may have won the race while the provider future resolved;
+            // never bind into a torn-down session.
+            if (!active) return@addListener
             val provider = providerFuture.get()
             cameraProvider = provider
             val selector = when (cameraId) {
@@ -580,24 +614,29 @@ object MonitoringServiceController {
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
-                    val now = System.currentTimeMillis()
-                    if (liveViewActive) {
-                        try {
-                            val pts = System.nanoTime() / 1000
-                            liveViewEncoder?.feedVideoFrame(image.image!!, pts)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "LiveView feed failed", e)
+                    // The buffer must be returned even if conversion/publish
+                    // throws, or CameraX analysis stalls permanently.
+                    try {
+                        val now = System.currentTimeMillis()
+                        if (liveViewActive) {
+                            try {
+                                val pts = System.nanoTime() / 1000
+                                liveViewEncoder?.feedVideoFrame(image.image!!, pts)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "LiveView feed failed", e)
+                            }
                         }
-                    }
-                    if (active && now - lastPublishMs >= 250L) {
-                        lastPublishMs = now
-                        frameCount++
-                        if (frameCount % 30 == 0L) {
-                            Log.i(TAG, "frames=$frameCount (screen-on/off gate)")
+                        if (active && now - lastPublishMs >= 250L) {
+                            lastPublishMs = now
+                            frameCount++
+                            if (frameCount % 30 == 0L) {
+                                Log.i(TAG, "frames=$frameCount (screen-on/off gate)")
+                            }
+                            CameraFrameBus.publish(toBgr(image), image.width, image.height)
                         }
-                        CameraFrameBus.publish(toBgr(image), image.width, image.height)
+                    } finally {
+                        image.close()
                     }
-                    image.close()
                 }
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
