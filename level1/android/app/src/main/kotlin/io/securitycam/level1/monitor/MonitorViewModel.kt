@@ -119,9 +119,15 @@ class MonitorViewModel(
     private var healthJob: Job? = null
     private var triggerCollectorJob: Job? = null
 
-    // Per-type icon removal timers; replaced (not accumulated) each emission so
-    // long sessions don't leak completed Jobs.
-    private val triggerRemovalJobs = mutableMapOf<String, Job>()
+    /**
+     * Pulses status-bar icons on every trigger EVENT (edge-based). The
+     * runtime's accumulating StateFlow<Set> conflates identical consecutive
+     * sets, which swallowed repeat triggers after the icon timeout.
+     */
+    private val iconPulser = TriggerIconPulser(
+        viewModelScope,
+        TRIGGER_ICON_DURATION_MS,
+    ) { types -> _activeTriggers.value = types }
 
     // Invalidates in-flight start coroutines when stop() wins the race.
     private var startGeneration = 0
@@ -265,9 +271,8 @@ class MonitorViewModel(
                         created.healthStalled.collect { stalled -> _healthStalled.value = stalled }
                     }
                     triggerCollectorJob = viewModelScope.launch {
-                        created.activeTriggerTypes.collect { types ->
-                            _activeTriggers.value = types
-                            rescheduleTriggerRemovals(types)
+                        created.triggerEvents.collect { event ->
+                            iconPulser.onEvent(event.triggerType)
                         }
                     }
                     created.begin()
@@ -288,26 +293,10 @@ class MonitorViewModel(
         _error.value = "Monitoring failed to start: ${t.message ?: t.javaClass.simpleName}"
     }
 
-    /** Replaces (not accumulates) the pending removal timer per trigger type. */
-    private fun rescheduleTriggerRemovals(types: Set<String>) {
-        (triggerRemovalJobs.keys - types).forEach { type ->
-            triggerRemovalJobs.remove(type)?.cancel()
-        }
-        for (type in types) {
-            triggerRemovalJobs.remove(type)?.cancel()
-            triggerRemovalJobs[type] = viewModelScope.launch {
-                delay(TRIGGER_ICON_DURATION_MS)
-                triggerRemovalJobs.remove(type)
-                _activeTriggers.value = _activeTriggers.value - type
-            }
-        }
-    }
-
     private fun cancelTriggerJobs() {
         triggerCollectorJob?.cancel()
         triggerCollectorJob = null
-        triggerRemovalJobs.values.forEach { it.cancel() }
-        triggerRemovalJobs.clear()
+        iconPulser.reset()
     }
 
     /** Shared post-stop cleanup: cancel collectors/timers and dispose the runtime. */

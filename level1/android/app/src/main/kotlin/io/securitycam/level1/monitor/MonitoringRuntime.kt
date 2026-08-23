@@ -39,8 +39,11 @@ import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -76,6 +79,18 @@ class MonitoringRuntime private constructor(
     /** Set of trigger types that have fired since monitoring started. */
     private val _activeTriggerTypes = MutableStateFlow<Set<String>>(emptySet())
     val activeTriggerTypes: StateFlow<Set<String>> = _activeTriggerTypes.asStateFlow()
+
+    /**
+     * Edge signal: one emission per trigger occurrence. UI pulses (status-bar
+     * icons) must consume this — an accumulating StateFlow<Set> conflates
+     * identical consecutive sets, so a second motion after the icon timeout
+     * would never re-appear.
+     */
+    private val _triggerEvents = MutableSharedFlow<TriggerEvent>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+    val triggerEvents: SharedFlow<TriggerEvent> = _triggerEvents.asSharedFlow()
 
     @Volatile
     private var stopped = false
@@ -190,6 +205,7 @@ class MonitoringRuntime private constructor(
             pipeline.triggers.collect {
                 android.util.Log.i(TAG, "trigger type=${it.triggerType} score=${it.score}")
                 _activeTriggerTypes.value = _activeTriggerTypes.value + it.triggerType
+                _triggerEvents.tryEmit(it)
                 batcher.add(it)
             }
         }
