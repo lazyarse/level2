@@ -1,8 +1,11 @@
 package io.securitycam.level1.detection.face
 
 import android.content.Context
+import android.util.Log
 import io.securitycam.level1.detection.ColorBitmap
 import io.securitycam.level1.inference.TfliteAssets
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -30,9 +33,18 @@ class FaceEmbeddingEngine private constructor(
     override fun embed(frame: ColorBitmap, box: DoubleArray): FloatArray? {
         if (box.size < 4) return null
         val input = buildInput(frame, box)
-        val output = Array(1) { FloatArray(EMBEDDING_DIM) }
-        interpreter.run(arrayOf(input), output)
-        return output[0]
+        // Direct ByteBuffer I/O: nested Java float arrays carry their own rank
+        // and made TFLite implicitly resize the [1,112,112,3] input to
+        // [1,37632], which XNNPACK cannot reshape (first run died with
+        // "failed to reshape runtime"; later runs hit unallocated tensors).
+        val inBuf = ByteBuffer.allocateDirect(INPUT_SIZE * INPUT_SIZE * 3 * 4)
+            .order(ByteOrder.nativeOrder())
+        for (v in input[0]) inBuf.putFloat(v)
+        val outBuf = ByteBuffer.allocateDirect(EMBEDDING_DIM * 4)
+            .order(ByteOrder.nativeOrder())
+        interpreter.run(inBuf, outBuf)
+        outBuf.rewind()
+        return FloatArray(EMBEDDING_DIM) { outBuf.float }
     }
 
     fun close() {
@@ -40,20 +52,44 @@ class FaceEmbeddingEngine private constructor(
     }
 
     companion object {
+        private const val TAG = "FaceEnroll"
+
         const val MODEL_ASSET = "mobilefacenet.tflite"
         const val INPUT_SIZE = 112
         const val EMBEDDING_DIM = 192
 
-        /** Loads the bundled MobileFaceNet; null when unavailable. */
+        /** Loads the bundled MobileFaceNet; null when unavailable or mis-shaped. */
         fun load(context: Context): FaceEmbeddingEngine? = try {
             val model = TfliteAssets.loadModelFile(context, MODEL_ASSET)
-            FaceEmbeddingEngine(
+            val engine = FaceEmbeddingEngine(
                 InterpreterFactory().create(
                     model,
                     InterpreterApi.Options().setNumThreads(1),
                 ),
             )
+            // Validate the tensor contract up front: a mis-exported model (or
+            // one we feed wrong) should fail fast and honestly here rather
+            // than die inside XNNPACK on first inference.
+            val inShape = engine.interpreter.getInputTensor(0).shape()
+            val outShape = engine.interpreter.getOutputTensor(0).shape()
+            Log.i(
+                TAG,
+                "loaded $MODEL_ASSET in=${inShape.contentToString()} " +
+                    "${engine.interpreter.getInputTensor(0).dataType()} " +
+                    "out=${outShape.contentToString()}",
+            )
+            val inputOk = inShape.size == 4 &&
+                inShape[1] == INPUT_SIZE && inShape[2] == INPUT_SIZE && inShape[3] == 3
+            val outputOk = outShape.isNotEmpty() && outShape.last() == EMBEDDING_DIM
+            if (!inputOk || !outputOk) {
+                Log.w(TAG, "unexpected model tensors; disabling embedder")
+                engine.close()
+                null
+            } else {
+                engine
+            }
         } catch (_: Exception) {
+            Log.w(TAG, "failed to load $MODEL_ASSET")
             null
         }
 
