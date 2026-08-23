@@ -162,7 +162,8 @@ fun SettingsScreen(
     var pendingClear by remember { mutableStateOf<ClearRequest?>(null) }
     var showAddFaceDialog by remember { mutableStateOf(false) }
     var faceEnrollName by remember { mutableStateOf("") }
-    val isEnrolling = false
+    val enrollingLabel by viewModel.enrollingLabel.collectAsState()
+    val isEnrolling = enrollingLabel != null
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val faceStore = remember(ctx) {
         io.securitycam.level1.identity.KnownFaceStore(ctx.filesDir)
@@ -347,6 +348,7 @@ fun SettingsScreen(
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = { showAddFaceDialog = true },
+                                    enabled = !isEnrolling,
                                     modifier = Modifier.testTag("addFaceButton"),
                                 ) {
                                     Icon(Icons.Filled.Add, contentDescription = null)
@@ -732,13 +734,21 @@ fun SettingsScreen(
                 onDismissRequest = { showAddFaceDialog = false; faceEnrollName = "" },
                 title = { Text("Enrol face") },
                 text = {
-                    OutlinedTextField(
-                        value = faceEnrollName,
-                        onValueChange = { faceEnrollName = it },
-                        label = { Text("Name") },
-                        singleLine = true,
-                        modifier = Modifier.testTag("faceNameField"),
-                    )
+                    Column {
+                        OutlinedTextField(
+                            value = faceEnrollName,
+                            onValueChange = { faceEnrollName = it },
+                            label = { Text("Name") },
+                            singleLine = true,
+                            modifier = Modifier.testTag("faceNameField"),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "The camera turns on briefly — look at it when you confirm.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
                 confirmButton = {
                     Button(
@@ -750,7 +760,7 @@ fun SettingsScreen(
                                 viewModel.startEnrollment(name)
                             }
                         },
-                        enabled = faceEnrollName.trim().isNotEmpty(),
+                        enabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
                     ) { Text("Enrol") }
                 },
                 dismissButton = {
@@ -770,7 +780,7 @@ fun SettingsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "Enrolling…",
+                        "Enrolling $enrollingLabel…",
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                     )

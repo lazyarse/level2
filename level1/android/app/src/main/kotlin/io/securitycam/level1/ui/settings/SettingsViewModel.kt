@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.securitycam.level1.camera_service.MonitoringService
+import io.securitycam.level1.camera_service.MonitoringServiceController
 import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
@@ -26,7 +28,10 @@ import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /**
  * Draft-commit settings state (port of the Flutter `SettingsScreen._draft` +
@@ -35,11 +40,25 @@ import kotlinx.coroutines.launch
  * `_deleteOlderThan`: rows first, then snapshot files and gallery clips.
  */
 class SettingsViewModel(
+    private val application: Application? = null,
     private val settingsLoader: suspend () -> AppSettings,
     private val settingsSaver: suspend (AppSettings) -> Unit,
     private val eventsClearer: suspend (Duration?) -> Unit,
     private val channelFactories: Map<String, ChannelFactory> = ChannelRegistry.factories,
     private val enrollmentFactory: () -> FaceEnrollmentCoordinator? = { null },
+    /** True when a camera session is already publishing frames to the bus. */
+    private val cameraActive: () -> Boolean = {
+        MonitoringServiceController.cameraActive()
+    },
+    private val startCameraSession: (cameraId: String) -> Unit = { cameraId ->
+        application?.let { MonitoringService.startPreview(it, cameraId) }
+    },
+    private val stopCameraSession: () -> Unit = {
+        MonitoringServiceController.stopPreviewOnly()
+    },
+    /** Wait bounds for the temporary session bind; tests shrink these. */
+    private val framesWaitTimeoutMs: Long = 5_000L,
+    private val framesSettleMs: Long = 500L,
 ) : ViewModel() {
 
     /** Null until the stored settings finish loading. */
@@ -120,26 +139,62 @@ class SettingsViewModel(
         }
     }
 
-    /** Enrol [label] using the live camera bus; requires monitoring to be active. */
+    /**
+     * Enrols [label] using the live camera bus. If no camera session is
+     * running (monitoring or preview), starts a temporary preview-only
+     * session — its analysis feed supplies frames — and stops it afterwards;
+     * a user-started session is left alone.
+     */
     fun startEnrollment(label: String) {
-        val coordinator = enrollmentFactory() ?: return
+        val coordinator = enrollmentFactory()
+        if (coordinator == null) {
+            _message.value = "Face enrollment unavailable"
+            return
+        }
         if (_enrollingLabel.value != null) return
         viewModelScope.launch {
             _enrollingLabel.value = label
-            _enrollingLabel.value = try {
-                val result = coordinator.enroll(label)
-                _message.value = if (result.isSuccess) {
-                    "Enrolled ${result.getOrThrow().label}"
-                } else {
-                    "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+            try {
+                val weStartedCamera = !cameraActive()
+                try {
+                    if (weStartedCamera) {
+                        val cameraId = _draft.value?.cameraId
+                            ?: settingsLoader().cameraId
+                        startCameraSession(cameraId)
+                        check(awaitFramesFlowing()) { "Camera did not start" }
+                    }
+                    val result = coordinator.enroll(label)
+                    _message.value = if (result.isSuccess) {
+                        "Enrolled ${result.getOrThrow().label}"
+                    } else {
+                        "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+                    }
+                } finally {
+                    if (weStartedCamera) stopCameraSession()
                 }
-                null
             } catch (e: Exception) {
                 _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
-                null
+            } finally {
+                _enrollingLabel.value = null
             }
         }
     }
+
+    /**
+     * Waits until the temporary session is bound (frames flowing), with a
+     * short settle so the first published frames reach bus listeners. False on
+     * timeout.
+     */
+    private suspend fun awaitFramesFlowing(): Boolean =
+        try {
+            withTimeout(framesWaitTimeoutMs) {
+                while (!cameraActive()) delay(100)
+            }
+            delay(framesSettleMs)
+            true
+        } catch (_: TimeoutCancellationException) {
+            false
+        }
 
     /** Remove a face from the enrolled list and delete its centroid file. */
     fun deleteFace(face: KnownFace, store: KnownFaceStore) {
@@ -178,6 +233,7 @@ class SettingsViewModel(
                     as? Application
                     ?: error("Application missing from initializer")
                 SettingsViewModel(
+                    application = app,
                     settingsLoader = {
                         SettingsStore(app, EncryptedSecretStore(app)).load()
                     },
