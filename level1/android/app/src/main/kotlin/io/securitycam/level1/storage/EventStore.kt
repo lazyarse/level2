@@ -17,7 +17,7 @@ import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-/** Room row for a recorded trigger event (schema v3 of the Dart event log). */
+/** Room row for a recorded trigger event (schema v4 of the Dart event log). */
 @Entity(tableName = "events")
 data class EventEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -29,6 +29,7 @@ data class EventEntity(
     @ColumnInfo(name = "video_name") val videoName: String?,
     @ColumnInfo(name = "channel_statuses") val channelStatuses: String?,
     @ColumnInfo(name = "trigger_types") val triggerTypes: String?,
+    @ColumnInfo(name = "detail") val detail: String? = null,
 )
 
 @Dao
@@ -74,7 +75,7 @@ interface EventDao {
     data class MediaRef(val snapshot_name: String?, val video_name: String?)
 }
 
-@Database(entities = [EventEntity::class], version = 3, exportSchema = false)
+@Database(entities = [EventEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
 
@@ -82,12 +83,19 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var instance: AppDatabase? = null
 
+        /** v3 -> v4: adds the nullable trigger-detail column. */
+        private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN detail TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "events.db",
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_3_4).build().also { instance = it }
         }
     }
 }
@@ -109,6 +117,7 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
                 videoName = event.videoName,
                 channelStatuses = jsonEncodeStringMap(event.channelStatuses),
                 triggerTypes = if (event.triggerTypes.isEmpty()) null else jsonEncodeStringList(event.triggerTypes),
+                detail = event.detail,
             ),
         )
     }
@@ -169,6 +178,7 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         videoName = videoName,
         channelStatuses = channelStatuses?.let(::decodeStringMap) ?: emptyMap(),
         triggerTypes = triggerTypes?.let(::decodeStringList) ?: emptyList(),
+        detail = detail,
     )
 
     companion object {
@@ -214,4 +224,6 @@ data class RecordedEventRow(
     val videoName: String?,
     val channelStatuses: Map<String, String>,
     val triggerTypes: List<String>,
+    /** Free-text trigger payload (e.g. recognised face name); may be null. */
+    val detail: String? = null,
 )

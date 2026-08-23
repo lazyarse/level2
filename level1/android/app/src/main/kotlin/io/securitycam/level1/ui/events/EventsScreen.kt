@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.securitycam.level1.core.Snapshot
+import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.event.triggerLabel
 import io.securitycam.level1.storage.RecordedEventRow
 import java.time.LocalDate
@@ -291,6 +292,11 @@ private fun EventRow(
     } else {
         event.triggerTypes.joinToString(" + ") { triggerLabel(it) }
     }
+    // Recognised-face events carry the person's name as detail; inline it.
+    val faceName = event.detail?.takeIf {
+        event.triggerTypes.contains(TriggerType.faceKnown) ||
+            event.triggerType == TriggerType.faceKnown
+    }
     val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
     val local = event.timestamp.atZone(ZoneId.systemDefault())
     val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
@@ -320,7 +326,12 @@ private fun EventRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "$timeText · $typeLabel · score ${"%.2f".format(event.score)}",
+                buildString {
+                    append("$timeText · $typeLabel")
+                    if (faceName != null) append(" · ")
+                    faceName?.let { append(it) }
+                    append(" · score ${"%.2f".format(event.score)}")
+                },
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(

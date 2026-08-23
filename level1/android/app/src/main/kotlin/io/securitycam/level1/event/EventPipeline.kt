@@ -76,6 +76,9 @@ class EventPipeline(
                 snapshotName = snapshot?.name,
                 videoName = batch.videoName,
                 channelStatuses = statuses,
+                detail = batch.triggers
+                    .firstOrNull { it.triggerType == type }?.detail
+                    ?: batch.triggers.firstOrNull()?.detail,
             ),
         )
     }

@@ -12,6 +12,8 @@ data class RecordedEvent(
     val videoName: String? = null,
     val channelStatuses: Map<String, String> = emptyMap(),
     val triggerTypes: List<String> = emptyList(),
+    /** Free-text trigger payload (e.g. recognised face name); may be null. */
+    val detail: String? = null,
 )
 
 /** Names of media files referenced by deleted event rows. */
