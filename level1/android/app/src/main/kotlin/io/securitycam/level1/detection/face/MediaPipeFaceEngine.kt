@@ -41,13 +41,26 @@ class MediaPipeFaceEngine(
         return result.detections().map { det ->
             val bb = det.boundingBox()
             FaceDetection(
-                x1 = bb.left.toDouble(),
-                y1 = bb.top.toDouble(),
-                x2 = bb.right.toDouble(),
-                y2 = bb.bottom.toDouble(),
+                x1 = normalized(bb.left, frame.width),
+                y1 = normalized(bb.top, frame.height),
+                x2 = normalized(bb.right, frame.width),
+                y2 = normalized(bb.bottom, frame.height),
                 score = det.categories().firstOrNull()?.score()?.toDouble() ?: 0.0,
             )
         }
+    }
+
+    companion object {
+        const val MODEL_ASSET = "blaze_face_short_range.tflite"
+
+        /**
+         * MediaPipe reports boxes in input-bitmap pixels; every downstream
+         * consumer ([FaceEmbeddingEngine], [FaceThumbs]) expects the
+         * [FaceDetection] contract of coordinates normalized to 0..1.
+         */
+        fun normalized(pixel: Float, dimension: Int): Double =
+            if (dimension <= 0) 0.0
+            else (pixel.toDouble() / dimension).coerceIn(0.0, 1.0)
     }
 
     private fun toBitmap(frame: io.securitycam.level1.detection.ColorBitmap): Bitmap {
@@ -64,9 +77,5 @@ class MediaPipeFaceEngine(
     override suspend fun dispose() {
         detector?.close()
         detector = null
-    }
-
-    companion object {
-        const val MODEL_ASSET = "blaze_face_short_range.tflite"
     }
 }

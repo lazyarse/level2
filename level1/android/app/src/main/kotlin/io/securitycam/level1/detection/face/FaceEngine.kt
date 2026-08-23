@@ -2,7 +2,11 @@ package io.securitycam.level1.detection.face
 
 import io.securitycam.level1.detection.ColorBitmap
 
-/** A detected face: bounding box (top-left x/y, bottom-right x/y) + score. */
+/**
+ * A detected face: bounding box (top-left x/y, bottom-right x/y) + score.
+ * Coordinates are **normalized to 0..1** relative to the analyzed frame —
+ * engines must convert before emitting (see MediaPipeFaceEngine.normalized).
+ */
 data class FaceDetection(
     val x1: Double,
     val y1: Double,

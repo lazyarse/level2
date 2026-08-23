@@ -23,7 +23,7 @@ class FaceEnrollmentCoordinatorTest {
     val tmp = TemporaryFolder()
 
     private val frame = ColorBitmap(100, 100, ByteArray(3 * 100 * 100))
-    private val face = FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)
+    private val face = FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)
 
     private class FakeEmbedder : io.securitycam.level1.detection.face.FaceEmbedder {
         override fun embed(

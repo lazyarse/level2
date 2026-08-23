@@ -114,10 +114,10 @@ class FaceEngineTest {
 
     @Test
     fun faceOutsideAllRegionsDoesNotTrigger() = runBlocking {
-        // Frame is 3x3 px. Box (1.7,0.4)-(2.8,0.6) -> normalized x 0.567..0.933,
-        // outside the left-half region [0,0.5]x[0,1].
+        // Normalized box x 0.567..0.933, outside the left-half region
+        // [0,0.5]x[0,1].
         val engine = MockFaceEngine()
-        engine.faces.add(FaceDetection(1.7, 0.4, 2.8, 0.6, 0.9))
+        engine.faces.add(FaceDetection(0.567, 0.4, 0.933, 0.6, 0.9))
         val d = FaceDetector(
             DetectorConfig(type = TriggerType.face, threshold = 0.5, persistenceFrames = 1),
             engine = engine,
@@ -131,9 +131,9 @@ class FaceEngineTest {
 
     @Test
     fun faceOverlappingARegionTriggers() = runBlocking {
-        // Box (1.2,0.4)-(2.4,0.6) -> normalized x 0.4..0.8, crosses the x=0.5 edge.
+        // Normalized box x 0.4..0.8 crosses the region's x=0.5 edge.
         val engine = MockFaceEngine()
-        engine.faces.add(FaceDetection(1.2, 0.4, 2.4, 0.6, 0.9))
+        engine.faces.add(FaceDetection(0.4, 0.4, 0.8, 0.6, 0.9))
         val d = FaceDetector(
             DetectorConfig(type = TriggerType.face, threshold = 0.5, persistenceFrames = 1),
             engine = engine,

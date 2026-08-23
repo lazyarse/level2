@@ -407,7 +407,7 @@ class FaceEnrollmentViewModelTest {
             32, 32, ByteArray(3 * 32 * 32) { 0x40 },
         )
         val det = io.securitycam.level1.detection.face.FaceDetection(
-            4.0, 4.0, 28.0, 28.0, 0.9,
+            0.125, 0.125, 0.875, 0.875, 0.9,
         )
         val embedder = object : io.securitycam.level1.detection.face.FaceEmbedder {
             override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =

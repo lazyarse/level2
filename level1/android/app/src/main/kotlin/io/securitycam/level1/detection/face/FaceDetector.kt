@@ -63,15 +63,14 @@ open class FaceDetector(
     protected suspend fun topFace(frame: AnalysisFrame): Pair<ColorBitmap, FaceDetection>? {
         val color = frame.color ?: return null
         var faces = engine.detectFaces(color)
+        // Boxes are already normalized 0..1 per the FaceDetection contract.
         faces = faces.filter { f ->
-            val bx = f.x1 / color.width
-            val by = f.y1 / color.height
-            val bw = (f.x2 - f.x1) / color.width
-            val bh = (f.y2 - f.y1) / color.height
+            val bw = f.x2 - f.x1
+            val bh = f.y2 - f.y1
             // Keep when it overlaps an inclusion zone (or none exist) and no
             // exclusion zone: exclusion wins.
-            RegionFilter.rectOverlapsAny(regions, bx, by, bw, bh) &&
-                !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
+            RegionFilter.rectOverlapsAny(regions, f.x1, f.y1, bw, bh) &&
+                !RegionFilter.boxHitsAnyExclusion(exclusionRegions, f.x1, f.y1, bw, bh)
         }
         val best = faces.maxByOrNull { it.score } ?: return null
         return color to best

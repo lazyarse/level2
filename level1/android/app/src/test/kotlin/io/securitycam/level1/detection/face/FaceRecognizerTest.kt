@@ -61,7 +61,7 @@ class FaceRecognizerTest {
     fun knownMatchEmitsKnownWithLabelAndRoutingId() = runBlocking {
         val store = KnownFaceStore(tmp.newFolder("kf"))
         store.enroll("p1", floatArrayOf(1f, 0f, 0f))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)) }
         val r = recognizer(engine, FakeEmbedder(floatArrayOf(1f, 0f, 0f)), listOf(alice), store)
             .analyzeFrameAsync(frame(base))
         assertTrue(r.triggered)
@@ -74,7 +74,7 @@ class FaceRecognizerTest {
     fun distantEmbeddingEmitsUnknown() = runBlocking {
         val store = KnownFaceStore(tmp.newFolder("kf"))
         store.enroll("p1", floatArrayOf(1f, 0f, 0f))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)) }
         // Orthogonal vector: distance 1.0 > 0.65.
         val r = recognizer(engine, FakeEmbedder(floatArrayOf(0f, 1f, 0f)), listOf(alice), store)
             .analyzeFrameAsync(frame(base))
@@ -90,7 +90,7 @@ class FaceRecognizerTest {
         store.enroll("p1", floatArrayOf(1f, 0f, 0f))
         val bob = KnownFace(id = "p2", label = "Bob")
         store.enroll("p2", floatArrayOf(0f, 1f, 0f))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)) }
         // Unit vector near Bob's centroid (d=0.02) and far from Alice's
         // (d=0.8 > 0.65), so the nearest-centroid pick is unambiguous.
         val r = recognizer(
@@ -105,7 +105,7 @@ class FaceRecognizerTest {
     @Test
     fun fallsBackToPlainFaceWithoutModelOrPeople() = runBlocking {
         val store = KnownFaceStore(tmp.newFolder("kf"))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)) }
         val noModel = recognizer(engine, null, listOf(alice), store)
             .analyzeFrameAsync(frame(base))
         assertTrue(noModel.triggered)
@@ -122,7 +122,7 @@ class FaceRecognizerTest {
     fun persistenceGatesRecognitionLikePlainFace() = runBlocking {
         val store = KnownFaceStore(tmp.newFolder("kf"))
         store.enroll("p1", floatArrayOf(1f, 0f, 0f))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9)) }
         val d = recognizer(
             engine,
             FakeEmbedder(floatArrayOf(1f, 0f, 0f), floatArrayOf(1f, 0f, 0f)),
@@ -140,7 +140,7 @@ class FaceRecognizerTest {
     fun lowScoreFaceNeverTriggers() = runBlocking {
         val store = KnownFaceStore(tmp.newFolder("kf"))
         store.enroll("p1", floatArrayOf(1f, 0f, 0f))
-        val engine = MockFaceEngine().apply { faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.3)) }
+        val engine = MockFaceEngine().apply { faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.3)) }
         val r = recognizer(engine, FakeEmbedder(floatArrayOf(1f, 0f, 0f)), listOf(alice), store)
             .analyzeFrameAsync(frame(base))
         assertFalse(r.triggered)

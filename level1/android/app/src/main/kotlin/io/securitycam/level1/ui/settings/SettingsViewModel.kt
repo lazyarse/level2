@@ -299,6 +299,11 @@ class SettingsViewModel(
         _message.value = "Camera permission is required to enrol a face"
     }
 
+    /** Surfaced when a duplicate name is entered in the Enrol dialog. */
+    fun notifyDuplicateName(name: String) {
+        _message.value = "$name is already enrolled — use the photos icon to add more angles"
+    }
+
     /**
      * Front/back flip on the capture screen. Session-only: toggles between
      * the front camera and the persisted (non-front) monitoring camera, and

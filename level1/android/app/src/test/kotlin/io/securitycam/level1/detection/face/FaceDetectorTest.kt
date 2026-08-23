@@ -34,7 +34,7 @@ class FaceDetectorTest {
     fun faceInsideExclusionZoneIsDropped() = runBlocking {
         val engine = MockFaceEngine()
         // Pixels (10..40)^2 -> 0.1..0.4 normalized, inside the 0..0.5 exclusion.
-        engine.faces.add(FaceDetection(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9))
         val d = detector(engine)
         d.init()
         d.exclusionRegions = listOf(
@@ -49,7 +49,7 @@ class FaceDetectorTest {
     fun faceOutsideExclusionTriggers() = runBlocking {
         val engine = MockFaceEngine()
         // Pixels (60..90)^2 -> 0.6..0.9 normalized, clear of the 0..0.5 exclusion.
-        engine.faces.add(FaceDetection(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.faces.add(FaceDetection(0.6, 0.6, 0.9, 0.9, 0.9))
         val d = detector(engine)
         d.init()
         d.exclusionRegions = listOf(
@@ -63,7 +63,7 @@ class FaceDetectorTest {
     @Test
     fun faceOutsideInclusionsIsDropped() = runBlocking {
         val engine = MockFaceEngine()
-        engine.faces.add(FaceDetection(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.faces.add(FaceDetection(0.6, 0.6, 0.9, 0.9, 0.9))
         val d = detector(engine)
         d.init()
         d.regions = listOf(
@@ -78,7 +78,7 @@ class FaceDetectorTest {
     fun exclusionWinsOverInclusionOverlap() = runBlocking {
         val engine = MockFaceEngine()
         // Pixels (20..70)^2 -> 0.2..0.7 normalized: overlaps both zones.
-        engine.faces.add(FaceDetection(20.0, 20.0, 70.0, 70.0, 0.9))
+        engine.faces.add(FaceDetection(0.2, 0.2, 0.7, 0.7, 0.9))
         val d = detector(engine)
         d.init()
         d.regions = listOf(
