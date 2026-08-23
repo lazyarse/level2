@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.securitycam.level1.camera_service.MonitoringServiceController
+import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.monitor.MonitorState
 import io.securitycam.level1.monitor.MonitorViewModel
 import io.securitycam.level1.ui.events.eventIconFor
@@ -213,15 +215,30 @@ private fun MonitorStatusBar(
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            // Triggered detector icons
+            // Triggered detector icons; the face family shares one glyph whose
+            // color reflects recognition outcome (green = known, red = other).
             if (activeTriggers.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     activeTriggers.forEach { type ->
+                        val faceFamily = type == TriggerType.face ||
+                            type == TriggerType.faceKnown ||
+                            type == TriggerType.faceUnknown
                         Icon(
-                            imageVector = eventIconFor(type),
+                            imageVector = if (faceFamily) {
+                                Icons.Filled.Face
+                            } else {
+                                eventIconFor(type)
+                            },
                             contentDescription = type,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .testTag("triggerIcon_$type"),
+                            tint = when {
+                                type == TriggerType.faceKnown ->
+                                    Color(0xFF4CAF50)
+                                faceFamily -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.primary
+                            },
                         )
                     }
                 }
