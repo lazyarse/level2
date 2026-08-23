@@ -362,6 +362,25 @@ object MonitoringServiceController {
         }
     }
 
+    /**
+     * Maps a persisted cameraId to a CameraX selector. Legacy keys keep their
+     * meaning; any other id (e.g. "2", "3" from the settings dropdown) selects
+     * the exact Camera2 camera so multi-camera choices actually bind instead
+     * of silently falling back to the back camera.
+     */
+    private fun cameraSelectorFor(cameraId: String): CameraSelector = when (cameraId) {
+        "front", "1" -> CameraSelector.DEFAULT_FRONT_CAMERA
+        "back", "0" -> CameraSelector.DEFAULT_BACK_CAMERA
+        else -> CameraSelector.Builder()
+            .addCameraFilter { cameraInfos ->
+                cameraInfos.filter { info ->
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(info).cameraId ==
+                        cameraId
+                }
+            }
+            .build()
+    }
+
     private fun bindPreviewOnly(service: LifecycleService, cameraId: String) {
         val providerFuture = ProcessCameraProvider.getInstance(service)
         providerFuture.addListener({
@@ -370,10 +389,7 @@ object MonitoringServiceController {
             if (!active) return@addListener
             val provider = providerFuture.get()
             cameraProvider = provider
-            val selector = when (cameraId) {
-                "front", "1" -> CameraSelector.DEFAULT_FRONT_CAMERA
-                else -> CameraSelector.DEFAULT_BACK_CAMERA
-            }
+            val selector = cameraSelectorFor(cameraId)
             try {
                 val rotation = displayRotation(service)
                 val preview = Preview.Builder()
@@ -603,10 +619,7 @@ object MonitoringServiceController {
             if (!active) return@addListener
             val provider = providerFuture.get()
             cameraProvider = provider
-            val selector = when (cameraId) {
-                "front", "1" -> CameraSelector.DEFAULT_FRONT_CAMERA
-                else -> CameraSelector.DEFAULT_BACK_CAMERA
-            }
+            val selector = cameraSelectorFor(cameraId)
             try {
                 val analysis = ImageAnalysis.Builder()
                     .setTargetResolution(android.util.Size(analysisWidth, analysisHeight))
