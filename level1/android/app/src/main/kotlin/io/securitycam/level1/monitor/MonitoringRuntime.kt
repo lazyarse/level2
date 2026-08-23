@@ -21,6 +21,7 @@ import io.securitycam.level1.detection.audio.AudioClassifierFactory
 import io.securitycam.level1.detection.face.FaceDetector
 import io.securitycam.level1.detection.face.FaceEmbeddingEngine
 import io.securitycam.level1.detection.face.FaceRecognizer
+import io.securitycam.level1.identity.FaceDirectory
 import io.securitycam.level1.identity.KnownFaceStore
 import io.securitycam.level1.detection.pipeline.AnalysisDispatcher
 import io.securitycam.level1.detection.pipeline.DetectorPipeline
@@ -97,6 +98,9 @@ class MonitoringRuntime private constructor(
             val recognitionOn = AppSettings.faceRecognitionEnabled(settings)
             val faceStore = if (recognitionOn) KnownFaceStore(appContext) else null
             val embedder = if (recognitionOn) FaceEmbeddingEngine.load(appContext) else null
+            // Seed the live roster so enrollments made after this point (which
+            // update FaceDirectory) are visible to the recognizer.
+            if (recognitionOn) FaceDirectory.setAll(settings.knownFaces)
             val matchThreshold = if (recognitionOn) {
                 settings.detectorConfigs[TriggerType.faceKnown]?.threshold
                     ?: AppSettings.FACE_MATCH_THRESHOLD
@@ -105,7 +109,13 @@ class MonitoringRuntime private constructor(
             }
             DetectorRegistry.register(TriggerType.face) { c ->
                 if (recognitionOn) {
-                    FaceRecognizer(c, faceStore!!, embedder, { settings.knownFaces }, matchThreshold)
+                    FaceRecognizer(
+                        c,
+                        faceStore!!,
+                        embedder,
+                        { FaceDirectory.people() },
+                        matchThreshold,
+                    )
                 } else {
                     FaceDetector(c)
                 }

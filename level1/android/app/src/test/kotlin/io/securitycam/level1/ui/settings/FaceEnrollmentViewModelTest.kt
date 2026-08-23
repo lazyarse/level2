@@ -158,7 +158,8 @@ class FaceEnrollmentViewModelTest {
         assertEquals(listOf("0"), session.startedIds)
         assertEquals(1, session.stopCount)
         assertEquals(false, session.active)
-        assertEquals("Enrolled Bob", vm.message.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Bob" + suffix, vm.message.value)
         assertEquals(null, vm.enrollingLabel.value)
         assertEquals(listOf("Bob"), coordinator.enrolledLabels)
     }
@@ -175,7 +176,8 @@ class FaceEnrollmentViewModelTest {
         assertEquals(0, session.startCount)
         assertEquals(0, session.stopCount)
         assertTrue(session.active)
-        assertEquals("Enrolled Ann", vm.message.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Ann" + suffix, vm.message.value)
     }
 
     @Test
@@ -247,7 +249,8 @@ class FaceEnrollmentViewModelTest {
 
         assertEquals(listOf("front"), switches)
         assertEquals("front", session.lastSwitch)
-        assertEquals("Enrolled Cy", vm.message.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Cy" + suffix, vm.message.value)
     }
 
     @Test
@@ -393,7 +396,8 @@ class FaceEnrollmentViewModelTest {
         assertEquals(1, session.startCount)
         assertEquals(1, session.stopCount)
         assertEquals(false, session.active)
-        assertEquals("Added photo for Bea", vm.message.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Added photo for Bea" + suffix, vm.message.value)
         assertEquals(listOf(face), vm.draft.value?.knownFaces)
     }
 
@@ -442,7 +446,8 @@ class FaceEnrollmentViewModelTest {
         vm.startEnrollment("Tee")
         pumpUntilIdle(vm)
 
-        assertEquals("Enrolled Tee", vm.message.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Tee" + suffix, vm.message.value)
         val face = vm.draft.value?.knownFaces?.single()
         assertTrue(face != null)
         val thumb = java.io.File(
