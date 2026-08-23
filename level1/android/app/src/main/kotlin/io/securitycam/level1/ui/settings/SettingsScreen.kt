@@ -3,7 +3,6 @@ package io.securitycam.level1.ui.settings
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
@@ -162,8 +161,8 @@ fun SettingsScreen(
     var pendingClear by remember { mutableStateOf<ClearRequest?>(null) }
     var showAddFaceDialog by remember { mutableStateOf(false) }
     var faceEnrollName by remember { mutableStateOf("") }
-    val enrollingLabel by viewModel.enrollingLabel.collectAsState()
-    val isEnrolling = enrollingLabel != null
+    val enrolling by viewModel.enrollingLabel.collectAsState()
+    val isEnrolling = enrolling != null
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val faceStore = remember(ctx) {
         io.securitycam.level1.identity.KnownFaceStore(ctx.filesDir)
@@ -769,29 +768,6 @@ fun SettingsScreen(
                     }
                 },
             )
-        }
-
-        if (isEnrolling) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "Enrolling $enrollingLabel…",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Point the camera at the face",
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
         }
 
         SnackbarHost(

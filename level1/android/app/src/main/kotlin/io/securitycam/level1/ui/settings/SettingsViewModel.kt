@@ -77,6 +77,9 @@ class SettingsViewModel(
     private val _enrollingLabel = MutableStateFlow<String?>(null)
     val enrollingLabel: StateFlow<String?> = _enrollingLabel.asStateFlow()
 
+    /** In-flight enrollment coroutine, for cancellation from the UI. */
+    private var enrollmentJob: kotlinx.coroutines.Job? = null
+
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
 
@@ -152,7 +155,7 @@ class SettingsViewModel(
             return
         }
         if (_enrollingLabel.value != null) return
-        viewModelScope.launch {
+        enrollmentJob = viewModelScope.launch {
             _enrollingLabel.value = label
             try {
                 val weStartedCamera = !cameraActive()
@@ -172,12 +175,21 @@ class SettingsViewModel(
                 } finally {
                     if (weStartedCamera) stopCameraSession()
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _message.value = "Enrollment cancelled"
+                throw e
             } catch (e: Exception) {
                 _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
             } finally {
+                enrollmentJob = null
                 _enrollingLabel.value = null
             }
         }
+    }
+
+    /** Cancels the in-flight enrollment; session teardown runs via finally. */
+    fun cancelEnrollment() {
+        enrollmentJob?.cancel()
     }
 
     /**

@@ -14,6 +14,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import io.securitycam.level1.ui.events.EventsScreen
 import io.securitycam.level1.ui.events.EventsViewModel
 import io.securitycam.level1.ui.monitor.MonitorScreen
 import io.securitycam.level1.ui.regions.RegionEditorScreen
+import io.securitycam.level1.ui.settings.FaceEnrollmentScreen
 import io.securitycam.level1.ui.settings.SettingsScreen
 import io.securitycam.level1.ui.settings.SettingsViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -49,9 +51,13 @@ fun SecurityCamApp(
     var tab by remember { mutableStateOf(Level1Tab.Monitor) }
     val settingsViewModel: SettingsViewModel = viewModel(factory = settingsFactory)
     var showRegionEditor by remember { mutableStateOf(false) }
+    // Full-screen capture page while a face enrollment is in flight; it is
+    // dismissed automatically when the enrollment finishes (label → null).
+    val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
+    val enrollmentActive = enrollingLabel != null
     Scaffold(
         bottomBar = {
-            if (!showRegionEditor) {
+            if (!showRegionEditor && !enrollmentActive) {
                 NavigationBar {
                     Level1Tab.entries.forEach { t ->
                         NavigationBarItem(
@@ -70,7 +76,12 @@ fun SecurityCamApp(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            if (showRegionEditor) {
+            if (enrollmentActive) {
+                FaceEnrollmentScreen(
+                    label = enrollingLabel.orEmpty(),
+                    onCancel = { settingsViewModel.cancelEnrollment() },
+                )
+            } else if (showRegionEditor) {
                 RegionEditorScreen(
                     initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
                     initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),

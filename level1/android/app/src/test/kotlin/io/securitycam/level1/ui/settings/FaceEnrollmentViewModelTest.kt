@@ -42,6 +42,22 @@ class FaceEnrollmentViewModelTest {
         }
     }
 
+    /** enroll() that never returns — models waiting on the frame bus. */
+    private class HangingCoordinator : FaceEnrollmentCoordinator(
+        store = KnownFaceStore(createTempDir()),
+        embedder = null,
+        faceFinder = { null },
+        settingsLoader = { AppSettings.defaults() },
+        settingsSaver = {},
+    ) {
+        var enrollCalls: Int = 0
+
+        override suspend fun enroll(label: String): Result<KnownFace> {
+            enrollCalls++
+            kotlinx.coroutines.awaitCancellation()
+        }
+    }
+
     private class CameraSession {
         var active: Boolean = false
         var startedIds: MutableList<String> = mutableListOf()
@@ -80,6 +96,31 @@ class FaceEnrollmentViewModelTest {
             looper.runToEndOfTasks()
         }
         looper.runToEndOfTasks()
+    }
+
+    @Test
+    fun cancelDuringEnrollment_stopsSessionAndClearsState() {
+        val coordinator = HangingCoordinator()
+        val session = CameraSession()
+        val vm = viewModel(coordinator, session)
+
+        vm.startEnrollment("Bea")
+        // Pump until the coroutine is parked inside the hanging enroll().
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (coordinator.enrollCalls == 0 && tries++ < 100) {
+            looper.runToEndOfTasks()
+        }
+        assertTrue(coordinator.enrollCalls > 0)
+        assertTrue(session.active)
+
+        vm.cancelEnrollment()
+        pumpUntilIdle(vm)
+
+        assertEquals(false, session.active)
+        assertEquals(1, session.stopCount)
+        assertEquals(null, vm.enrollingLabel.value)
+        assertEquals("Enrollment cancelled", vm.message.value)
     }
 
     @Test
