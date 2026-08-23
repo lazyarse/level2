@@ -20,6 +20,7 @@ import io.securitycam.level1.detection.face.FaceDetection
 import io.securitycam.level1.detection.face.FaceEmbeddingEngine
 import io.securitycam.level1.detection.face.MediaPipeFaceEngine
 import io.securitycam.level1.event.ChannelFactory
+import io.securitycam.level1.identity.FaceDirectory
 import io.securitycam.level1.identity.FaceEnrollmentCoordinator
 import io.securitycam.level1.identity.FaceThumbs
 import io.securitycam.level1.identity.KnownFaceStore
@@ -120,12 +121,17 @@ class SettingsViewModel(
     fun thumbFile(faceId: String): File? =
         application?.let { KnownFaceStore(it).thumbFileFor(faceId) }
 
+    /** Merged-sample count for [faceId] (photos folded into the centroid). */
+    fun sampleCount(faceId: String): Int =
+        application?.let { KnownFaceStore(it).sampleCount(faceId) } ?: 0
+
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
 
     init {
         viewModelScope.launch {
             _draft.value = settingsLoader()
+            _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
         }
     }
 
@@ -137,6 +143,7 @@ class SettingsViewModel(
         val current = _draft.value ?: return
         viewModelScope.launch {
             settingsSaver(current)
+            FaceDirectory.setAll(current.knownFaces)
             _message.value = "Settings saved"
         }
     }
@@ -236,14 +243,36 @@ class SettingsViewModel(
                         switchPreviewCamera(sessionCameraId)
                     }
                     val result = block(coordinator)
+                    var enrolledFace: KnownFace? = null
+                    var enabledSuffix = ""
                     result.getOrNull()?.let { face ->
+                        enrolledFace = face
                         persistThumbnail(face.id)
                         syncFaceIntoDraft(face)
+                        _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
+                        // First-class feature enablement: recognition is a
+                        // no-op until its routing configs exist, so seed them
+                        // on enroll and persist immediately (restart needed
+                        // for a live session to pick the recognizer up).
+                        val latest = _draft.value
+                        if (latest != null && !AppSettings.faceRecognitionEnabled(latest)) {
+                            update {
+                                with(AppSettings) { it.withFaceRecognition(true) }
+                            }
+                            enabledSuffix =
+                                " — face recognition enabled; restart monitoring to apply"
+                            _draft.value?.let { d ->
+                                viewModelScope.launch {
+                                    runCatching { settingsSaver(d) }
+                                }
+                            }
+                        }
                     }
                     _message.value = when {
                         result.isSuccess && sample ->
-                            "Added photo for ${result.getOrThrow().label}"
-                        result.isSuccess -> "Enrolled ${result.getOrThrow().label}"
+                            "Added photo for ${enrolledFace?.label}" + enabledSuffix
+                        result.isSuccess ->
+                            "Enrolled ${enrolledFace?.label}" + enabledSuffix
                         else ->
                             "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
                     }
@@ -355,6 +384,7 @@ class SettingsViewModel(
             _draft.value = current.copy(
                 knownFaces = current.knownFaces.filterNot { it.id == face.id },
             )
+            _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
             _message.value = "Removed ${face.label}"
         }
     }

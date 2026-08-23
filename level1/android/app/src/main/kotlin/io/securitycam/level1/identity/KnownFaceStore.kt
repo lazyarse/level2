@@ -37,6 +37,14 @@ class KnownFaceStore(private val facesDir: File) {
     @Synchronized
     fun load(id: String): FloatArray? = readRaw(id)?.let(::normalize)
 
+    /** Number of merged samples for [id] (0 when absent/corrupt). */
+    @Synchronized
+    fun sampleCount(id: String): Int = try {
+        readBinStrict(fileFor(id)).second
+    } catch (_: IOException) {
+        0
+    }
+
     fun delete(id: String) {
         fileFor(id).delete()
         thumbFileFor(id).delete()

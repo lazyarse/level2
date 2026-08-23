@@ -357,7 +357,21 @@ fun SettingsScreen(
                                                 label = face.label,
                                             )
                                             Spacer(Modifier.width(12.dp))
-                                            Text(face.label, modifier = Modifier.weight(1f))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(face.label)
+                                                val samples = produceState(0, face.id) {
+                                                    value = viewModel.sampleCount(face.id)
+                                                }
+                                                if (samples.value > 0) {
+                                                    Text(
+                                                        "${samples.value} photo" +
+                                                            if (samples.value == 1) "" else "s",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color =
+                                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
                                             IconButton(
                                                 onClick = { viewModel.startSampleCapture(face) },
                                                 enabled = !isEnrolling,
