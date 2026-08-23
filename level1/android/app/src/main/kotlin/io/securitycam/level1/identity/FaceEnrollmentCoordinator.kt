@@ -23,9 +23,10 @@ fun interface FaceFinder {
 }
 
 /**
- * Live-preview enrollment: grabs one face from the camera, embeds it, merges
- * it into the person's centroid and registers [KnownFace] in settings.
- * Re-enrolling an existing label folds into that person's centroid.
+ * Live-preview enrollment: grabs one face from the camera, embeds it and
+ * registers the person ([enroll]) or folds another angle into an existing
+ * person's centroid ([addSample]). Duplicate labels are rejected outright —
+ * use [addSample] to improve an existing person's recognition.
  */
 open class FaceEnrollmentCoordinator(
     private val store: KnownFaceStore,
@@ -33,18 +34,40 @@ open class FaceEnrollmentCoordinator(
     private val faceFinder: FaceFinder,
     private val settingsLoader: suspend () -> AppSettings,
     private val settingsSaver: suspend (AppSettings) -> Unit,
+    /** Invoked with the exact frame/box used for embedding (thumbnail source). */
+    private val onCapture: ((ColorBitmap, FaceDetection) -> Unit)? = null,
 ) {
 
-    /** Enrolls one sample for [label]; success carries the person entry. */
+    /** Enrolls a NEW person; fails when [label] already exists. */
     open suspend fun enroll(label: String): Result<KnownFace> {
         val trimmed = label.trim()
         if (trimmed.isEmpty()) return failure("Label must not be empty")
+        val settings = settingsLoader()
+        if (settings.knownFaces.any { it.label.equals(trimmed, ignoreCase = true) }) {
+            return failure("Name already enrolled")
+        }
+        val id = newId()
+        return captureAndMerge(id) { KnownFace(id = id, label = trimmed) }
+    }
+
+    /** Adds another sample for an EXISTING person (multiple angles). */
+    open suspend fun addSample(id: String): Result<KnownFace> {
+        val existing = settingsLoader().knownFaces.firstOrNull { it.id == id }
+            ?: return failure("Unknown person")
+        return captureAndMerge(existing.id) { existing }
+    }
+
+    private suspend fun captureAndMerge(
+        id: String,
+        faceFor: () -> KnownFace,
+    ): Result<KnownFace> {
         val embedder = embedder ?: return failure("Embedding model unavailable")
         val (frame, face) = try {
             faceFinder.nextFace() ?: return failure("No face seen")
         } catch (e: Exception) {
             return failure("Camera error: ${e.message}")
         }
+        onCapture?.invoke(frame, face)
         // TFLite failures surface as IllegalStateException from run(); report
         // them as a normal result instead of crashing the caller's snackbar
         // with a raw native message.
@@ -56,14 +79,11 @@ open class FaceEnrollmentCoordinator(
         } ?: return failure("Embedding failed")
         if (embedding.isEmpty()) return failure("Embedding failed")
 
-        val settings = settingsLoader()
-        val existing = settings.knownFaces.firstOrNull { it.label.equals(trimmed, ignoreCase = true) }
-        val id = existing?.id ?: newId()
         store.enroll(id, embedding)
-        val updated = existing ?: KnownFace(id = id, label = trimmed)
-        val knownFaces =
-            settings.knownFaces.filterNot { it.id == id } + updated
-        settingsSaver(settings.copyWith(knownFaces = knownFaces))
+        val updated = faceFor()
+        // Reload so concurrent edits between capture and save are preserved.
+        val current = settingsLoader()
+        settingsSaver(current.copyWith(knownFaces = current.knownFaces.filterNot { it.id == id } + updated))
         return Result.success(updated)
     }
 

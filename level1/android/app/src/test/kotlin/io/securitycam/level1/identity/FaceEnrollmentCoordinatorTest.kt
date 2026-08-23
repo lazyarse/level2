@@ -77,13 +77,50 @@ class FaceEnrollmentCoordinatorTest {
             settingsSaver = { saves.add(it); settings = it },
         )
         val first = make().enroll("Alice").getOrThrow()
-        val second = make().enroll("alice").getOrThrow()
+        val second = make().addSample(first.id).getOrThrow()
         assertEquals(first.id, second.id)
         assertEquals(1, saves.last().knownFaces.size)
         // Two samples merged: load still yields a unit vector.
         val centroid = store.load(first.id)!!
         val norm = kotlin.math.sqrt(centroid.fold(0.0) { acc, v -> acc + v.toDouble() * v })
         assertEquals(1.0, norm, 1e-6)
+    }
+
+    @Test
+    fun duplicateLabelRejectedWithoutSaving() = runBlocking {
+        val dir = tmp.newFolder("kf")
+        val store = KnownFaceStore(dir)
+        var settings = AppSettings.defaults()
+        val saves = mutableListOf<AppSettings>()
+        val c = FaceEnrollmentCoordinator(
+            store = store,
+            embedder = FakeEmbedder(),
+            faceFinder = { frame to face },
+            settingsLoader = { settings },
+            settingsSaver = { saves.add(it); settings = it },
+        )
+        c.enroll("Alice").getOrThrow()
+        val dup = c.enroll("alice") // case-insensitive
+        assertTrue(dup.isFailure)
+        assertEquals("Name already enrolled", dup.exceptionOrNull()?.message)
+        assertEquals(1, saves.size) // only the original enrollment saved
+        assertEquals(1, dir.listFiles()?.size) // single centroid bin, nothing new
+    }
+
+    @Test
+    fun captureHookReceivesFrameAndBox() = runBlocking {
+        var captured: Pair<ColorBitmap, FaceDetection>? = null
+        val c = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(tmp.newFolder("kf")),
+            embedder = FakeEmbedder(),
+            faceFinder = { frame to face },
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            onCapture = { f, d -> captured = f to d },
+        )
+        c.enroll("Bob").getOrThrow()
+        assertEquals(frame, captured?.first)
+        assertEquals(face, captured?.second)
     }
 
     @Test
