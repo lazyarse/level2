@@ -55,6 +55,7 @@ fun SecurityCamApp(
     // dismissed automatically when the enrollment finishes (label → null).
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
     val enrollmentActive = enrollingLabel != null
+    val enrollmentSessionLocal by settingsViewModel.enrollmentSessionLocal.collectAsState()
     Scaffold(
         bottomBar = {
             if (!showRegionEditor && !enrollmentActive) {
@@ -80,6 +81,8 @@ fun SecurityCamApp(
                 FaceEnrollmentScreen(
                     label = enrollingLabel.orEmpty(),
                     onCancel = { settingsViewModel.cancelEnrollment() },
+                    onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
+                    canFlipCamera = enrollmentSessionLocal,
                 )
             } else if (showRegionEditor) {
                 RegionEditorScreen(

@@ -63,12 +63,21 @@ class FaceEnrollmentViewModelTest {
         var startedIds: MutableList<String> = mutableListOf()
         var startCount: Int = 0
         var stopCount: Int = 0
+        var lastSwitch: String? = null
+
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+        /** Models the async service start/bind: active only after pumping. */
+        fun bindLater() {
+            handler.postDelayed({ active = true }, 50)
+        }
     }
 
     private fun viewModel(
         coordinator: FaceEnrollmentCoordinator,
         session: CameraSession,
         initiallyActive: Boolean = false,
+        switchCalls: MutableList<String>? = null,
     ): SettingsViewModel = SettingsViewModel(
         settingsLoader = { AppSettings.defaults() },
         settingsSaver = {},
@@ -78,11 +87,18 @@ class FaceEnrollmentViewModelTest {
         startCameraSession = { cameraId ->
             session.startCount++
             session.startedIds.add(cameraId)
-            session.active = true
+            session.bindLater()
         },
         stopCameraSession = {
             session.stopCount++
             session.active = false
+        },
+        switchPreviewCamera = { cameraId ->
+            // Mirror controller semantics: needs a live session, de-dups.
+            if (session.active && session.lastSwitch != cameraId) {
+                switchCalls?.add(cameraId)
+                session.lastSwitch = cameraId
+            }
         },
         framesWaitTimeoutMs = 200,
         framesSettleMs = 10,
@@ -208,6 +224,110 @@ class FaceEnrollmentViewModelTest {
         pumpUntilIdle(vm)
 
         assertEquals(listOf("Al"), coordinator.enrolledLabels)
+    }
+
+    @Test
+    fun flipBeforeSessionBound_switchesToFrontAfterBind() {
+        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Cy")))
+        val session = CameraSession()
+        val switches = mutableListOf<String>()
+        val vm = viewModel(coordinator, session, switchCalls = switches)
+
+        vm.startEnrollment("Cy")
+        // Flip during the bind wait (session not active yet): the controller
+        // drops it, and the post-wait heal applies "front".
+        vm.flipEnrollmentCamera()
+        pumpUntilIdle(vm)
+
+        assertEquals(listOf("front"), switches)
+        assertEquals("front", session.lastSwitch)
+        assertEquals("Enrolled Cy", vm.message.value)
+    }
+
+    @Test
+    fun flipFromFrontBase_togglesToBack() {
+        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Dee")))
+        val session = CameraSession()
+        val switches = mutableListOf<String>()
+        val vm = SettingsViewModel(
+            settingsLoader = { AppSettings.defaults().copyWith(cameraId = "1") },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { coordinator },
+            cameraActive = { session.active },
+            startCameraSession = { cameraId ->
+                session.startCount++
+                session.startedIds.add(cameraId)
+                session.bindLater()
+            },
+            stopCameraSession = {
+                session.stopCount++
+                session.active = false
+            },
+            switchPreviewCamera = { cameraId ->
+                if (session.active && session.lastSwitch != cameraId) {
+                    switches.add(cameraId)
+                    session.lastSwitch = cameraId
+                }
+            },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+
+        vm.startEnrollment("Dee")
+        // Persisted camera is the front one ("1"): flipping targets back.
+        vm.flipEnrollmentCamera()
+        pumpUntilIdle(vm)
+
+        assertEquals(listOf("back"), switches)
+        assertEquals("back", session.lastSwitch)
+        assertEquals("1", session.startedIds.first())
+    }
+
+    @Test
+    fun flipIgnoredWhenMonitoringOwnsSession() {
+        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Eli")))
+        val session = CameraSession().apply { active = true }
+        val switches = mutableListOf<String>()
+        val vm = viewModel(coordinator, session, initiallyActive = true, switchCalls = switches)
+
+        vm.startEnrollment("Eli")
+        pumpUntilIdle(vm)
+        vm.flipEnrollmentCamera()
+
+        assertEquals(emptyList<String>(), switches)
+    }
+
+    @Test
+    fun enrollmentWithoutCameraPermission_reportsInsteadOfStarting() {
+        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Fay")))
+        val session = CameraSession()
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val vm = SettingsViewModel(
+            application = app,
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { coordinator },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.startCount++ },
+            stopCameraSession = { session.stopCount++ },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        // Robolectric grants permissions by default; deny CAMERA explicitly.
+        org.robolectric.Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.CAMERA)
+
+        assertEquals(
+            listOf(android.Manifest.permission.CAMERA),
+            vm.missingEnrollmentPermissions(),
+        )
+        vm.startEnrollment("Fay")
+        pumpUntilIdle(vm)
+
+        assertEquals(0, session.startCount)
+        assertEquals(0, coordinator.enrolledLabels.size)
+        assertEquals("Camera permission is required to enrol a face", vm.message.value)
     }
 
     private companion object {

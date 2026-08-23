@@ -1,6 +1,9 @@
 package io.securitycam.level1.ui.settings
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -56,6 +59,10 @@ class SettingsViewModel(
     private val stopCameraSession: () -> Unit = {
         MonitoringServiceController.stopPreviewOnly()
     },
+    /** In-place front/back rebind for a running preview-only session. */
+    private val switchPreviewCamera: (cameraId: String) -> Unit = {
+        MonitoringServiceController.switchPreviewCamera(it)
+    },
     /** Wait bounds for the temporary session bind; tests shrink these. */
     private val framesWaitTimeoutMs: Long = 5_000L,
     private val framesSettleMs: Long = 500L,
@@ -79,6 +86,20 @@ class SettingsViewModel(
 
     /** In-flight enrollment coroutine, for cancellation from the UI. */
     private var enrollmentJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Session-only front-camera preference for the enrollment capture screen.
+     * Deliberately not persisted: monitoring keeps its configured camera.
+     */
+    private val _enrollmentFrontCamera = MutableStateFlow(false)
+    val enrollmentFrontCamera: StateFlow<Boolean> = _enrollmentFrontCamera.asStateFlow()
+
+    /** True while enrollment started its own temporary camera session. */
+    private val _enrollmentSessionLocal = MutableStateFlow(false)
+    val enrollmentSessionLocal: StateFlow<Boolean> = _enrollmentSessionLocal.asStateFlow()
+
+    // Camera id currently requested for the enrollment session.
+    private var sessionCameraId: String = "0"
 
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
@@ -154,17 +175,26 @@ class SettingsViewModel(
             _message.value = "Face enrollment unavailable"
             return
         }
+        val missing = missingEnrollmentPermissions()
+        if (missing.isNotEmpty()) {
+            _message.value = "Camera permission is required to enrol a face"
+            return
+        }
         if (_enrollingLabel.value != null) return
+        // Session camera choice resets every enrollment (session-only).
+        _enrollmentFrontCamera.value = false
+        sessionCameraId = baseEnrollmentCameraId()
         enrollmentJob = viewModelScope.launch {
             _enrollingLabel.value = label
             try {
                 val weStartedCamera = !cameraActive()
+                _enrollmentSessionLocal.value = weStartedCamera
                 try {
                     if (weStartedCamera) {
-                        val cameraId = _draft.value?.cameraId
-                            ?: settingsLoader().cameraId
-                        startCameraSession(cameraId)
+                        startCameraSession(sessionCameraId)
                         check(awaitFramesFlowing()) { "Camera did not start" }
+                        // Heal a flip that landed before the service was up.
+                        switchPreviewCamera(sessionCameraId)
                     }
                     val result = coordinator.enroll(label)
                     _message.value = if (result.isSuccess) {
@@ -182,9 +212,45 @@ class SettingsViewModel(
                 _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
             } finally {
                 enrollmentJob = null
+                _enrollmentSessionLocal.value = false
                 _enrollingLabel.value = null
             }
         }
+    }
+
+    /** CAMERA is the only permission face enrollment needs (no audio). */
+    fun missingEnrollmentPermissions(): List<String> {
+        val app = application ?: return emptyList()
+        return listOf(Manifest.permission.CAMERA).filter {
+            ContextCompat.checkSelfPermission(app, it) != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /** Surfaced when the enrollment permission prompt is denied. */
+    fun notifyEnrollmentPermissionDenied() {
+        _message.value = "Camera permission is required to enrol a face"
+    }
+
+    /**
+     * Front/back flip on the capture screen. Session-only: toggles between
+     * the front camera and the persisted (non-front) monitoring camera, and
+     * rebinds a running local session in place. Ignored while another
+     * session (monitoring) owns the camera.
+     */
+    fun flipEnrollmentCamera() {
+        // Only when enrollment owns a local session (never monitoring's).
+        if (!_enrollmentSessionLocal.value) return
+        sessionCameraId =
+            if (isFrontId(sessionCameraId)) backEnrollmentCameraId() else FRONT_CAMERA_ID
+        _enrollmentFrontCamera.value = isFrontId(sessionCameraId)
+        switchPreviewCamera(sessionCameraId)
+    }
+
+    private fun baseEnrollmentCameraId(): String = _draft.value?.cameraId ?: "0"
+
+    private fun backEnrollmentCameraId(): String {
+        val base = baseEnrollmentCameraId()
+        return if (isFrontId(base)) BACK_CAMERA_ID else base
     }
 
     /** Cancels the in-flight enrollment; session teardown runs via finally. */
@@ -221,6 +287,12 @@ class SettingsViewModel(
     }
 
     companion object {
+        private const val FRONT_CAMERA_ID = "front"
+        private const val BACK_CAMERA_ID = "back"
+
+        /** Matches MonitoringServiceController.cameraSelectorFor legacy keys. */
+        fun isFrontId(cameraId: String): Boolean = cameraId == "front" || cameraId == "1"
+
         /**
          * Default event purge used by the Settings screen buttons (and the same
          * shape as MonitorViewModel's retention sweep).

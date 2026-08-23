@@ -163,6 +163,9 @@ object MonitoringServiceController {
     private var imageCapture: ImageCapture? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var active = false
+
+    /** True while the lightweight preview-only session owns the camera. */
+    private var previewOnlyMode = false
     private var frameCount = 0L
     private var lastPublishMs = 0L
     private var recordVideo = true
@@ -180,6 +183,9 @@ object MonitoringServiceController {
     // supplied/cleared by the UI via [setPreviewSurfaceProvider].
     private var boundPreview: Preview? = null
     private var pendingPreviewProvider: Preview.SurfaceProvider? = null
+
+    /** Camera id of the last successful preview-only bind (flip de-dup). */
+    private var boundPreviewCameraId: String? = null
 
     // Bound Camera handle for zoom (net-new Phase 1.4).
     private var boundCamera: Camera? = null
@@ -199,6 +205,7 @@ object MonitoringServiceController {
     ) {
         Log.i(TAG, "onStart cameraId=$cameraId")
         if (active) return
+        previewOnlyMode = false
         // Permission gate before any foreground/wakelock side effects (design
         // doc gap 6). Exceptional here (starters pre-check), but if hit the FGS
         // obligation must still be satisfied: post the notification, then stop.
@@ -240,6 +247,7 @@ object MonitoringServiceController {
 
     fun onServiceDestroyed(service: Service) {
         active = false
+        previewOnlyMode = false
         try {
             teardownCameraState()
         } finally {
@@ -297,6 +305,7 @@ object MonitoringServiceController {
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
         boundCamera = null
+        boundPreviewCameraId = null
         _zoomRatio.value = 1f
     }
 
@@ -318,6 +327,7 @@ object MonitoringServiceController {
     ) {
         Log.i(TAG, "startPreviewOnly cameraId=$cameraId")
         if (active) return
+        previewOnlyMode = true
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -349,6 +359,7 @@ object MonitoringServiceController {
 
     private fun stopPreviewOnlyInternal() {
         active = false
+        previewOnlyMode = false
         try {
             teardownCameraState()
         } finally {
@@ -360,6 +371,21 @@ object MonitoringServiceController {
             }
             activeService = null
         }
+    }
+
+    /**
+     * Rebinds the preview-only session to another camera in place (front/back
+     * flip on the enrollment screen): keeps the foreground service and the
+     * active flag, unbinds use cases, rebinds with the new selector. No-op
+     * when preview-only doesn't own the session.
+     */
+    fun switchPreviewCamera(cameraId: String) {
+        val service = activeService ?: return
+        if (!previewOnlyMode) return
+        if (boundPreviewCameraId == cameraId) return
+        Log.i(TAG, "switchPreviewCamera cameraId=$cameraId")
+        teardownCameraState()
+        bindPreviewOnly(service, cameraId)
     }
 
     /**
@@ -424,6 +450,7 @@ object MonitoringServiceController {
                     service, selector, preview, analysis
                 ).also { camera ->
                     onCameraBound(camera)
+                    boundPreviewCameraId = cameraId
                     Log.i(TAG, "previewOnly camera bound id=$cameraId")
                 }
                 CameraEvents.publishPreviewStatus(true)

@@ -1,6 +1,9 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package io.securitycam.level1.ui.settings
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -163,6 +166,21 @@ fun SettingsScreen(
     var faceEnrollName by remember { mutableStateOf("") }
     val enrolling by viewModel.enrollingLabel.collectAsState()
     val isEnrolling = enrolling != null
+
+    // Enrollment needs only CAMERA (no audio). If missing, stash the entered
+    // name and resume enrollment once the grant returns.
+    var pendingFaceName by remember { mutableStateOf<String?>(null) }
+    val enrollPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val name = pendingFaceName
+        pendingFaceName = null
+        if (grants[Manifest.permission.CAMERA] == true && name != null) {
+            viewModel.startEnrollment(name)
+        } else if (name != null) {
+            viewModel.notifyEnrollmentPermissionDenied()
+        }
+    }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val faceStore = remember(ctx) {
         io.securitycam.level1.identity.KnownFaceStore(ctx.filesDir)
@@ -756,7 +774,13 @@ fun SettingsScreen(
                             if (name.isNotEmpty()) {
                                 showAddFaceDialog = false
                                 faceEnrollName = ""
-                                viewModel.startEnrollment(name)
+                                val missing = viewModel.missingEnrollmentPermissions()
+                                if (missing.isEmpty()) {
+                                    viewModel.startEnrollment(name)
+                                } else {
+                                    pendingFaceName = name
+                                    enrollPermissionLauncher.launch(missing.toTypedArray())
+                                }
                             }
                         },
                         enabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
