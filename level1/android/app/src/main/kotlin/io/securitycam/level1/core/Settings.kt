@@ -140,6 +140,7 @@ data class AppSettings(
         screenOrientation: String? = null,
         detectionRegions: List<DetectionRegion>? = null,
         exclusionRegions: List<DetectionRegion>? = null,
+        scheduleExclusions: List<ScheduleWindow>? = null,
         knownFaces: List<KnownFace>? = null,
         liveView: LiveViewSettings? = null,
     ): AppSettings = AppSettings(
@@ -158,8 +159,7 @@ data class AppSettings(
         detectionRegions = detectionRegions ?: this.detectionRegions,
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
-        knownFaces = knownFaces ?: this.knownFaces,
-        liveView = liveView ?: this.liveView,
+        knownFaces = knownFaces ?: this.knownFaces,        liveView = liveView ?: this.liveView,
     )
 
     fun toJson(): Map<String, Any?> {

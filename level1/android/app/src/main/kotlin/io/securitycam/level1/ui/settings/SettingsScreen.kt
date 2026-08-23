@@ -59,6 +59,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -79,6 +80,7 @@ import io.securitycam.level1.channels.PushoverChannelSettings
 import io.securitycam.level1.channels.TelegramChannelSettings
 import io.securitycam.level1.channels.WebhookChannelSettings
 import io.securitycam.level1.channels.webhookPresets
+import io.securitycam.level1.camera_service.CameraInfo
 import io.securitycam.level1.camera_service.availableCameras
 import io.securitycam.level1.core.AnalysisResolution
 import io.securitycam.level1.core.AppSettings
@@ -190,7 +192,13 @@ fun SettingsScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        val cameras = remember(ctx) { availableCameras(ctx) }
+                        // CameraManager enumeration is IPC: keep it off the
+                        // composition's main thread.
+                        val cameras by produceState(emptyList<CameraInfo>(), ctx) {
+                            value = kotlinx.coroutines.withContext(
+                                kotlinx.coroutines.Dispatchers.IO
+                            ) { availableCameras(ctx) }
+                        }
                         if (cameras.size > 1) {
                             DropdownField(
                                 label = "Camera",
