@@ -5,6 +5,8 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.KnownFace
+import io.securitycam.level1.detection.ColorBitmap
+import io.securitycam.level1.detection.face.FaceDetection
 import io.securitycam.level1.identity.FaceEnrollmentCoordinator
 import io.securitycam.level1.identity.KnownFaceStore
 import java.io.File
@@ -27,6 +29,7 @@ class FaceEnrollmentViewModelTest {
 
     private class FakeCoordinator(
         private val result: Result<KnownFace>,
+        private val onAddSample: ((String) -> Result<KnownFace>)? = null,
     ) : FaceEnrollmentCoordinator(
         store = KnownFaceStore(createTempDir()),
         embedder = null,
@@ -40,6 +43,9 @@ class FaceEnrollmentViewModelTest {
             enrolledLabels.add(label)
             return result
         }
+
+        override suspend fun addSample(id: String): Result<KnownFace> =
+            onAddSample?.invoke(id) ?: super.addSample(id)
     }
 
     /** enroll() that never returns — models waiting on the frame bus. */
@@ -82,7 +88,7 @@ class FaceEnrollmentViewModelTest {
         settingsLoader = { AppSettings.defaults() },
         settingsSaver = {},
         eventsClearer = {},
-        enrollmentFactory = { coordinator },
+        enrollmentFactory = { _ -> coordinator },
         cameraActive = { session.active },
         startCameraSession = { cameraId ->
             session.startCount++
@@ -299,8 +305,7 @@ class FaceEnrollmentViewModelTest {
     }
 
     @Test
-    fun enrollmentWithoutCameraPermission_reportsInsteadOfStarting() {
-        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Fay")))
+    fun enrollmentWithoutCameraPermission_reportsInsteadOfStarting() {        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "f", label = "Fay")))
         val session = CameraSession()
         val app = ApplicationProvider.getApplicationContext<Application>()
         val vm = SettingsViewModel(
@@ -308,7 +313,7 @@ class FaceEnrollmentViewModelTest {
             settingsLoader = { AppSettings.defaults() },
             settingsSaver = {},
             eventsClearer = {},
-            enrollmentFactory = { coordinator },
+            enrollmentFactory = { _ -> coordinator },
             cameraActive = { session.active },
             startCameraSession = { _ -> session.startCount++ },
             stopCameraSession = { session.stopCount++ },
@@ -328,6 +333,123 @@ class FaceEnrollmentViewModelTest {
         assertEquals(0, session.startCount)
         assertEquals(0, coordinator.enrolledLabels.size)
         assertEquals("Camera permission is required to enrol a face", vm.message.value)
+    }
+
+    @Test
+    fun enrollSuccessMergesFaceIntoDraft() {
+        val face = KnownFace(id = "face_d1", label = "Dana")
+        val coordinator = FakeCoordinator(Result.success(face))
+        val session = CameraSession()
+        val vm = viewModel(coordinator, session)
+
+        vm.startEnrollment("Dana")
+        pumpUntilIdle(vm)
+
+        assertEquals(listOf(face), vm.draft.value?.knownFaces)
+    }
+
+    @Test
+    fun duplicateNameBlockedWithoutCameraLaunch() {
+        val existing = listOf(KnownFace(id = "face_a", label = "Alice"))
+        var settings = AppSettings.defaults().copyWith(knownFaces = existing)
+        val coordinator = FakeCoordinator(Result.success(KnownFace(id = "face_x", label = "x")))
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            settingsLoader = { settings },
+            settingsSaver = { s -> settings = s },
+            eventsClearer = {},
+            enrollmentFactory = { _ -> coordinator },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.startCount++ },
+            stopCameraSession = {},
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        // Wait for the async initial draft load.
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+
+        vm.startEnrollment("alice") // case-insensitive duplicate
+        pumpUntilIdle(vm)
+
+        assertTrue(vm.message.value?.contains("already enrolled") == true)
+        assertEquals(0, session.startCount)
+        assertTrue(coordinator.enrolledLabels.isEmpty())
+    }
+
+    @Test
+    fun sampleCaptureRoutesToAddSampleAndUpdatesDraft() {
+        val face = KnownFace(id = "face_b", label = "Bea")
+        var addedId: String? = null
+        val coordinator = FakeCoordinator(Result.success(face)) { addedId = it; Result.success(face) }
+        val session = CameraSession()
+        val vm = viewModel(coordinator, session)
+
+        vm.startSampleCapture(face)
+        pumpUntilIdle(vm)
+
+        assertEquals("face_b", addedId)
+        assertEquals(1, session.startCount)
+        assertEquals(1, session.stopCount)
+        assertEquals(false, session.active)
+        assertEquals("Added photo for Bea", vm.message.value)
+        assertEquals(listOf(face), vm.draft.value?.knownFaces)
+    }
+
+    @Test
+    fun successfulEnrollWritesThumbnailFromCaptureHook() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.CAMERA,
+        )
+        val frame = io.securitycam.level1.detection.ColorBitmap(
+            32, 32, ByteArray(3 * 32 * 32) { 0x40 },
+        )
+        val det = io.securitycam.level1.detection.face.FaceDetection(
+            4.0, 4.0, 28.0, 28.0, 0.9,
+        )
+        val embedder = object : io.securitycam.level1.detection.face.FaceEmbedder {
+            override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =
+                floatArrayOf(1f, 0f)
+        }
+        lateinit var hook: (ColorBitmap, FaceDetection) -> Unit
+        val realCoordinator = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(createTempDir()),
+            embedder = embedder,
+            faceFinder = { frame to det },
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            onCapture = { f, d -> hook(f, d) },
+        )
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            application = app,
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { onCapture ->
+                hook = onCapture
+                realCoordinator
+            },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.bindLater() },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+
+        vm.startEnrollment("Tee")
+        pumpUntilIdle(vm)
+
+        assertEquals("Enrolled Tee", vm.message.value)
+        val face = vm.draft.value?.knownFaces?.single()
+        assertTrue(face != null)
+        val thumb = java.io.File(
+            java.io.File(app.filesDir, io.securitycam.level1.identity.KnownFaceStore.DIR_NAME),
+            "${face!!.id}.jpg",
+        )
+        assertTrue(thumb.exists() && thumb.length() > 0)
     }
 
     private companion object {

@@ -15,10 +15,13 @@ import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.KnownFace
+import io.securitycam.level1.detection.ColorBitmap
+import io.securitycam.level1.detection.face.FaceDetection
 import io.securitycam.level1.detection.face.FaceEmbeddingEngine
 import io.securitycam.level1.detection.face.MediaPipeFaceEngine
 import io.securitycam.level1.event.ChannelFactory
 import io.securitycam.level1.identity.FaceEnrollmentCoordinator
+import io.securitycam.level1.identity.FaceThumbs
 import io.securitycam.level1.identity.KnownFaceStore
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
@@ -48,7 +51,10 @@ class SettingsViewModel(
     private val settingsSaver: suspend (AppSettings) -> Unit,
     private val eventsClearer: suspend (Duration?) -> Unit,
     private val channelFactories: Map<String, ChannelFactory> = ChannelRegistry.factories,
-    private val enrollmentFactory: () -> FaceEnrollmentCoordinator? = { null },
+    /** Builds a coordinator wired to the VM's capture stash. */
+    private val enrollmentFactory:
+        (onCapture: (ColorBitmap, FaceDetection) -> Unit) -> FaceEnrollmentCoordinator? =
+        { null },
     /** True when a camera session is already publishing frames to the bus. */
     private val cameraActive: () -> Boolean = {
         MonitoringServiceController.cameraActive()
@@ -100,6 +106,19 @@ class SettingsViewModel(
 
     // Camera id currently requested for the enrollment session.
     private var sessionCameraId: String = "0"
+
+    // Frame/box from the most recent capture in the active enrollment; used
+    // to persist a thumbnail once the enrollment succeeds.
+    private var pendingCapture: Pair<ColorBitmap, FaceDetection>? = null
+
+    /** Person store for centroid/thumbnail files; null without an app. */
+    private val faceStore: KnownFaceStore? by lazy {
+        application?.let { KnownFaceStore(it) }
+    }
+
+    /** Thumbnail file for [faceId], or null when storage is unavailable. */
+    fun thumbFile(faceId: String): File? =
+        application?.let { KnownFaceStore(it).thumbFileFor(faceId) }
 
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
@@ -164,13 +183,32 @@ class SettingsViewModel(
     }
 
     /**
-     * Enrols [label] using the live camera bus. If no camera session is
-     * running (monitoring or preview), starts a temporary preview-only
-     * session — its analysis feed supplies frames — and stops it afterwards;
-     * a user-started session is left alone.
+     * Enrols a NEW person [label] using the live camera bus. Duplicate names
+     * are rejected up-front (the list row's add-photos action extends an
+     * existing person instead).
      */
     fun startEnrollment(label: String) {
-        val coordinator = enrollmentFactory()
+        val trimmed = label.trim()
+        if (_draft.value?.knownFaces?.any { it.label.equals(trimmed, ignoreCase = true) } == true) {
+            _message.value =
+                "$trimmed is already enrolled — use the photos icon to add more angles"
+            return
+        }
+        launchEnrollment(trimmed, sample = false) { it.enroll(trimmed) }
+    }
+
+    /** Adds another captured angle for an existing person. */
+    fun startSampleCapture(face: KnownFace) {
+        if (_enrollingLabel.value != null) return
+        launchEnrollment(face.label, sample = true) { it.addSample(face.id) }
+    }
+
+    private fun launchEnrollment(
+        progressLabel: String,
+        sample: Boolean,
+        block: suspend (FaceEnrollmentCoordinator) -> Result<KnownFace>,
+    ) {
+        val coordinator = enrollmentFactory { frame, det -> pendingCapture = frame to det }
         if (coordinator == null) {
             _message.value = "Face enrollment unavailable"
             return
@@ -181,11 +219,12 @@ class SettingsViewModel(
             return
         }
         if (_enrollingLabel.value != null) return
-        // Session camera choice resets every enrollment (session-only).
+        // Session camera choice resets every capture (session-only).
         _enrollmentFrontCamera.value = false
         sessionCameraId = baseEnrollmentCameraId()
+        pendingCapture = null
         enrollmentJob = viewModelScope.launch {
-            _enrollingLabel.value = label
+            _enrollingLabel.value = progressLabel
             try {
                 val weStartedCamera = !cameraActive()
                 _enrollmentSessionLocal.value = weStartedCamera
@@ -196,11 +235,17 @@ class SettingsViewModel(
                         // Heal a flip that landed before the service was up.
                         switchPreviewCamera(sessionCameraId)
                     }
-                    val result = coordinator.enroll(label)
-                    _message.value = if (result.isSuccess) {
-                        "Enrolled ${result.getOrThrow().label}"
-                    } else {
-                        "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+                    val result = block(coordinator)
+                    result.getOrNull()?.let { face ->
+                        persistThumbnail(face.id)
+                        syncFaceIntoDraft(face)
+                    }
+                    _message.value = when {
+                        result.isSuccess && sample ->
+                            "Added photo for ${result.getOrThrow().label}"
+                        result.isSuccess -> "Enrolled ${result.getOrThrow().label}"
+                        else ->
+                            "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
                     }
                 } finally {
                     if (weStartedCamera) stopCameraSession()
@@ -212,10 +257,33 @@ class SettingsViewModel(
                 _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
             } finally {
                 enrollmentJob = null
+                pendingCapture = null
                 _enrollmentSessionLocal.value = false
                 _enrollingLabel.value = null
             }
         }
+    }
+
+    /** Keeps the settings draft in step so the UI and Save reflect enrollments. */
+    private fun syncFaceIntoDraft(face: KnownFace) {
+        val current = _draft.value ?: return
+        _draft.value = current.copy(
+            knownFaces = current.knownFaces.filterNot { it.id == face.id } + face,
+        )
+    }
+
+    /** Persists the stashed capture as `<id>.jpg`; best-effort, never fatal. */
+    private fun persistThumbnail(faceId: String) {
+        val app = application ?: return
+        val (frame, det) = pendingCapture ?: return
+        runCatching {
+            FaceThumbs.writeJpg(
+                File(app.filesDir, KnownFaceStore.DIR_NAME),
+                faceId,
+                frame,
+                doubleArrayOf(det.x1, det.y1, det.x2, det.y2),
+            )
+        }.onFailure { android.util.Log.w("FaceEnroll", "thumbnail write failed", it) }
     }
 
     /** CAMERA is the only permission face enrollment needs (no audio). */
@@ -274,11 +342,11 @@ class SettingsViewModel(
             false
         }
 
-    /** Remove a face from the enrolled list and delete its centroid file. */
-    fun deleteFace(face: KnownFace, store: KnownFaceStore) {
+    /** Remove a face: centroid, thumbnail, and draft entry. */
+    fun deleteFace(face: KnownFace) {
         viewModelScope.launch {
             val current = _draft.value ?: return@launch
-            store.delete(face.id)
+            faceStore?.delete(face.id)
             _draft.value = current.copy(
                 knownFaces = current.knownFaces.filterNot { it.id == face.id },
             )
@@ -330,7 +398,7 @@ class SettingsViewModel(
                         SettingsStore(app, EncryptedSecretStore(app)).save(settings)
                     },
                     eventsClearer = defaultEventsClearer(app),
-                    enrollmentFactory = {
+                    enrollmentFactory = { onCapture ->
                         FaceEnrollmentCoordinator(
                             store = KnownFaceStore(app),
                             embedder = enrollmentEmbedder,
@@ -343,6 +411,7 @@ class SettingsViewModel(
                             settingsSaver = {
                                 SettingsStore(app, EncryptedSecretStore(app)).save(it)
                             },
+                            onCapture = onCapture,
                         )
                     },
                 )

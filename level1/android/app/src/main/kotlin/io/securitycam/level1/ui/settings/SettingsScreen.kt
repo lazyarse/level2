@@ -350,7 +350,7 @@ fun SettingsScreen(
                                             Text(face.label, modifier = Modifier.weight(1f))
                                             IconButton(
                                                 onClick = {
-                                                    viewModel.deleteFace(face, faceStore)
+                                                    viewModel.deleteFace(face)
                                                 },
                                                 modifier = Modifier.testTag("deleteFace_${face.id}"),
                                             ) {
