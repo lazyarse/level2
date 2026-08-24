@@ -24,6 +24,7 @@ fun letterboxInfo(width: Int, height: Int): LetterboxInfo {
 /** COCO class indices for the YOLO detectors. */
 object YoloClasses {
     const val PERSON = 0   // COCO class 0 → output row 4 (after 4 box rows)
+    const val CAT = 15     // COCO class 15 → output row 19
     const val DOG = 16     // COCO class 16 → output row 20
 }
 

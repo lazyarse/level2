@@ -17,6 +17,7 @@ object TriggerType {
     const val health = "health"
     const val dogBark = "dog_bark"
     const val growl = "growl"
+    const val cat = "cat"
     const val dog = "dog"
 }
 

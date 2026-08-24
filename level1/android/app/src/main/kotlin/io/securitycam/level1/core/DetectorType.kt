@@ -37,6 +37,7 @@ enum class DetectorType(
     DogBark(TriggerType.dogBark, "Dog bark", Icons.Filled.Pets),
     Growl(TriggerType.growl, "Growl", Icons.Filled.VolumeDown),
     Dog(TriggerType.dog, "Dog", Icons.Filled.Pets),
+    Cat(TriggerType.cat, "Cat", Icons.Filled.Pets),
     Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant);
 
     companion object {
