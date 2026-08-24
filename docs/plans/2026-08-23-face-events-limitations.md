@@ -53,3 +53,6 @@ normalize at the boundary and update this table.
 - **Recognised name in event rows** — `detail` column persists the first
   non-blank trigger label; `EventRow` renders it as small text below the
   event type. Verified on device 2026-08-24.
+- **Dog bark/growl detection** — `DogBarkDetector` and `GrowlDetector`
+  added with YAMNet class-index mapping (69-73 bark, 74 growl), mock
+  classifier heuristics, and disabled-by-default configs. Commit 2da868a.

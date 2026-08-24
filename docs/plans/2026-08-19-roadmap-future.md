@@ -1,13 +1,19 @@
 # Roadmap — Future Possibilities (Docs Only)
 
 Date: 2026-08-19
-Status: Recorded for future phases — NOT scheduled for implementation.
+Updated: 2026-08-24
 
 This document records the two explicitly named future possibilities from the
 2026-08-19 feature batch. Neither is planned; they are listed so architecture
-decisions made now do not foreclose them.
+ decisions made now do not foreclose them.
 
-## Face Recognition (known-person whitelist)
+## Face Recognition (known-person whitelist) — IMPLEMENTED
+
+Layered recognition on top of the existing face detector, detecting a face
+then answering "is this a known resident or an unknown person?".
+Implemented 2026-08-22 with embeddings (MobileFaceNet), enrollment UI,
+similarity threshold tuning, and on-device storage. See
+`docs/plans/2026-08-21-face-recognition-plan.md`.
 
 - **What:** layer recognition on top of the existing face detector (`FaceDetector`,
   `lib/detection/face/face_detector.dart`) — detect a face, then answer "is this a
