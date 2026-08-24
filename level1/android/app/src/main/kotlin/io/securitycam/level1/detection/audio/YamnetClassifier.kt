@@ -83,6 +83,7 @@ class YamnetClassifier private constructor(
         val GLASS_CLASSES = intArrayOf(435, 437, 463, 464)
         val DOG_BARK_CLASSES = intArrayOf(69, 70, 71, 73)  // Dog, Bark, Yip, Bow-wow
         val GROWL_CLASSES = intArrayOf(74)                    // Growling
+        val CAT_AUDIO_CLASSES = intArrayOf(77, 78, 79, 80, 81) // Cat, Purr, Meow, Hiss, Caterwaul
 
         /** Expected input sample count for a 0.975 s patch at 16 kHz. */
         const val INPUT_SAMPLES = 15600
@@ -114,6 +115,10 @@ class YamnetClassifier private constructor(
             for (c in GROWL_CLASSES) {
                 if (c < classScores.size && classScores[c] > growl) growl = classScores[c].toDouble()
             }
+            var cat = 0.0
+            for (c in CAT_AUDIO_CLASSES) {
+                if (c < classScores.size && classScores[c] > cat) cat = classScores[c].toDouble()
+            }
             var rms = 0.0
             for (s in windowSamples) rms += s * s
             rms = sqrt(rms / windowSamples.size)
@@ -124,6 +129,7 @@ class YamnetClassifier private constructor(
                 "loud_noise" to loudNoise,
                 "dog_bark" to dogBark,
                 "growl" to growl,
+                "cat" to cat,
             )
         }
 

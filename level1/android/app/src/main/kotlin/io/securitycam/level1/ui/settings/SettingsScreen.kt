@@ -1480,6 +1480,7 @@ private val audioDetectorTypes = setOf(
     TriggerType.loudNoise,
     TriggerType.glassBreak,
     TriggerType.babyCry,
+    TriggerType.catMeow,
 )
 
 private fun retentionSummary(days: Int): String =

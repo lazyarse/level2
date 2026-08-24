@@ -40,6 +40,7 @@ class YamnetClassifierTest {
         assertEquals(0.0, mapped["glass"]!!, 0.0)
         assertEquals(0.0, mapped["dog_bark"]!!, 0.0)
         assertEquals(0.0, mapped["growl"]!!, 0.0)
+        assertEquals(0.0, mapped["cat"]!!, 0.0)
     }
 
     @Test
@@ -76,6 +77,16 @@ class YamnetClassifierTest {
         scores[74] = 0.65f
         val mapped = YamnetClassifier.scoresFromClasses(scores, FloatArray(15600))
         assertEquals(0.65, mapped["growl"]!!, 1e-6)
+    }
+
+    @Test
+    fun fusesCatAudioClassesByMax() {
+        val scores = scores521()
+        scores[77] = 0.3f   // Cat
+        scores[79] = 0.8f   // Meow
+        scores[80] = 0.5f   // Hiss
+        val mapped = YamnetClassifier.scoresFromClasses(scores, FloatArray(15600))
+        assertEquals(0.8, mapped["cat"]!!, 1e-6)
     }
 
     @Test

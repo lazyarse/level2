@@ -259,6 +259,13 @@ data class AppSettings(
                     enabled = false,
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.catMeow to DetectorConfig(
+                    type = TriggerType.catMeow,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    routeToChannelIds = listOf("telegram"),
+                ),
                 TriggerType.dog to DetectorConfig(
                     type = TriggerType.dog,
                     threshold = 0.5,

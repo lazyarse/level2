@@ -23,11 +23,12 @@ class AudioDetectorsTest {
         loudNoise: Double = 0.0,
         dogBark: Double = 0.0,
         growl: Double = 0.0,
+        cat: Double = 0.0,
     ): AudioEventScores = AudioEventScores(
         timestamp = base,
         classScores = mapOf(
             "baby_cry" to babyCry, "glass" to glass, "loud_noise" to loudNoise,
-            "dog_bark" to dogBark, "growl" to growl,
+            "dog_bark" to dogBark, "growl" to growl, "cat" to cat,
         ),
     )
 
@@ -196,6 +197,35 @@ class AudioDetectorsTest {
     fun growlDoesNotReactToOtherScores() {
         val detector = GrowlDetector(
             DetectorConfig(type = TriggerType.growl, threshold = 0.5, persistenceFrames = 1),
+        )
+        assertFalse(detector.analyzeScores(scores(babyCry = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(glass = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(dogBark = 0.9)).triggered)
+    }
+
+    @Test
+    fun catMeowDoesNotTriggerBelowThreshold() {
+        val detector = CatMeowDetector(
+            DetectorConfig(type = TriggerType.catMeow, threshold = 0.5, persistenceFrames = 1),
+        )
+        val result = detector.analyzeScores(scores(cat = 0.2))
+        assertFalse(result.triggered)
+    }
+
+    @Test
+    fun catMeowTriggersOnCatScore() {
+        val detector = CatMeowDetector(
+            DetectorConfig(type = TriggerType.catMeow, threshold = 0.5, persistenceFrames = 1),
+        )
+        val result = detector.analyzeScores(scores(cat = 0.9))
+        assertTrue(result.triggered)
+        assertEquals(0.9, result.score, 0.0)
+    }
+
+    @Test
+    fun catMeowDoesNotReactToOtherScores() {
+        val detector = CatMeowDetector(
+            DetectorConfig(type = TriggerType.catMeow, threshold = 0.5, persistenceFrames = 1),
         )
         assertFalse(detector.analyzeScores(scores(babyCry = 0.9)).triggered)
         assertFalse(detector.analyzeScores(scores(glass = 0.9)).triggered)
