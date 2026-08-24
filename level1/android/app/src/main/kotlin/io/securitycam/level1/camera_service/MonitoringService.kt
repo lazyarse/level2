@@ -338,6 +338,13 @@ object MonitoringServiceController {
         }
         active = true
         startForeground(service, preview = true)
+        if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            micCapture.start { pcm, startSample ->
+                CameraEvents.publishMicPcm(pcm, startSample)
+            }
+        }
         bindPreviewOnly(service, cameraId)
     }
 
@@ -363,8 +370,7 @@ object MonitoringServiceController {
         try {
             teardownCameraState()
         } finally {
-            // No wake lock / mic / recorder / live view were acquired for
-            // preview-only; just drop the foreground service.
+            runCatching { micCapture.stop() }
             val service = activeService
             if (service != null) {
                 stopForegroundAndService(service)

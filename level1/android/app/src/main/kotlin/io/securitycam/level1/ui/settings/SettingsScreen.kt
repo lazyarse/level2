@@ -1483,16 +1483,19 @@ private fun retentionSummary(days: Int): String =
     if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"
 
 private fun detectorSummary(settings: AppSettings): String {
+    val shownTypes = cameraDetectorTypes + audioDetectorTypes + setOf(TriggerType.health)
+    val total = settings.detectorConfigs.count { it.key in shownTypes }
     val active = settings.detectorConfigs.count { (type, config) ->
-        type != TriggerType.faceKnown && type != TriggerType.faceUnknown && config.enabled
+        type in shownTypes && config.enabled
     }
-    return "$active active"
+    return "$active/$total active"
 }
 
 private fun faceRecognitionSummary(settings: AppSettings): String {
     val enabled = AppSettings.faceRecognitionEnabled(settings)
     val count = settings.knownFaces.size
-    return if (!enabled) "off" else if (count == 0) "on, none enrolled" else "on, $count"
+    val plural = if (count == 1) "face" else "faces"
+    return if (!enabled) "off" else "on, $count $plural enrolled"
 }
 
 private fun liveViewSummary(lv: LiveViewSettings): String {
