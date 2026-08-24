@@ -301,6 +301,30 @@ class SettingsViewModel(
         )
     }
 
+    // ---- Region-editor preview session ----
+
+    /** True when the region editor's live preview owns the camera session. */
+    private var regionPreviewSessionLocal = false
+
+    /**
+     * Arms the live camera image behind the region editor so regions can be
+     * drawn against real-world features. Starts a preview-only session only
+     * when no session is active; an already-running monitor/preview is left
+     * untouched (ownership tracked so close never stops a foreign session).
+     */
+    fun beginRegionPreview() {
+        if (cameraActive()) return
+        startCameraSession(_draft.value?.cameraId ?: "0")
+        regionPreviewSessionLocal = true
+    }
+
+    /** Releases the session only if the region editor started it. */
+    fun endRegionPreview() {
+        if (!regionPreviewSessionLocal) return
+        regionPreviewSessionLocal = false
+        stopCameraSession()
+    }
+
     /** Persists the stashed capture as `<id>.jpg`; best-effort, never fatal. */
     private fun persistThumbnail(faceId: String) {
         val app = application ?: return

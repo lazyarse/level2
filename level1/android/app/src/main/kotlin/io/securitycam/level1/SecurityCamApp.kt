@@ -14,6 +14,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +86,12 @@ fun SecurityCamApp(
                     canFlipCamera = enrollmentSessionLocal,
                 )
             } else if (showRegionEditor) {
+                // Live camera behind the editor so regions land on real
+                // features; session ownership is released on any exit path.
+                DisposableEffect(Unit) {
+                    settingsViewModel.beginRegionPreview()
+                    onDispose { settingsViewModel.endRegionPreview() }
+                }
                 RegionEditorScreen(
                     initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
                     initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),
