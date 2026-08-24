@@ -1,7 +1,7 @@
 # Face events & recognition — known limitations
 
 Date: 2026-08-23
-Status: accepted for current phase
+Updated: 2026-08-24
 
 ## 1. One name per merged event
 
@@ -42,6 +42,14 @@ normalize at the boundary and update this table.
 
 - Analysis frames published on `CameraFrameBus` are **display-upright**
   (rotated by `imageInfo.rotationDegrees` before publish).
-- Video clips are authored portrait-upright (`ROTATION_0` target) regardless
-  of live display state; a mounted/static camera must not inherit screen
-  orientation from start time.
+- Video clips carry `orientationHintDegrees` derived from sensor+display
+  orientation; `setOrientationHint()` applies it at muxer init. Verified
+  correct on device 2026-08-24.
+
+## Resolved
+
+- **Video clip orientation** — fixed via `orientationHintDegrees` +
+  `setOrientationHint()` on muxer; verified on device 2026-08-24.
+- **Recognised name in event rows** — `detail` column persists the first
+  non-blank trigger label; `EventRow` renders it as small text below the
+  event type. Verified on device 2026-08-24.
