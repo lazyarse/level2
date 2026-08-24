@@ -437,7 +437,7 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Schedule", summary = "${current.scheduleExclusions.size} windows") {
-                            BodyText("Monitoring pauses during these times.")
+                            BodyText("Define the time slots that video monitoring should happen.")
                             Spacer(Modifier.height(8.dp))
                             for (window in current.scheduleExclusions) {
                                 ScheduleWindowCard(
@@ -1042,7 +1042,6 @@ private fun DetectorCard(
                     contentDescription = if (expanded) "collapse_${config.type}" else "expand_${config.type}",
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
-                Text(detectorLabel(config.type))
                 Spacer(Modifier.width(8.dp))
                 DetectorType.fromKey(config.type)?.let { dt ->
                     Icon(
@@ -1051,6 +1050,8 @@ private fun DetectorCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Spacer(Modifier.width(8.dp))
+                Text(detectorLabel(config.type))
                 Spacer(Modifier.weight(1f))
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
