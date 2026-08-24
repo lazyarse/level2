@@ -381,6 +381,9 @@ class SettingsViewModel(
         viewModelScope.launch {
             val current = _draft.value ?: return@launch
             faceStore?.delete(face.id)
+            thumbFile(face.id)?.let { path ->
+                io.securitycam.level1.ui.events.ThumbCache.evict("face:${path.absolutePath}")
+            }
             _draft.value = current.copy(
                 knownFaces = current.knownFaces.filterNot { it.id == face.id },
             )
@@ -408,6 +411,7 @@ class SettingsViewModel(
                 val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
                 for (name in deleted.snapshotNames) {
                     runCatching { snapshots.delete(name) }
+                    io.securitycam.level1.ui.events.ThumbCache.evict("snap:$name")
                 }
                 for (name in deleted.videoNames) {
                     runCatching { VideoClipRecorder.delete(name) }

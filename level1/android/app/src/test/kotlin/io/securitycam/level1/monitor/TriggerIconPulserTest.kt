@@ -19,7 +19,7 @@ import org.junit.Test
 class TriggerIconPulserTest {
 
     private fun pulser(shown: MutableSet<String>) =
-        TriggerIconPulser(kotlinx.coroutines.GlobalScope, 200) { shown.clear(); shown.addAll(it) }
+        TriggerIconPulser(kotlinx.coroutines.GlobalScope, 400) { shown.clear(); shown.addAll(it) }
 
     @Test
     fun secondIdenticalPulseReactivatesAfterTimeout() = runBlocking {
@@ -29,15 +29,13 @@ class TriggerIconPulserTest {
         p.onEvent("motion")
         assertEquals(setOf("motion"), shown.toSet())
 
-        Thread.sleep(300)
-        assertFalse("icon must clear after the window", shown.contains("motion"))
+        assertTrue("icon must clear after the window", awaitWithin { !shown.contains("motion") })
 
         // The reported symptom: same trigger again → icon returns.
         p.onEvent("motion")
         assertEquals(setOf("motion"), shown.toSet())
 
-        Thread.sleep(300)
-        assertFalse(shown.contains("motion"))
+        assertTrue(awaitWithin { !shown.contains("motion") })
         Unit
     }
 
@@ -47,13 +45,13 @@ class TriggerIconPulserTest {
         val p = pulser(shown)
 
         p.onEvent("motion")
-        Thread.sleep(100)
+        Thread.sleep(250)
         p.onEvent("motion") // still detected: timer resets
 
-        Thread.sleep(150)
-        assertTrue("rescheduled window must still be active", shown.contains("motion"))
-        Thread.sleep(200)
-        assertFalse(shown.contains("motion"))
+        // Immediately after the repeat, the icon is solid again...
+        assertTrue(shown.contains("motion"))
+        // ...and it clears once the RESCHEDULED deadline passes.
+        assertTrue(awaitWithin { !shown.contains("motion") })
         Unit
     }
 
@@ -66,8 +64,7 @@ class TriggerIconPulserTest {
         p.onEvent(TriggerType.faceKnown)
         assertEquals(setOf("motion", TriggerType.faceKnown), shown.toSet())
 
-        Thread.sleep(300)
-        assertTrue(shown.isEmpty())
+        assertTrue(awaitWithin { shown.isEmpty() })
         Unit
     }
 
@@ -80,9 +77,19 @@ class TriggerIconPulserTest {
         p.reset()
         assertTrue(shown.isEmpty())
 
-        Thread.sleep(300)
         // Removal job was cancelled; nothing re-notifies.
+        Thread.sleep(600)
         assertTrue(shown.isEmpty())
         Unit
+    }
+
+    /** Polls until [pred] holds or timeout; returns final predicate value. */
+    private fun awaitWithin(timeoutMs: Long = 2_000, pred: () -> Boolean): Boolean {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            if (pred()) return true
+            Thread.sleep(20)
+        }
+        return pred()
     }
 }

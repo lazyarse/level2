@@ -49,9 +49,29 @@ fun eventIconFor(type: String): ImageVector =
  * Decodes JPEG bytes applying EXIF orientation — BitmapFactory ignores it,
  * which left pre-2026-08-23 snapshots (authored with a stale target rotation)
  * rendering 90° off.
+ *
+ * When [maxDim] is set the bitmap is downsampled (inSampleSize + exact scale)
+ * to fit within that dimension — list thumbnails at a fraction of full-res
+ * memory, letting the cache hold hundreds of entries instead of ~8.
  */
-fun decodeUpright(bytes: ByteArray): android.graphics.Bitmap? {
-    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+fun decodeUpright(bytes: ByteArray, maxDim: Int? = null): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+
+    val opts = BitmapFactory.Options()
+    if (maxDim != null && maxDim > 0 && bounds.outWidth > 0 && bounds.outHeight > 0) {
+        var sample = 1
+        var w = bounds.outWidth
+        var h = bounds.outHeight
+        while (w / 2 >= maxDim || h / 2 >= maxDim) {
+            w /= 2
+            h /= 2
+            sample *= 2
+        }
+        opts.inSampleSize = sample
+    }
+    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+
     val orientation = try {
         androidx.exifinterface.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
             .getAttributeInt(
@@ -78,11 +98,25 @@ fun decodeUpright(bytes: ByteArray): android.graphics.Bitmap? {
             m.postRotate(180f); m.postScale(-1f, 1f)
         }
     }
-    return if (m.isIdentity) {
+    val rotated = if (m.isIdentity) {
         bmp
     } else {
         android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
     }
+
+    // Exact fit for non-power-of-two overshoot after sampling.
+    if (maxDim != null && maxDim > 0 &&
+        (rotated.width > maxDim || rotated.height > maxDim)
+    ) {
+        val scale = minOf(
+            maxDim.toFloat() / rotated.width,
+            maxDim.toFloat() / rotated.height,
+        )
+        val tw = (rotated.width * scale).toInt().coerceAtLeast(1)
+        val th = (rotated.height * scale).toInt().coerceAtLeast(1)
+        return android.graphics.Bitmap.createScaledBitmap(rotated, tw, th, true)
+    }
+    return rotated
 }
 
 /**
@@ -98,15 +132,31 @@ internal fun SnapshotThumb(
     tag: String,
     size: Dp = 48.dp,
 ) {
-    val snapshot by produceState<Snapshot?>(initialValue = null, key1 = name) {
-        value = loader(name)
+    // Synchronous first-frame render for previously-seen thumbs; only true
+    // misses fall back to the icon and fill asynchronously.
+    var thumb by remember(name) {
+        mutableStateOf(ThumbCache.peek("snap:$name"))
     }
-    val bitmap = snapshot?.bytes?.let { bytes ->
-        remember(bytes) { decodeUpright(bytes) }
+    if (thumb == null) {
+        androidx.compose.runtime.LaunchedEffect(name) {
+            thumb = ThumbCache.getOrLoad(
+                "snap:$name",
+                ThumbCache.THUMB_MAX_DIM,
+            ) { loader(name)?.bytes }
+        }
     }
     var showFull by remember { mutableStateOf(false) }
+    var full by remember(name) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    if (showFull && full == null) {
+        androidx.compose.runtime.LaunchedEffect(name) {
+            full = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                loader(name)?.bytes?.let { decodeUpright(it) }
+            }
+        }
+    }
 
-    if (bitmap == null) {
+    val decoded = thumb
+    if (decoded == null) {
         Icon(
             fallbackIcon,
             contentDescription = null,
@@ -114,7 +164,7 @@ internal fun SnapshotThumb(
         )
     } else {
         Image(
-            bitmap = bitmap.asImageBitmap(),
+            bitmap = decoded.asImageBitmap(),
             contentDescription = title,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -126,7 +176,8 @@ internal fun SnapshotThumb(
     }
     if (showFull) {
         ZoomableSnapshotDialog(
-            snapshot = snapshot,
+            bitmap = full,
+            loading = full == null && showFull,
             title = title,
             onClose = { showFull = false },
         )
@@ -136,7 +187,8 @@ internal fun SnapshotThumb(
 /** Zoomable (pinch 1x–8x + pan) full-size snapshot dialog. */
 @Composable
 internal fun ZoomableSnapshotDialog(
-    snapshot: Snapshot?,
+    bitmap: android.graphics.Bitmap?,
+    loading: Boolean = false,
     title: String,
     onClose: () -> Unit,
     closeTag: String = "eventClose",
@@ -147,9 +199,6 @@ internal fun ZoomableSnapshotDialog(
             var scale by remember { mutableFloatStateOf(1f) }
             var offsetX by remember { mutableFloatStateOf(0f) }
             var offsetY by remember { mutableFloatStateOf(0f) }
-            val bitmap = snapshot?.bytes?.let { bytes ->
-                remember(bytes) { decodeUpright(bytes) }
-            }
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -159,7 +208,7 @@ internal fun ZoomableSnapshotDialog(
             ) {
                 if (bitmap != null) {
                     Image(
-                        bitmap = bitmap.asImageBitmap(),
+                        bitmap = bitmap!!.asImageBitmap(),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
@@ -178,6 +227,8 @@ internal fun ZoomableSnapshotDialog(
                                 }
                             },
                     )
+                } else if (loading) {
+                    androidx.compose.material3.CircularProgressIndicator(color = Color.White)
                 }
             }
             TextButton(

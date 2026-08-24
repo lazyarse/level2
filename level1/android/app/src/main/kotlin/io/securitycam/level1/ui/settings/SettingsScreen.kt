@@ -1516,14 +1516,24 @@ private fun FaceThumbnail(file: java.io.File?, label: String) {
         Icon(Icons.Filled.Face, contentDescription = label)
         return
     }
-    val bitmap = remember(file.absolutePath) {
-        runCatching { android.graphics.BitmapFactory.decodeFile(file.absolutePath) }
-            .getOrNull()
-            ?.takeIf { it.width > 0 }
+    // Cached decode keyed by absolute path; synchronous peek renders
+    // previously-seen faces in first frame while scrolling.
+    val bitmap by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
+        initialValue = io.securitycam.level1.ui.events.ThumbCache.peek("face:${file.absolutePath}"),
+        key1 = file.absolutePath,
+    ) {
+        val f = file
+        if (value == null) {
+            value = io.securitycam.level1.ui.events.ThumbCache.getOrLoad(
+                "face:${f.absolutePath}",
+            ) {
+                runCatching { f.readBytes() }.getOrNull()
+            }
+        }
     }
     if (bitmap != null) {
         Image(
-            bitmap = bitmap.asImageBitmap(),
+            bitmap = bitmap!!.asImageBitmap(),
             contentDescription = label,
             modifier = Modifier
                 .size(48.dp)

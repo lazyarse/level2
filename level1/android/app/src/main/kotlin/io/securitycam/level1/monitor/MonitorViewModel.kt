@@ -409,6 +409,7 @@ class MonitorViewModel(
         val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
         for (name in deleted.snapshotNames) {
             runCatching { snapshots.delete(name) }
+            io.securitycam.level1.ui.events.ThumbCache.evict("snap:$name")
         }
         for (name in deleted.videoNames) {
             runCatching { VideoClipRecorder.delete(name) }

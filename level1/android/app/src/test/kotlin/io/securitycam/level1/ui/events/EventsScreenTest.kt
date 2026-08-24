@@ -120,7 +120,11 @@ class EventsScreenTest {
         runBlocking { store.save(Snapshot(tinyPng(), "image/png", "snap-1.png")) }
         setContent(listOf(row(1, Instant.parse("2026-01-05T12:00:00Z"), snapshotName = "snap-1.png")), store)
 
-        compose.waitForIdle()
+        // Thumb decode now flows through the async cache.
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("eventThumb_1")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("eventThumb_1").assertExists()
         compose.onNodeWithTag("eventThumb_1").performClick()
         compose.waitForIdle()
