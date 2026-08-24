@@ -748,6 +748,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                         .testTag("saveSettings"),
+                    shape = RoundedCornerShape(2.dp),
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

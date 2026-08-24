@@ -18,9 +18,10 @@ private val DarkColors = darkColorScheme(
 )
 
 private val AppShapes = Shapes(
-    small = RoundedCornerShape(4.dp),
-    medium = RoundedCornerShape(6.dp),
-    large = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(2.dp),
+    medium = RoundedCornerShape(4.dp),
+    large = RoundedCornerShape(6.dp),
+    extraSmall = RoundedCornerShape(2.dp),
 )
 
 @Composable
