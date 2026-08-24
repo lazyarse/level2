@@ -29,6 +29,7 @@ import io.securitycam.level1.event.EventPipeline
 import io.securitycam.level1.event.TriggerBatcher
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.FileSnapshotStore
+import io.securitycam.level1.storage.OutboxStore
 import io.securitycam.level1.storage.RoomEventLog
 import io.securitycam.level1.sensors.PcmWindowAccumulator
 import java.io.File
@@ -150,6 +151,11 @@ class MonitoringRuntime private constructor(
                     File(appContext.filesDir, "snapshots").absolutePath,
                 ),
                 channelFactories = ChannelRegistry.factories,
+                // Offline queue: exhausted deliveries land in the Room outbox
+                // and are drained by OutboxWorker when connectivity returns.
+                outboxSink = { row ->
+                    OutboxStore.from(AppDatabase.get(appContext)).enqueue(row)
+                },
             )
             runtime.batcher = TriggerBatcher(
                 scope = scope,

@@ -24,7 +24,8 @@ data class DeletedMedia(
 
 /** Event persistence contract. */
 interface EventRecorder {
-    suspend fun record(event: RecordedEvent)
+    /** Stores the event and returns its row id (for outbox back-references). */
+    suspend fun record(event: RecordedEvent): Long
 
     suspend fun deleteEvents(olderThan: Instant?): DeletedMedia
 }

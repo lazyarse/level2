@@ -46,9 +46,11 @@ class EventPipelineTest {
 
     private class FakeRecorder : EventRecorder {
         val recorded = mutableListOf<RecordedEvent>()
+        private var nextId = 1L
 
-        override suspend fun record(event: RecordedEvent) {
+        override suspend fun record(event: RecordedEvent): Long {
             recorded.add(event)
+            return nextId++
         }
 
         override suspend fun deleteEvents(olderThan: Instant?): DeletedMedia = DeletedMedia()
@@ -103,6 +105,8 @@ class EventPipelineTest {
         var detectors: Map<String, DetectorConfig> = emptyMap()
         var factories: Map<String, ChannelFactory> = emptyMap()
         var sleep: suspend (Duration) -> Unit = {}
+        var outboxSink: (suspend (io.securitycam.level1.storage.OutboxEntity) -> Unit)? = null
+        var nowMs: () -> Long = { 1_000L }
 
         fun build(): EventPipeline = EventPipeline(
             cameraName = "Hallway",
@@ -112,6 +116,8 @@ class EventPipelineTest {
             snapshotStore = snapshots,
             channelFactories = factories,
             sleep = sleep,
+            outboxSink = outboxSink,
+            nowMs = nowMs,
         )
     }
 
@@ -368,6 +374,82 @@ class EventPipelineTest {
 
         assertEquals(mapOf("telegram" to "failed"), builder.recorder.recorded.single().channelStatuses)
         assertEquals(listOf(Duration.ofSeconds(1), Duration.ofSeconds(2)), sleeps)
+    }
+
+    @Test
+    fun withOutboxWiredExhaustedDeliveryIsQueuedAndEnqueuedWithEventReference() = runBlocking {
+        val alwaysFails = FakeChannel("telegram", "telegram", failures = 99)
+        val queued = mutableListOf<io.securitycam.level1.storage.OutboxEntity>()
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig())
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> alwaysFails })
+        builder.outboxSink = { row -> queued.add(row) }
+        builder.nowMs = { 5_000L }
+        val p = builder.build()
+
+        p.handleBatch(batch(listOf(trigger("motion", "motion")), snapshot = snap()))
+
+        // Status flips to "queued" on the recorded event…
+        assertEquals(
+            mapOf("telegram" to EventPipeline.STATUS_QUEUED),
+            builder.recorder.recorded.single().channelStatuses,
+        )
+        // …and exactly one notify row is enqueued carrying the payload.
+        val row = queued.single()
+        assertEquals(io.securitycam.level1.storage.OutboxKind.NOTIFY, row.kind)
+        assertEquals("telegram", row.channelId)
+        assertEquals(1L, row.eventId)
+        assertEquals("motion", row.triggerType)
+        assertEquals(base.toEpochMilli(), row.eventTime)
+        assertEquals("snap.png", row.snapshotName)
+        assertEquals(5_000L, row.createdAt)
+    }
+
+    @Test
+    fun deliveredChannelsAreNeverQueuedWhenOutboxIsWired() = runBlocking {
+        val tg = FakeChannel("telegram", "telegram")
+        val failing = FakeChannel("email", "email", failures = 99)
+        val queued = mutableListOf<io.securitycam.level1.storage.OutboxEntity>()
+        val builder = PipelineBuilder()
+        builder.channels = mapOf(
+            "telegram" to telegramConfig(),
+            "email" to ChannelConfig(id = "email", type = "email"),
+        )
+        builder.detectors = mapOf(
+            "motion" to config("motion", routes = listOf("telegram", "email")),
+        )
+        builder.factories = mapOf(
+            "telegram" to { _: ChannelConfig -> tg },
+            "email" to { _: ChannelConfig -> failing },
+        )
+        builder.outboxSink = { row -> queued.add(row) }
+        val p = builder.build()
+
+        p.handleBatch(batch(listOf(trigger("motion", "motion"))))
+
+        val statuses = builder.recorder.recorded.single().channelStatuses
+        assertEquals(EventPipeline.STATUS_DELIVERED, statuses["telegram"])
+        assertEquals(EventPipeline.STATUS_QUEUED, statuses["email"])
+        // Only the failed channel lands in the outbox.
+        assertEquals(listOf("email"), queued.map { it.channelId })
+    }
+
+    @Test
+    fun withoutOutboxSinkFailuresStayFailed() = runBlocking {
+        val alwaysFails = FakeChannel("telegram", "telegram", failures = 99)
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig())
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> alwaysFails })
+        val p = builder.build()
+
+        p.handleBatch(batch(listOf(trigger("motion", "motion"))))
+
+        assertEquals(
+            mapOf("telegram" to EventPipeline.STATUS_FAILED),
+            builder.recorder.recorded.single().channelStatuses,
+        )
     }
 
     @Test

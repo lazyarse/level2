@@ -8,6 +8,8 @@ import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.core.TriggerEvent
+import io.securitycam.level1.storage.OutboxEntity
+import io.securitycam.level1.storage.OutboxKind
 import io.securitycam.level1.storage.SnapshotStore
 import kotlinx.coroutines.delay
 import java.time.Duration
@@ -34,6 +36,13 @@ class EventPipeline(
     private val maxAttempts: Int = 3,
     private val backoffDelays: List<Duration> = defaultBackoffDelays,
     private val sleep: suspend (Duration) -> Unit = { delay(it.toMillis()) },
+    /**
+     * When wired, a delivery that exhausts its retries is persisted to the
+     * offline outbox (status "queued") instead of being dropped ("failed").
+     * Production wires the Room-backed store; tests pass a capture lambda.
+     */
+    private val outboxSink: (suspend (OutboxEntity) -> Unit)? = null,
+    private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun handleBatch(batch: TriggerBatch) {
         val types = batch.triggers.map { it.triggerType }.distinct()
@@ -59,14 +68,22 @@ class EventPipeline(
         val targets = targetsFor(batch.triggers)
 
         val statuses = LinkedHashMap<String, String>()
+        val failedTargets = mutableListOf<ChannelConfig>()
         for (target in targets) {
             val factory = channelFactories[target.type]
             if (factory == null) continue
-            val channel = factory(target)
-            statuses[target.id] = sendWithRetry(channel, message)
+            val status = sendWithRetry(factory(target), message)
+            statuses[target.id] = status
+            if (status == STATUS_FAILED) failedTargets.add(target)
         }
 
-        recorder.record(
+        // Offline queueing: with an outbox wired, exhausted deliveries become
+        // "queued" rows instead of permanent failures.
+        if (outboxSink != null) {
+            for (target in failedTargets) statuses[target.id] = STATUS_QUEUED
+        }
+
+        val eventId = recorder.record(
             RecordedEvent(
                 timestamp = batch.timestamp,
                 cameraName = cameraName,
@@ -82,6 +99,23 @@ class EventPipeline(
                     .firstOrNull { !it.detail.isNullOrBlank() }?.detail,
             ),
         )
+
+        if (outboxSink != null && failedTargets.isNotEmpty()) {
+            for (target in failedTargets) {
+                outboxSink.invoke(
+                    OutboxEntity(
+                        createdAt = nowMs(),
+                        kind = OutboxKind.NOTIFY,
+                        channelId = target.id,
+                        eventId = eventId,
+                        triggerType = type,
+                        eventTime = batch.timestamp.toEpochMilli(),
+                        text = text,
+                        snapshotName = snapshot?.name,
+                    ),
+                )
+            }
+        }
     }
 
     /** Sends with up to [maxAttempts] attempts, backing off between failures. */
@@ -89,13 +123,13 @@ class EventPipeline(
         for (attempt in 0 until maxAttempts) {
             try {
                 channel.send(message)
-                return "delivered"
+                return STATUS_DELIVERED
             } catch (_: Exception) {
-                if (attempt == maxAttempts - 1) return "failed"
+                if (attempt == maxAttempts - 1) return STATUS_FAILED
                 sleep(backoffDelays[attempt])
             }
         }
-        return "failed"
+        return STATUS_FAILED
     }
 
     private fun targetsFor(triggers: List<TriggerEvent>): List<ChannelConfig> {
@@ -138,6 +172,10 @@ class EventPipeline(
             Duration.ofSeconds(2),
             Duration.ofSeconds(4),
         )
+
+        const val STATUS_DELIVERED = "delivered"
+        const val STATUS_FAILED = "failed"
+        const val STATUS_QUEUED = "queued"
     }
 }
 

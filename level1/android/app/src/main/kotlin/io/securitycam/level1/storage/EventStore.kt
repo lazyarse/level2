@@ -76,12 +76,19 @@ interface EventDao {
     @Query("DELETE FROM events")
     suspend fun deleteAll(): Int
 
+    @Query("SELECT * FROM events WHERE id = :id")
+    suspend fun byId(id: Long): EventEntity?
+
+    @Query("UPDATE events SET channel_statuses = :json WHERE id = :id")
+    suspend fun updateChannelStatusesRaw(id: Long, json: String)
+
     data class MediaRef(val snapshot_name: String?, val video_name: String?)
 }
 
-@Database(entities = [EventEntity::class], version = 4, exportSchema = false)
+@Database(entities = [EventEntity::class, OutboxEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
+    abstract fun outboxDao(): OutboxDao
 
     companion object {
         @Volatile
@@ -94,12 +101,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 -> v5: adds the offline-delivery outbox queue. */
+        private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `outbox` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`channelId` TEXT, " +
+                        "`eventId` INTEGER, " +
+                        "`triggerType` TEXT, " +
+                        "`eventTime` INTEGER, " +
+                        "`text` TEXT, " +
+                        "`snapshotName` TEXT, " +
+                        "`mediaPath` TEXT, " +
+                        "`remotePath` TEXT, " +
+                        "`attempts` INTEGER NOT NULL DEFAULT 0, " +
+                        "`lastAttemptAt` INTEGER)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_outbox_createdAt` ON `outbox` (`createdAt`)")
+            }
+        }
+
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "events.db",
-            ).addMigrations(MIGRATION_3_4).build().also { instance = it }
+            ).addMigrations(MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
     }
 }
@@ -110,7 +140,7 @@ abstract class AppDatabase : RoomDatabase() {
  */
 class RoomEventLog(private val dao: EventDao) : EventRecorder {
 
-    override suspend fun record(event: RecordedEvent) {
+    override suspend fun record(event: RecordedEvent): Long =
         dao.insert(
             EventEntity(
                 timestamp = event.timestamp.toString(),
@@ -124,6 +154,17 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
                 detail = event.detail,
             ),
         )
+
+    /**
+     * Late-delivery bookkeeping for the offline outbox: flips one channel's
+     * status on an already-recorded event (e.g. "queued" → "delivered").
+     */
+    suspend fun flipChannelStatus(eventId: Long, channelId: String, status: String) {
+        val row = dao.byId(eventId) ?: return
+        val statuses = row.channelStatuses?.let(::decodeStringMap) ?: return
+        if (statuses[channelId] == status) return
+        val updated = jsonEncodeStringMap(statuses + (channelId to status))
+        dao.updateChannelStatusesRaw(eventId, updated)
     }
 
     override suspend fun deleteEvents(olderThan: Instant?): DeletedMedia {
