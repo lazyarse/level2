@@ -1217,6 +1217,16 @@ private fun DetectorCard(
                         onChanged(config.copy(cooldown = config.cooldown.plusSeconds(15)))
                     },
                 )
+                if (config.type == TriggerType.loitering) {
+                    StepperRow(
+                        label = "Dwell time: ${config.dwellSeconds}s",
+                        canDecrement = config.dwellSeconds > 3,
+                        canIncrement = config.dwellSeconds < 120,
+                        onDecrement = { onChanged(config.copy(dwellSeconds = config.dwellSeconds - 1)) },
+                        onIncrement = { onChanged(config.copy(dwellSeconds = config.dwellSeconds + 1)) },
+                        modifier = Modifier.testTag("dwell_${config.type}"),
+                    )
+                }
                 Text("Route to channels", style = MaterialTheme.typography.bodySmall)
                 for (id in channelIds) {
                     Row(
@@ -1500,8 +1510,9 @@ private fun StepperRow(
     canIncrement: Boolean,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         Text(label, modifier = Modifier.weight(1f))
         IconButton(onClick = onDecrement, enabled = canDecrement) {
             Icon(Icons.Filled.RemoveCircleOutline, contentDescription = "decrease_$label")
@@ -1603,6 +1614,7 @@ private val cameraDetectorTypes = setOf(
     TriggerType.cat,
     TriggerType.vehicle,
     TriggerType.animal,
+    TriggerType.loitering,
 )
 
 private val audioDetectorTypes = setOf(

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SentimentDissatisfied
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeUp
@@ -42,6 +43,7 @@ enum class DetectorType(
     Cat(TriggerType.cat, "Cat", Icons.Filled.Pets),
     Vehicle(TriggerType.vehicle, "Vehicle", Icons.Filled.DirectionsCar),
     Animal(TriggerType.animal, "Animal", Icons.Filled.Pets),
+    Loitering(TriggerType.loitering, "Loitering", Icons.Filled.Timer),
     Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant);
 
     companion object {

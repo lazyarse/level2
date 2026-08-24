@@ -342,6 +342,15 @@ data class AppSettings(
                     motionGated = true,
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.loitering to DetectorConfig(
+                    type = TriggerType.loitering,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    motionGated = true,
+                    dwellSeconds = 10,
+                    routeToChannelIds = listOf("telegram"),
+                ),
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),

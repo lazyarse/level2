@@ -53,6 +53,9 @@ object DetectorRegistry {
         TriggerType.animal to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.AnimalDetector(c)
         },
+        TriggerType.loitering to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.LoiteringDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

@@ -15,6 +15,8 @@ data class DetectorConfig(
     val cooldown: Duration = Duration.ofSeconds(5),
     val routeToChannelIds: List<String> = emptyList(),
     val motionGated: Boolean = false,
+    /** Loitering only: seconds of continuous presence before firing. */
+    val dwellSeconds: Int = 10,
 ) {
     fun copyWith(
         type: String? = null,
@@ -24,6 +26,7 @@ data class DetectorConfig(
         cooldown: Duration? = null,
         routeToChannelIds: List<String>? = null,
         motionGated: Boolean? = null,
+        dwellSeconds: Int? = null,
     ): DetectorConfig = DetectorConfig(
         type = type ?: this.type,
         enabled = enabled ?: this.enabled,
@@ -32,6 +35,7 @@ data class DetectorConfig(
         cooldown = cooldown ?: this.cooldown,
         routeToChannelIds = routeToChannelIds ?: this.routeToChannelIds,
         motionGated = motionGated ?: this.motionGated,
+        dwellSeconds = dwellSeconds ?: this.dwellSeconds,
     )
 
     fun toJson(): Map<String, Any?> = mapOf(
@@ -42,6 +46,7 @@ data class DetectorConfig(
         "cooldownMs" to cooldown.toMillis(),
         "routeToChannelIds" to routeToChannelIds,
         "motionGated" to motionGated,
+        "dwellSeconds" to dwellSeconds,
     )
 
     companion object {
@@ -57,6 +62,7 @@ data class DetectorConfig(
                 ?.map { it as String }
                 ?: emptyList(),
             motionGated = json["motionGated"] as? Boolean ?: false,
+            dwellSeconds = (json["dwellSeconds"] as? Number)?.toInt() ?: 10,
         )
     }
 }
