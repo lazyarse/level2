@@ -9,11 +9,14 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import io.securitycam.level1.backup.CloudUploaderRegistry
+import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.channels.ChannelRegistry
 import io.securitycam.level1.channels.OutboxDrainer
 import io.securitycam.level1.core.AlertMessage
 import io.securitycam.level1.core.TriggerType
 import io.securitycam.level1.event.EventPipeline
+import io.securitycam.level1.monitor.MonitoringRuntime
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
 import io.securitycam.level1.storage.FileSnapshotStore
@@ -47,12 +50,41 @@ class OutboxWorker(
         val drainer = OutboxDrainer(
             queue = OutboxStore.from(db),
             sendNotify = { row -> deliverNotify(row, settings.channelConfigs, snapshots) },
-            // Backup rows arrive with the cloud-backup phase; treat as not-yet.
-            sendBackup = { false },
+            sendBackup = { row -> uploadBackup(row, settings.cloudBackup) },
             onDelivered = { row -> flip(row, eventLog, EventPipeline.STATUS_DELIVERED) },
             onExpired = { row -> flip(row, eventLog, EventPipeline.STATUS_FAILED) },
         )
         return if (drainer.drainOnce()) Result.retry() else Result.success()
+    }
+
+    /**
+     * Uploads one backup row. mediaPath is either a snapshot file name
+     * (resolved under filesDir/snapshots) or MonitoringRuntime's
+     * "clip:<displayName>" MediaStore reference.
+     */
+    private suspend fun uploadBackup(
+        row: io.securitycam.level1.storage.OutboxEntity,
+        cloud: io.securitycam.level1.core.CloudBackupSettings,
+    ): Boolean {
+        val uploader = CloudUploaderRegistry.forSettings(cloud) ?: return false
+        val remoteKey = row.remotePath ?: return false
+        val media = row.mediaPath ?: return false
+        return if (media.startsWith(MonitoringRuntime.CLIP_MEDIA_PREFIX)) {
+            val name = media.removePrefix(MonitoringRuntime.CLIP_MEDIA_PREFIX)
+            val opened = java.util.concurrent.atomic.AtomicBoolean(false)
+            val ok = uploader.upload(remoteKey, "video/mp4", -1L) {
+                runCatching { VideoClipRecorder.openStream(name) }.getOrNull().also {
+                    if (it != null) opened.set(true)
+                } ?: throw IllegalStateException("clip unavailable")
+            }
+            // Distinguish transport failure from missing media so missing
+            // clips expire instead of retrying forever.
+            ok || !opened.get()
+        } else {
+            val file = File(applicationContext.filesDir, "snapshots/$media")
+            if (!file.exists()) return true // nothing left to back up; drop quietly
+            uploader.upload(remoteKey, "image/jpeg", file.length()) { file.inputStream() }
+        }
     }
 
     private suspend fun flip(row: OutboxEntity, log: RoomEventLog, status: String) {

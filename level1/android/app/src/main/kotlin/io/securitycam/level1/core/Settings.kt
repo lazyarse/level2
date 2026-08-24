@@ -102,6 +102,46 @@ object ScreenOrientation {
     }
 }
 
+/** Cloud backup settings (WebDAV / S3-compatible; see backup/ design doc). */
+data class CloudBackupSettings(
+    val enabled: Boolean = false,
+    val backend: String = "webdav",        // "webdav" | "s3"
+    val serverUrl: String = "",            // WebDAV base URL or S3 endpoint
+    val bucketOrPath: String = "",         // S3 bucket or WebDAV remote dir
+    val region: String = "",               // S3 only
+    val username: String = "",             // WebDAV user | S3 access key id
+    val password: String = "",             // → SecretStore (SECRET_FIELD)
+    val backupClips: Boolean = true,
+    val backupSnapshots: Boolean = true,
+) {
+    fun toJson(): Map<String, Any?> = mapOf(
+        "enabled" to enabled,
+        "backend" to backend,
+        "serverUrl" to serverUrl,
+        "bucketOrPath" to bucketOrPath,
+        "region" to region,
+        "username" to username,
+        "backupClips" to backupClips,
+        "backupSnapshots" to backupSnapshots,
+    )
+
+    companion object {
+        const val SECRET_FIELD = "password"
+
+        fun fromJson(json: Map<String, Any?>): CloudBackupSettings = CloudBackupSettings(
+            enabled = json["enabled"] as? Boolean ?: false,
+            backend = json["backend"] as? String ?: "webdav",
+            serverUrl = json["serverUrl"] as? String ?: "",
+            bucketOrPath = json["bucketOrPath"] as? String ?: "",
+            region = json["region"] as? String ?: "",
+            username = json["username"] as? String ?: "",
+            password = json["password"] as? String ?: "",
+            backupClips = json["backupClips"] as? Boolean ?: true,
+            backupSnapshots = json["backupSnapshots"] as? Boolean ?: true,
+        )
+    }
+}
+
 /**
  * App settings (port of `lib/core/settings.dart`). Keeps the same JSON keys so
  * the stored blob shape matches the Dart reference.
@@ -124,6 +164,7 @@ data class AppSettings(
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
     val knownFaces: List<KnownFace> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
+    val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -143,6 +184,7 @@ data class AppSettings(
         scheduleExclusions: List<ScheduleWindow>? = null,
         knownFaces: List<KnownFace>? = null,
         liveView: LiveViewSettings? = null,
+        cloudBackup: CloudBackupSettings? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraId = cameraId ?: this.cameraId,
@@ -160,6 +202,7 @@ data class AppSettings(
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
         knownFaces = knownFaces ?: this.knownFaces,        liveView = liveView ?: this.liveView,
+        cloudBackup = cloudBackup ?: this.cloudBackup,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -181,6 +224,7 @@ data class AppSettings(
         json["knownFaces"] = knownFaces.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
+        json["cloudBackup"] = cloudBackup.toJson()
         return json
     }
 
@@ -419,6 +463,9 @@ data class AppSettings(
                 liveView = (json["liveView"] as? Map<*, *>)
                     ?.let { LiveViewSettings.fromJson(it as Map<String, Any?>) }
                     ?: LiveViewSettings(),
+                cloudBackup = (json["cloudBackup"] as? Map<*, *>)
+                    ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
+                    ?: CloudBackupSettings(),
             )
         }
     }

@@ -325,6 +325,32 @@ class SettingsViewModel(
         stopCameraSession()
     }
 
+    /**
+     * "Test connection" for cloud backup: probes the configured backend with
+     * current draft values and surfaces the outcome as a snackbar message.
+     */
+    fun validateCloudBackup() {
+        val draft = _draft.value ?: return
+        viewModelScope.launch {
+            val cb = draft.cloudBackup
+            if (cb.serverUrl.isBlank()) {
+                _message.value = "Enter a server URL first"
+                return@launch
+            }
+            val uploader = io.securitycam.level1.backup.CloudUploaderRegistry.forSettings(cb)
+            if (uploader == null) {
+                _message.value = "Cloud backup backend unavailable"
+                return@launch
+            }
+            val ok = runCatching { uploader.validate() }.getOrDefault(false)
+            _message.value = if (ok) {
+                "Cloud backup connection OK"
+            } else {
+                "Cloud backup connection failed — check URL, credentials and TLS"
+            }
+        }
+    }
+
     /** Persists the stashed capture as `<id>.jpg`; best-effort, never fatal. */
     private fun persistThumbnail(faceId: String) {
         val app = application ?: return

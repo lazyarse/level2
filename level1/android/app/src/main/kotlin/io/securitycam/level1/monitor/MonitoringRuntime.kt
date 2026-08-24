@@ -6,6 +6,7 @@ import io.securitycam.level1.camera_service.CameraFrameBus
 import io.securitycam.level1.camera_service.MonitoringServiceController
 import io.securitycam.level1.camera_service.VideoClipRecorder
 import io.securitycam.level1.channels.ChannelRegistry
+import io.securitycam.level1.backup.RemoteKeys
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.Snapshot
 import io.securitycam.level1.core.mediaFileName
@@ -26,9 +27,12 @@ import io.securitycam.level1.identity.KnownFaceStore
 import io.securitycam.level1.detection.pipeline.AnalysisDispatcher
 import io.securitycam.level1.detection.pipeline.DetectorPipeline
 import io.securitycam.level1.event.EventPipeline
+import io.securitycam.level1.event.TriggerBatch
 import io.securitycam.level1.event.TriggerBatcher
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.FileSnapshotStore
+import io.securitycam.level1.storage.OutboxEntity
+import io.securitycam.level1.storage.OutboxKind
 import io.securitycam.level1.storage.OutboxStore
 import io.securitycam.level1.storage.RoomEventLog
 import io.securitycam.level1.sensors.PcmWindowAccumulator
@@ -99,6 +103,9 @@ class MonitoringRuntime private constructor(
     companion object {
         private const val TAG = "MonitoringRuntime"
         private const val HEALTH_ID = "health"
+
+        /** mediaPath prefix marking a MediaStore clip display name. */
+        const val CLIP_MEDIA_PREFIX = "clip:"
 
         suspend fun create(
             context: Context,
@@ -220,6 +227,7 @@ class MonitoringRuntime private constructor(
                 android.util.Log.i(TAG, "batch emitted triggers=${it.triggers.size}")
                 eventPipeline.handleBatch(it)
                 android.util.Log.i(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
+                queueCloudBackups(it)
             }
         }
         watchdog?.let { watchdog ->
@@ -293,7 +301,6 @@ class MonitoringRuntime private constructor(
                 }
             })
         }
-
     private suspend fun captureVideo(triggerAt: Instant): String? =
         suspendCancellableCoroutine { cont ->
             VideoClipRecorder.exportClip(
@@ -305,4 +312,39 @@ class MonitoringRuntime private constructor(
                 if (cont.isActive) cont.resumeWith(Result.success(name))
             }
         }
+
+    /**
+     * Cloud backup (see docs/plans/2026-08-24-cloud-backup-design.md): after
+     * the event is recorded, queue snapshot/clip uploads through the shared
+     * outbox. Rows carry a media *reference* (snapshot file name, or the
+     * "clip:" prefixed MediaStore display name) — bytes are opened at send.
+     */
+    private suspend fun queueCloudBackups(batch: TriggerBatch) {
+        val cb = settings.cloudBackup
+        if (!cb.enabled) return
+        val store = OutboxStore.from(AppDatabase.get(context))
+        val now = Instant.now().toEpochMilli()
+        batch.snapshot?.let { snap ->
+            if (!cb.backupSnapshots) return@let
+            store.enqueue(
+                OutboxEntity(
+                    createdAt = now,
+                    kind = OutboxKind.BACKUP,
+                    mediaPath = snap.name,
+                    remotePath = RemoteKeys.forMedia(settings.cameraName, snap.name, now),
+                ),
+            )
+        }
+        batch.videoName?.let { video ->
+            if (!cb.backupClips) return@let
+            store.enqueue(
+                OutboxEntity(
+                    createdAt = now,
+                    kind = OutboxKind.BACKUP,
+                    mediaPath = "$CLIP_MEDIA_PREFIX$video",
+                    remotePath = RemoteKeys.forMedia(settings.cameraName, video, now),
+                ),
+            )
+        }
+    }
 }

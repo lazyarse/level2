@@ -37,7 +37,8 @@ class SettingsStore(
         val raw = dataStore.data.first()[KEY]
         val settings = if (raw == null) AppSettings.defaults() else tryParse(raw)
         val withChannelSecrets = injectSecrets(settings)
-        return migrateLegacyCooldowns(injectLiveViewSecret(withChannelSecrets))
+        val withLiveView = migrateLegacyCooldowns(injectLiveViewSecret(withChannelSecrets))
+        return injectCloudBackupSecret(withLiveView)
     }
 
     /**
@@ -68,11 +69,16 @@ class SettingsStore(
         if (lv.password.isNotEmpty()) {
             secrets.write(liveViewSecretKey(), lv.password)
         }
+        val cb = settings.cloudBackup
+        if (cb.password.isNotEmpty()) {
+            secrets.write(cloudBackupSecretKey(), cb.password)
+        }
         val sanitized = settings.copyWith(
             channelConfigs = settings.channelConfigs.map { c ->
                 c.copyWith(settingsJson = stripSecrets(c))
             },
             liveView = lv.copy(password = ""),
+            cloudBackup = cb.copy(password = ""),
         )
         dataStore.edit { it[KEY] = mapToJsonString(sanitized.toJson()) }
     }
@@ -139,6 +145,22 @@ class SettingsStore(
         val stored = secrets.read(liveViewSecretKey())
         if (!stored.isNullOrEmpty()) {
             return settings.copyWith(liveView = lv.copy(password = stored))
+        }
+        return settings
+    }
+
+    private fun cloudBackupSecretKey(): String = "cloudbackup.password"
+
+    private suspend fun injectCloudBackupSecret(settings: AppSettings): AppSettings {
+        val cb = settings.cloudBackup
+        val inline = cb.password
+        if (inline.isNotEmpty()) {
+            secrets.write(cloudBackupSecretKey(), inline)
+            return settings
+        }
+        val stored = secrets.read(cloudBackupSecretKey())
+        if (!stored.isNullOrEmpty()) {
+            return settings.copyWith(cloudBackup = cb.copy(password = stored))
         }
         return settings
     }

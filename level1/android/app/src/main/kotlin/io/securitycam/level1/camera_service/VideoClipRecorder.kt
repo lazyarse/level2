@@ -838,6 +838,20 @@ object VideoClipRecorder {
         return File(appContext.filesDir, "videos/$name").exists()
     }
 
+    /** Read stream for a stored clip (MediaStore or app-private fallback). */
+    fun openStream(name: String): java.io.InputStream? {
+        val appContext = context ?: return null
+        val uri = queryUriByName(name)
+        if (uri != null) {
+            try {
+                return appContext.contentResolver.openInputStream(uri)
+            } catch (_: Exception) {
+            }
+        }
+        val fallback = File(appContext.filesDir, "videos/$name")
+        return if (fallback.exists()) fallback.inputStream() else null
+    }
+
     /** Whether the stored clip carries an audio track. Pure read, no FGS. */
     fun hasAudio(name: String): Boolean {
         val appContext = context ?: return false

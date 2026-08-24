@@ -667,6 +667,133 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        CollapsibleSection("Cloud backup", summary = cloudBackupSummary(current.cloudBackup)) {
+                            Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                                SwitchRow(
+                                    title = "Back up clips & snapshots",
+                                    subtitle = "Uploads to your own server when online",
+                                    checked = current.cloudBackup.enabled,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(enabled = v)) }
+                                    },
+                                )
+                            }
+                            if (current.cloudBackup.enabled) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    listOf("webdav" to "WebDAV", "s3" to "S3").forEach { (value, label) ->
+                                        FilterChip(
+                                            selected = current.cloudBackup.backend == value,
+                                            onClick = {
+                                                viewModel.update {
+                                                    it.copy(cloudBackup = it.cloudBackup.copy(backend = value))
+                                                }
+                                            },
+                                            label = { Text(label) },
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = current.cloudBackup.serverUrl,
+                                    onValueChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(serverUrl = v)) }
+                                    },
+                                    label = {
+                                        Text(if (current.cloudBackup.backend == "s3") "Endpoint URL" else "Server URL")
+                                    },
+                                    placeholder = {
+                                        Text(
+                                            if (current.cloudBackup.backend == "s3") {
+                                                "https://s3.eu-central-1.amazonaws.com"
+                                            } else {
+                                                "https://cloud.example.com/remote.php/dav/files/me"
+                                            },
+                                        )
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("cloudBackupUrl"),
+                                )
+                                OutlinedTextField(
+                                    value = current.cloudBackup.bucketOrPath,
+                                    onValueChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(bucketOrPath = v)) }
+                                    },
+                                    label = {
+                                        Text(if (current.cloudBackup.backend == "s3") "Bucket" else "Remote folder")
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("cloudBackupBucket"),
+                                )
+                                if (current.cloudBackup.backend == "s3") {
+                                    OutlinedTextField(
+                                        value = current.cloudBackup.region,
+                                        onValueChange = { v ->
+                                            viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(region = v)) }
+                                        },
+                                        label = { Text("Region") },
+                                        placeholder = { Text("us-east-1") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("cloudBackupRegion"),
+                                    )
+                                }
+                                OutlinedTextField(
+                                    value = current.cloudBackup.username,
+                                    onValueChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(username = v)) }
+                                    },
+                                    label = {
+                                        Text(if (current.cloudBackup.backend == "s3") "Access key ID" else "Username")
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("cloudBackupUser"),
+                                )
+                                OutlinedTextField(
+                                    value = current.cloudBackup.password,
+                                    onValueChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(password = v)) }
+                                    },
+                                    label = {
+                                        Text(if (current.cloudBackup.backend == "s3") "Secret access key" else "Password")
+                                    },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("cloudBackupPassword"),
+                                )
+                                SwitchRow(
+                                    title = "Include clips",
+                                    subtitle = "Upload event videos",
+                                    checked = current.cloudBackup.backupClips,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(backupClips = v)) }
+                                    },
+                                )
+                                SwitchRow(
+                                    title = "Include snapshots",
+                                    subtitle = "Upload alert photos",
+                                    checked = current.cloudBackup.backupSnapshots,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(backupSnapshots = v)) }
+                                    },
+                                )
+                                FilledTonalButton(onClick = { viewModel.validateCloudBackup() }) {
+                                    Text("Test connection")
+                                }
+                            }
+                        }
                         CollapsibleSection("Events", summary = retentionSummary(current.retentionDays)) {
                             Text(
                                 "Automatic retention: " +
@@ -1502,6 +1629,16 @@ private fun faceRecognitionSummary(settings: AppSettings): String {
     val count = settings.knownFaces.size
     val plural = if (count == 1) "face" else "faces"
     return if (!enabled) "off" else "on, $count $plural enrolled"
+}
+
+private fun cloudBackupSummary(cb: io.securitycam.level1.core.CloudBackupSettings): String {
+    if (!cb.enabled) return "off"
+    val backend = if (cb.backend == "s3") "s3" else "webdav"
+    val kinds = buildList {
+        if (cb.backupClips) add("clips")
+        if (cb.backupSnapshots) add("snaps")
+    }
+    return "$backend" + if (kinds.isEmpty()) "" else " (${kinds.joinToString("+")})"
 }
 
 private fun liveViewSummary(lv: LiveViewSettings): String {

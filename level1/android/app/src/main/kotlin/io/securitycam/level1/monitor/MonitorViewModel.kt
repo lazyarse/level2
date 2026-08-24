@@ -22,6 +22,7 @@ import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.storage.AppDatabase
 import io.securitycam.level1.storage.EncryptedSecretStore
 import io.securitycam.level1.storage.FileSnapshotStore
+import io.securitycam.level1.storage.OutboxStore
 import io.securitycam.level1.storage.RoomEventLog
 import io.securitycam.level1.storage.SettingsStore
 import java.io.File
@@ -426,17 +427,22 @@ class MonitorViewModel(
     /**
      * Retention purge: deletes event rows older than [AppSettings.retentionDays]
      * along with their snapshots and clips (port of the Dart purge logic).
+     * Files referenced by pending cloud-backup outbox rows are pinned — they
+     * survive this purge until their upload resolves.
      */
     private suspend fun purgeOldEvents(settings: AppSettings) {
         val context = getApplication<Application>()
         val cutoff = Instant.now().minus(Duration.ofDays(settings.retentionDays.toLong()))
         val deleted = RoomEventLog(AppDatabase.get(context).eventDao()).deleteEvents(cutoff)
+        val pinned = OutboxStore.from(AppDatabase.get(context)).pendingBackupFileNames()
         val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
         for (name in deleted.snapshotNames) {
+            if (name in pinned) continue
             runCatching { snapshots.delete(name) }
             io.securitycam.level1.ui.events.ThumbCache.evict("snap:$name")
         }
         for (name in deleted.videoNames) {
+            if (name in pinned) continue
             runCatching { VideoClipRecorder.delete(name) }
         }
     }

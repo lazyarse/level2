@@ -78,6 +78,10 @@ interface OutboxDao {
         "DELETE FROM outbox WHERE attempts >= :maxAttempts OR (:nowMs - createdAt) > :maxAgeMs",
     )
     suspend fun dropExpired(maxAttempts: Int, nowMs: Long, maxAgeMs: Long): Int
+
+    /** Media references held by pending backup rows (retention pinning). */
+    @Query("SELECT mediaPath FROM outbox WHERE kind = 'backup' AND mediaPath IS NOT NULL")
+    suspend fun pendingBackupMediaPaths(): List<String>
 }
 
 /** Minimal queue contract so drain logic is testable without Room. */
@@ -105,6 +109,12 @@ class OutboxStore(private val dao: OutboxDao) : OutboxQueue {
 
     suspend fun dropExpired(nowMs: Long): Int =
         dao.dropExpired(OutboxPolicy.MAX_ATTEMPTS, nowMs, OutboxPolicy.MAX_AGE.toMillis())
+
+    /** File names pinned by pending backup rows (never retention-purged). */
+    suspend fun pendingBackupFileNames(): Set<String> =
+        dao.pendingBackupMediaPaths()
+            .map { it.substringAfterLast('/') }
+            .toSet()
 
     companion object {
         const val BATCH_SIZE = 20
