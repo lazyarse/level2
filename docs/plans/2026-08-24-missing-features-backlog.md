@@ -4,6 +4,15 @@ Audit date: 2026-08-24. Common security-camera features not yet implemented,
 ordered by effort/value. Vehicle + animal YOLO detectors were pulled from this
 list and shipped same-day (see git history).
 
+## Designed, pending implementation (2026-08-24)
+
+| Feature | Design doc |
+|---|---|
+| Offline alert outbox (queue notifications per event×channel, WorkManager-drained) | `2026-08-24-offline-alert-outbox-design.md` |
+| Cloud backup of clips & snapshots (WebDAV + S3-compatible; Drive rejected for privacy) | `2026-08-24-cloud-backup-design.md` |
+| Loitering detector (dwell-based person presence) | `2026-08-24-loitering-detector-design.md` |
+| Region editor live preview fix | `2026-08-24-region-editor-preview-fix-design.md` |
+
 ## Low effort
 
 | Feature | Notes |
@@ -15,11 +24,12 @@ list and shipped same-day (see git history).
 
 | Feature | Notes |
 |---|---|
-| Loitering alert | Person present > N seconds inside an inclusion region. Extend `PersonDetector` with per-region dwell timers reset when boxes leave. |
 | Continuous recording mode | Today only event clips are written (`VideoClipRecorder`). Needs a rolling segment writer (e.g. 5-min files) plus storage-pressure eviction independent of `retentionDays`. |
 | Motion heatmap / activity stats | Event data is already in Room with timestamps + trigger types. Aggregate into an hourly/day-of-week view or frame-overlay heatmap. |
 | Two-way audio (talk-back) | `LiveViewServer` currently sends RTP one way. Would need a receive path (RTSP RECORD or back-channel) + `AudioTrack` playback of client PCM. |
-| Cloud clip backup | Auto-upload event clips/snapshots to WebDAV/S3/Drive after export. Natural extension of the webhook channel; credentials via `SecretStore`. |
+
+*(Cloud backup, loitering, and the offline outbox moved to "Designed" above;
+their original rows are covered by the design docs.)*
 
 ## High effort
 
