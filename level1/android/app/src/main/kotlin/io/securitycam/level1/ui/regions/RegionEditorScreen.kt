@@ -83,6 +83,11 @@ private fun regionColor(mode: RegionEditorMode, index: Int): Color =
  * `lib/ui/region_editor_screen.dart`, extended per the privacy-zones design
  * with an Inclusion/Exclusion mode toggle: both lists are edited in place
  * (exclusions rendered in red) and reported together via [onSave].
+ *
+ * Geometry: the preview letterboxes (FIT_CENTER) and all screen↔normalized
+ * mapping goes through [fitCenterBox], so drawn regions land exactly where
+ * they appear on screen AND match detector coordinates (which are normalized
+ * to the analysis frame of [frameWidth]×[frameHeight]).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -93,6 +98,8 @@ fun RegionEditorScreen(
     modifier: Modifier = Modifier,
     showPreview: Boolean = true,
     initialExclusions: List<DetectionRegion> = emptyList(),
+    frameWidth: Int = 320,
+    frameHeight: Int = 240,
 ) {
     val vm = remember { RegionEditorViewModel(initialRegions, initialExclusions) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -133,7 +140,7 @@ fun RegionEditorScreen(
                     modifier = Modifier.testTag("regionMode_exclusion"),
                 ) { Text("Exclusion") }
             }
-            EditorCanvas(vm, showPreview, Modifier.weight(1f).padding(8.dp))
+            EditorCanvas(vm, showPreview, frameWidth, frameHeight, Modifier.weight(1f).padding(8.dp))
             Column(Modifier.padding(12.dp)) {
                 FlowRow {
                     ToolButton(
@@ -292,10 +299,16 @@ private fun ToolButton(label: String, active: Boolean, tag: String, onClick: () 
 }
 
 @Composable
-private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifier: Modifier) {
+private fun EditorCanvas(
+    vm: RegionEditorViewModel,
+    showPreview: Boolean,
+    frameWidth: Int,
+    frameHeight: Int,
+    modifier: Modifier,
+) {
     Box(modifier) {
         if (showPreview) {
-            PreviewSurface(Modifier.fillMaxSize())
+            PreviewSurface(Modifier.fillMaxSize(), fillCrop = false)
         } else {
             Box(
                 Modifier
@@ -307,21 +320,27 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("regionCanvas")
-                .pointerInput(Unit) {
+                .pointerInput(Unit, frameWidth, frameHeight) {
+                    val box = fitCenterBox(
+                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                    )
                     detectTapGestures { off ->
-                        val (nx, ny) = toNorm(off, size.width.toFloat(), size.height.toFloat())
+                        val (nx, ny) = screenToNorm(off.x, off.y, box)
                         vm.onTap(nx, ny)
                     }
                 }
-                .pointerInput(Unit) {
+                .pointerInput(Unit, frameWidth, frameHeight) {
+                    val box = fitCenterBox(
+                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                    )
                     detectDragGestures(
                         onDragStart = { off ->
-                            val (nx, ny) = toNorm(off, size.width.toFloat(), size.height.toFloat())
+                            val (nx, ny) = screenToNorm(off.x, off.y, box)
                             vm.onPanStart(nx, ny)
                         },
                         onDrag = { change, _ ->
                             change.consume()
-                            val (nx, ny) = toNorm(change.position, size.width.toFloat(), size.height.toFloat())
+                            val (nx, ny) = screenToNorm(change.position.x, change.position.y, box)
                             vm.onPanUpdate(nx, ny)
                         },
                         onDragEnd = { vm.onPanEnd() },
@@ -329,18 +348,17 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
                     )
                 },
         ) {
-            val w = size.width
-            val h = size.height
+            val b = fitCenterBox(size.width, size.height, frameWidth, frameHeight)
             vm.regions.forEachIndexed { i, r ->
                 val base = regionColor(vm.mode, i)
                 val fill = base.copy(alpha = 0.18f)
                 val isSelected = i == vm.selected
                 if (r.shape == DetectionRegionShape.rect && r.points.size >= 4) {
                     val rect = Rect(
-                        left = (r.points[0] * w).toFloat(),
-                        top = (r.points[1] * h).toFloat(),
-                        right = (r.points[2] * w).toFloat(),
-                        bottom = (r.points[3] * h).toFloat(),
+                        left = normToScreen(r.points[0], b.offsetX, b.width),
+                        top = normToScreen(r.points[1], b.offsetY, b.height),
+                        right = normToScreen(r.points[2], b.offsetX, b.width),
+                        bottom = normToScreen(r.points[3], b.offsetY, b.height),
                     )
                     drawRect(fill, topLeft = rect.topLeft, size = rect.size)
                     drawRect(base, topLeft = rect.topLeft, size = rect.size, style = Stroke(width = 2f))
@@ -354,7 +372,10 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
                     val path = Path()
                     var k = 0
                     while (k + 1 < r.points.size) {
-                        val p = Offset((r.points[k] * w).toFloat(), (r.points[k + 1] * h).toFloat())
+                        val p = Offset(
+                            normToScreen(r.points[k], b.offsetX, b.width),
+                            normToScreen(r.points[k + 1], b.offsetY, b.height),
+                        )
                         if (k == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
                         k += 2
                     }
@@ -365,7 +386,10 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
                         k = 0
                         while (k + 1 < r.points.size) {
                             drawHandle(
-                                Offset((r.points[k] * w).toFloat(), (r.points[k + 1] * h).toFloat()),
+                                Offset(
+                                    normToScreen(r.points[k], b.offsetX, b.width),
+                                    normToScreen(r.points[k + 1], b.offsetY, b.height),
+                                ),
                             )
                             k += 2
                         }
@@ -377,7 +401,10 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
                     val path = Path()
                     var k = 0
                     while (k + 1 < p.size) {
-                        val pt = Offset((p[k] * w).toFloat(), (p[k + 1] * h).toFloat())
+                        val pt = Offset(
+                            normToScreen(p[k], b.offsetX, b.width),
+                            normToScreen(p[k + 1], b.offsetY, b.height),
+                        )
                         if (k == 0) path.moveTo(pt.x, pt.y) else path.lineTo(pt.x, pt.y)
                         k += 2
                     }
@@ -386,10 +413,10 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
             }
             vm.dragRect?.let { dr ->
                 val drRect = Rect(
-                    left = (dr[0] * w).toFloat(),
-                    top = (dr[1] * h).toFloat(),
-                    right = (dr[2] * w).toFloat(),
-                    bottom = (dr[3] * h).toFloat(),
+                    left = normToScreen(dr[0], b.offsetX, b.width),
+                    top = normToScreen(dr[1], b.offsetY, b.height),
+                    right = normToScreen(dr[2], b.offsetX, b.width),
+                    bottom = normToScreen(dr[3], b.offsetY, b.height),
                 )
                 drawRect(
                     Color.White,
@@ -402,10 +429,33 @@ private fun EditorCanvas(vm: RegionEditorViewModel, showPreview: Boolean, modifi
     }
 }
 
+/** Letterboxed display area of a FIT_CENTER preview inside its view. */
+internal data class DisplayBox(val offsetX: Float, val offsetY: Float, val width: Float, val height: Float)
+
+/**
+ * Geometry for mapping between screen space and frame-normalized coordinates:
+ * FIT_CENTER scales the frame uniformly to fit and centers it, so the visible
+ * content occupies exactly this box inside the canvas.
+ */
+internal fun fitCenterBox(canvasW: Float, canvasH: Float, frameW: Int, frameH: Int): DisplayBox {
+    if (canvasW <= 0f || canvasH <= 0f || frameW <= 0 || frameH <= 0) {
+        return DisplayBox(0f, 0f, canvasW.coerceAtLeast(1f), canvasH.coerceAtLeast(1f))
+    }
+    val gain = minOf(canvasW / frameW, canvasH / frameH)
+    val w = frameW * gain
+    val h = frameH * gain
+    return DisplayBox((canvasW - w) / 2f, (canvasH - h) / 2f, w, h)
+}
+
+/** Screen point → normalized [0..1] frame coordinates, clamped to the image. */
+internal fun screenToNorm(x: Float, y: Float, box: DisplayBox): Pair<Double, Double> =
+    (((x - box.offsetX) / box.width).toDouble().coerceIn(0.0, 1.0)) to
+        (((y - box.offsetY) / box.height).toDouble().coerceIn(0.0, 1.0))
+
+/** Normalized [0..1] coordinate → screen position along one axis. */
+internal fun normToScreen(norm: Double, offset: Float, extent: Float): Float =
+    offset + (norm * extent).toFloat()
+
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHandle(c: Offset) {
     drawCircle(Color.White, radius = 5f, center = c)
 }
-
-private fun toNorm(p: Offset, w: Float, h: Float): Pair<Double, Double> =
-    (p.x / w).coerceIn(0f, 1f).toDouble() to
-        (p.y / h).coerceIn(0f, 1f).toDouble()

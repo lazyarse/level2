@@ -92,6 +92,12 @@ fun SecurityCamApp(
                     settingsViewModel.beginRegionPreview()
                     onDispose { settingsViewModel.endRegionPreview() }
                 }
+                // Letterbox mapping needs the analysis-frame aspect so drawn
+                // regions match detector coordinates exactly.
+                val analysisDims = io.securitycam.level1.core.AnalysisResolution.size(
+                    settingsViewModel.draft.value?.analysisResolution
+                        ?: io.securitycam.level1.core.AnalysisResolution.balanced,
+                )
                 RegionEditorScreen(
                     initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
                     initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),
@@ -101,6 +107,8 @@ fun SecurityCamApp(
                         }
                     },
                     onClose = { showRegionEditor = false },
+                    frameWidth = analysisDims.first,
+                    frameHeight = analysisDims.second,
                 )
             } else {
                 when (tab) {

@@ -24,9 +24,13 @@ import io.securitycam.level1.camera_service.MonitoringServiceController
  * CameraX applies the SurfaceTexture transform for orientation, so the preview
  * renders upright on its own. A [DisplayManager.DisplayListener] re-applies the
  * target rotation when the display changes.
+ *
+ * [fillCrop]: FILL_CENTER crops overflow when aspect ratios differ (monitor
+ * screen). Pass false for FIT_CENTER letterboxing — the region editor needs
+ * uncropped geometry so drawn regions map 1:1 onto analyzed frames.
  */
 @Composable
-fun PreviewSurface(modifier: Modifier = Modifier) {
+fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
     val context = LocalContext.current
     val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
@@ -59,7 +63,11 @@ fun PreviewSurface(modifier: Modifier = Modifier) {
         factory = { ctx ->
             PreviewView(ctx).apply {
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                scaleType = PreviewView.ScaleType.FILL_CENTER
+                scaleType = if (fillCrop) {
+                    PreviewView.ScaleType.FILL_CENTER
+                } else {
+                    PreviewView.ScaleType.FIT_CENTER
+                }
                 MonitoringServiceController.setPreviewSurfaceProvider(surfaceProvider)
             }
         },
