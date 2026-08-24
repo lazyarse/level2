@@ -117,7 +117,7 @@ class YamnetClassifier private constructor(
             var rms = 0.0
             for (s in windowSamples) rms += s * s
             rms = sqrt(rms / windowSamples.size)
-            val loudNoise = ((rms - 0.3) / 0.3).coerceIn(0.0, 1.0)
+            val loudNoise = ((rms - 0.05) / 0.15).coerceIn(0.0, 1.0)
             return mapOf(
                 "baby_cry" to if (BABY_CRY_CLASS < classScores.size) classScores[BABY_CRY_CLASS].toDouble() else 0.0,
                 "glass" to glass,
