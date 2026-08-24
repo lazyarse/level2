@@ -3,6 +3,7 @@ package io.securitycam.level1.core
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.HealthAndSafety
@@ -39,6 +40,8 @@ enum class DetectorType(
     CatMeow(TriggerType.catMeow, "Cat vocalisation", Icons.Filled.Pets),
     Dog(TriggerType.dog, "Dog", Icons.Filled.Pets),
     Cat(TriggerType.cat, "Cat", Icons.Filled.Pets),
+    Vehicle(TriggerType.vehicle, "Vehicle", Icons.Filled.DirectionsCar),
+    Animal(TriggerType.animal, "Animal", Icons.Filled.Pets),
     Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant);
 
     companion object {

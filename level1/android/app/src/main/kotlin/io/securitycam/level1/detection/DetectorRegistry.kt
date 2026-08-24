@@ -47,6 +47,12 @@ object DetectorRegistry {
         TriggerType.cat to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.CatDetector(c)
         },
+        TriggerType.vehicle to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.VehicleDetector(c)
+        },
+        TriggerType.animal to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.AnimalDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

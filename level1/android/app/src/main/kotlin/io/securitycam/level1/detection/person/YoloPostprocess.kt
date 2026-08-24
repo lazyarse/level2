@@ -24,8 +24,22 @@ fun letterboxInfo(width: Int, height: Int): LetterboxInfo {
 /** COCO class indices for the YOLO detectors. */
 object YoloClasses {
     const val PERSON = 0   // COCO class 0 → output row 4 (after 4 box rows)
+    const val CAR = 2      // COCO class 2
+    const val MOTORCYCLE = 3
+    const val BUS = 5
+    const val TRUCK = 7
+    const val BIRD = 14
     const val CAT = 15     // COCO class 15 → output row 19
     const val DOG = 16     // COCO class 16 → output row 20
+    const val HORSE = 17
+    const val SHEEP = 18
+    const val COW = 19
+
+    /** All road-vehicle classes, fused by [io.securitycam.level1.detection.person.YoloVehicleEngine]. */
+    val VEHICLES = listOf(CAR, MOTORCYCLE, BUS, TRUCK)
+
+    /** Non-pet animal classes; cat/dog have dedicated detectors. */
+    val WILD_ANIMALS = listOf(BIRD, HORSE, SHEEP, COW)
 }
 
 /**

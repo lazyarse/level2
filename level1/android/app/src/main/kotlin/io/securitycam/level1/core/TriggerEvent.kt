@@ -20,6 +20,8 @@ object TriggerType {
     const val catMeow = "cat_meow"
     const val cat = "cat"
     const val dog = "dog"
+    const val vehicle = "vehicle"
+    const val animal = "animal"
 }
 
 /** A single detector firing, before batching (port of `lib/core/models.dart`). */

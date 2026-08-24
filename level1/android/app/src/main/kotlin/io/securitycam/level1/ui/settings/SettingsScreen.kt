@@ -1474,6 +1474,8 @@ private val cameraDetectorTypes = setOf(
     TriggerType.tamper,
     TriggerType.dog,
     TriggerType.cat,
+    TriggerType.vehicle,
+    TriggerType.animal,
 )
 
 private val audioDetectorTypes = setOf(
