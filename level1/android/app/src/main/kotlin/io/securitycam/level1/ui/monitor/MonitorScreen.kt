@@ -108,26 +108,35 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 zoomRatio = zoomRatio,
                 modifier = Modifier.align(Alignment.TopStart),
             )
-            IconButton(
-                onClick = { viewModel.cycleCamera() },
-                modifier = Modifier.align(Alignment.TopCenter),
+            Text(
+                text = cameraName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 36.dp, top = 4.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 4.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                Icon(
-                    Icons.Filled.Cameraswitch,
-                    contentDescription = "Switch camera",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(
-                onClick = { showRegions = !showRegions },
-                modifier = Modifier.align(Alignment.TopEnd),
-            ) {
-                Icon(
-                    Icons.Filled.Visibility,
-                    contentDescription = "Toggle detection regions",
-                    tint = if (showRegions) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                IconButton(onClick = { showRegions = !showRegions }) {
+                    Icon(
+                        Icons.Filled.Visibility,
+                        contentDescription = "Toggle detection regions",
+                        tint = if (showRegions) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { viewModel.cycleCamera() }) {
+                    Icon(
+                        Icons.Filled.Cameraswitch,
+                        contentDescription = "Switch camera",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         MonitorStatusBar(
@@ -201,7 +210,7 @@ private fun MonitorStatusBar(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "$cameraName — ${state.label}",
+                text = state.label,
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.weight(1f))
@@ -262,15 +271,11 @@ private fun MonitorStatusBar(
                 }
                 Spacer(Modifier.width(4.dp))
                 when {
-                    state == MonitorState.Idle -> IconButton(
+                    state == MonitorState.Idle -> Button(
                         onClick = onStartPreview,
                         modifier = Modifier.testTag("previewCameraButton"),
                     ) {
-                        Icon(
-                            Icons.Filled.Visibility,
-                            contentDescription = "Preview camera",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text("Preview")
                     }
 
                     previewing -> IconButton(
