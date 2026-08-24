@@ -212,6 +212,20 @@ class MonitorViewModel(
                 PackageManager.PERMISSION_GRANTED
     }
 
+    /** Reload settings from disk so the UI reflects changes made in Settings. */
+    fun refreshSettings() {
+        viewModelScope.launch {
+            runCatching {
+                val settings = settingsLoader()
+                _cameraName.value = settings.cameraName
+                _cameraId.value = settings.cameraId
+                _detectionRegions.value = settings.detectionRegions
+                _exclusionRegions.value = settings.exclusionRegions
+                scheduleSettings = settings
+            }
+        }
+    }
+
     /** Called when the permission prompt returns with core grants missing. */
     fun onPermissionsDenied() {
         _state.value = MonitorState.Error
