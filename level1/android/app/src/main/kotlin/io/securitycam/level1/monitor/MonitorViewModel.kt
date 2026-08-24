@@ -141,6 +141,17 @@ class MonitorViewModel(
 
     init {
         CameraEvents.addPreviewStatusListener(previewStatusListener)
+        // Load current settings synchronously so the UI reflects the latest
+        // camera name, camera id, etc. even on first composition.
+        try {
+            val settings = runBlocking { settingsLoader() }
+            _cameraName.value = settings.cameraName
+            _cameraId.value = settings.cameraId
+            _detectionRegions.value = settings.detectionRegions
+            _exclusionRegions.value = settings.exclusionRegions
+        } catch (t: Throwable) {
+            Log.w(TAG, "init settings load failed", t)
+        }
         // Schedule enforcement tick (design: auto-stop on entering an exclusion,
         // auto-resume on leaving if monitoring was running before).
         scheduleCheckInterval?.let { interval ->

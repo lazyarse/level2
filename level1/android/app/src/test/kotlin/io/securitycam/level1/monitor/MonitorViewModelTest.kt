@@ -194,7 +194,8 @@ class MonitorViewModelTest {
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
         )
-        assertEquals(emptyList<DetectionRegion>(), vm.exclusionRegions.value)
+        assertEquals(exclusions, vm.exclusionRegions.value)
+        assertEquals(inclusion, vm.detectionRegions.value)
         vm.start()
         // Pump the main-looper coroutine; runtime creation may fail under
         // Robolectric (no native MediaPipe) but is swallowed after the flows
