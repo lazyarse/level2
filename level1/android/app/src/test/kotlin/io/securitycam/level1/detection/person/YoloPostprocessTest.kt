@@ -25,6 +25,17 @@ class YoloPostprocessTest {
         return out
     }
 
+    /** cx, cy, w, h normalized [0,1]; dog score in row 16. */
+    private fun dogAt(i: Int, score: Double = 0.9): FloatArray {
+        val out = blankOutput()
+        out[i] = 0.3f
+        out[ANCHORS + i] = 0.6f
+        out[2 * ANCHORS + i] = 0.2f
+        out[3 * ANCHORS + i] = 0.3f
+        out[(4 + YoloClasses.DOG) * ANCHORS + i] = score.toFloat()
+        return out
+    }
+
     @Test
     fun squareFrameMaps1to1WithNoPadding() {
         val info = letterboxInfo(640, 640)
@@ -141,5 +152,56 @@ class YoloPostprocessTest {
     fun respectsMaxDetections() {
         val kept = nms(listOf(a, c), iou = 0.1, maxDetections = 1)
         assertEquals(1, kept.size)
+    }
+
+    @Test
+    fun decodeYoloClassesReadsDogClass16() {
+        val boxes = decodeYoloClasses(
+            dogAt(0),
+            classIndices = listOf(YoloClasses.DOG),
+            conf = 0.25,
+            iou = 0.7,
+            maxDetections = 10,
+            frameWidth = 640,
+            frameHeight = 640,
+        )
+        assertEquals(1, boxes.size)
+        assertEquals(0.9, boxes.single().score, 1e-6)
+    }
+
+    @Test
+    fun decodeYoloClassesIgnoresPersonWhenOnlyDogRequested() {
+        val out = personAt(0, score = 0.9)
+        val boxes = decodeYoloClasses(
+            out,
+            classIndices = listOf(YoloClasses.DOG),
+            conf = 0.25,
+            iou = 0.7,
+            maxDetections = 10,
+            frameWidth = 640,
+            frameHeight = 640,
+        )
+        assertTrue(boxes.isEmpty())
+    }
+
+    @Test
+    fun decodeYoloClassesCanReadMultipleClasses() {
+        val out = blankOutput()
+        // Person at anchor 0
+        out[0] = 0.5f; out[ANCHORS] = 0.5f; out[2 * ANCHORS] = 0.4f; out[3 * ANCHORS] = 0.8f
+        out[4 * ANCHORS] = 0.9f
+        // Dog at anchor 1
+        out[1] = 0.3f; out[ANCHORS + 1] = 0.6f; out[2 * ANCHORS + 1] = 0.2f; out[3 * ANCHORS + 1] = 0.3f
+        out[(4 + YoloClasses.DOG) * ANCHORS + 1] = 0.8f
+        val boxes = decodeYoloClasses(
+            out,
+            classIndices = listOf(YoloClasses.PERSON, YoloClasses.DOG),
+            conf = 0.25,
+            iou = 0.7,
+            maxDetections = 10,
+            frameWidth = 640,
+            frameHeight = 640,
+        )
+        assertEquals(2, boxes.size)
     }
 }

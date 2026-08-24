@@ -38,6 +38,9 @@ object DetectorRegistry {
         TriggerType.growl to { c: DetectorConfig ->
             io.securitycam.level1.detection.audio.GrowlDetector(c)
         },
+        TriggerType.dog to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.DogDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

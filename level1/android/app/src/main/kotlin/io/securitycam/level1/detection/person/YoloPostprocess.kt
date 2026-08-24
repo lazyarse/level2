@@ -21,14 +21,21 @@ fun letterboxInfo(width: Int, height: Int): LetterboxInfo {
     return LetterboxInfo(gain, padX, padY)
 }
 
+/** COCO class indices for the YOLO detectors. */
+object YoloClasses {
+    const val PERSON = 0   // COCO class 0 → output row 4 (after 4 box rows)
+    const val DOG = 16     // COCO class 16 → output row 20
+}
+
 /**
- * Decodes YOLO26n `[1, 84, 8400]` float32 output (person class = row 4) into
- * person boxes in original frame coordinates. Box rows are normalized [0,1];
- * scores are sigmoid-activated by the graph. Applies the confidence gate,
- * letterbox undo, clamping, then IoU NMS.
+ * Decodes YOLO26n `[1, 84, 8400]` float32 output for arbitrary COCO class
+ * indices. Box rows are normalized [0,1]; scores are sigmoid-activated by the
+ * graph. Applies the confidence gate, letterbox undo, clamping, then IoU NMS
+ * per class.
  */
-fun decodeYolo26(
+fun decodeYoloClasses(
     output: FloatArray,
+    classIndices: List<Int>,
     conf: Double,
     iou: Double,
     maxDetections: Int,
@@ -37,33 +44,56 @@ fun decodeYolo26(
 ): List<PersonBox> {
     val anchors = 8400
     val boxRows = 4
-
     val info = letterboxInfo(frameWidth, frameHeight)
     val candidates = mutableListOf<PersonBox>()
-    for (i in 0 until anchors) {
-        val score = output[boxRows * anchors + i].toDouble()
-        if (score < conf) continue
-        val cx = output[i].toDouble()
-        val cy = output[anchors + i].toDouble()
-        val w = output[2 * anchors + i].toDouble()
-        val h = output[3 * anchors + i].toDouble()
-        val x1m = (cx - w / 2) * 640
-        val y1m = (cy - h / 2) * 640
-        val x2m = (cx + w / 2) * 640
-        val y2m = (cy + h / 2) * 640
-        candidates.add(
-            PersonBox(
-                clamp((x1m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
-                clamp((y1m - info.padY) / info.gain, 0.0, frameHeight.toDouble()),
-                clamp((x2m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
-                clamp((y2m - info.padY) / info.gain, 0.0, frameHeight.toDouble()),
-                score,
-            ),
-        )
+    for (cls in classIndices) {
+        val classRow = boxRows + cls
+        for (i in 0 until anchors) {
+            val score = output[classRow * anchors + i].toDouble()
+            if (score < conf) continue
+            val cx = output[i].toDouble()
+            val cy = output[anchors + i].toDouble()
+            val w = output[2 * anchors + i].toDouble()
+            val h = output[3 * anchors + i].toDouble()
+            val x1m = (cx - w / 2) * 640
+            val y1m = (cy - h / 2) * 640
+            val x2m = (cx + w / 2) * 640
+            val y2m = (cy + h / 2) * 640
+            candidates.add(
+                PersonBox(
+                    clamp((x1m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
+                    clamp((y1m - info.padY) / info.gain, 0.0, frameHeight.toDouble()),
+                    clamp((x2m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
+                    clamp((y2m - info.padY) / info.gain, 0.0, frameHeight.toDouble()),
+                    score,
+                ),
+            )
+        }
     }
     candidates.sortByDescending { it.score }
     return nms(candidates, iou = iou, maxDetections = maxDetections)
 }
+
+/**
+ * Decodes YOLO26n output for the person class only (class index 4).
+ * Kept for backward compatibility with existing callers.
+ */
+fun decodeYolo26(
+    output: FloatArray,
+    conf: Double,
+    iou: Double,
+    maxDetections: Int,
+    frameWidth: Int,
+    frameHeight: Int,
+): List<PersonBox> = decodeYoloClasses(
+    output,
+    classIndices = listOf(YoloClasses.PERSON),
+    conf = conf,
+    iou = iou,
+    maxDetections = maxDetections,
+    frameWidth = frameWidth,
+    frameHeight = frameHeight,
+)
 
 /**
  * Non-max suppression over score-descending [boxes]; keeps at most

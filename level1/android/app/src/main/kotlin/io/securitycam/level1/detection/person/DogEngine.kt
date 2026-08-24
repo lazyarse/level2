@@ -3,18 +3,39 @@ package io.securitycam.level1.detection.person
 import android.content.Context
 import io.securitycam.level1.detection.ColorBitmap
 
+/** Abstraction over an on-device dog detector (mirrors [PersonEngine]). */
+interface DogEngine {
+    suspend fun init()
+
+    /** Returns detected dogs in [frame]'s color bitmap. Empty list = no dogs. */
+    suspend fun detectDogs(frame: ColorBitmap): List<PersonBox>
+
+    suspend fun dispose()
+}
+
+/** Test/dry-run engine: returns whatever [dogs] was pre-loaded with. */
+class MockDogEngine : DogEngine {
+    val dogs = mutableListOf<PersonBox>()
+
+    override suspend fun init() {}
+
+    override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> =
+        dogs.toList()
+
+    override suspend fun dispose() {}
+}
+
 /**
- * YOLO26n (`yolo26n_w8a32.tflite`) via the shared [YoloModelSingleton]
- * (port of `yolo_person_engine.dart`). The `format=litert` export targets
- * the Next runtime. Preprocesses the BGR [ColorBitmap] to a 640x640 RGB
- * NCHW float32 tensor, runs inference, and decodes + NMSes person boxes.
+ * YOLO26n dog detector via the shared [YoloModelSingleton]. Decodes COCO
+ * class 16 (dog) from the same model the person detector uses — zero extra
+ * model load, zero extra inference.
  */
-class YoloPersonEngine(
+class YoloDogEngine(
     private val context: Context,
     private val confThreshold: Double = 0.25,
     private val iouThreshold: Double = 0.7,
-    private val maxDetections: Int = 30,
-) : PersonEngine {
+    private val maxDetections: Int = 10,
+) : DogEngine {
 
     private var model: com.google.ai.edge.litert.CompiledModel? = null
 
@@ -23,7 +44,7 @@ class YoloPersonEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectPersons(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()
@@ -32,8 +53,9 @@ class YoloPersonEngine(
             val outputs = compiled.run(inputs)
             try {
                 val output = outputs[0].readFloat()
-                return decodeYolo26(
+                return decodeYoloClasses(
                     output,
+                    classIndices = listOf(YoloClasses.DOG),
                     conf = confThreshold,
                     iou = iouThreshold,
                     maxDetections = maxDetections,

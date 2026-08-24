@@ -18,7 +18,7 @@ class SettingsTest {
     fun defaultsContainMotionBabyCryGlassBreakDetectorsAndLogChannel() {
         val settings = AppSettings.defaults()
         assertEquals("Hallway", settings.cameraName)
-        assertTrue(settings.detectorConfigs.keys.containsAll(listOf("motion", "baby_cry", "glass_break", "dog_bark", "growl")))
+        assertTrue(settings.detectorConfigs.keys.containsAll(listOf("motion", "baby_cry", "glass_break", "dog_bark", "growl", "dog")))
         assertTrue(settings.detectorConfigs[TriggerType.motion]!!.routeToChannelIds.contains("telegram"))
         assertTrue(settings.channelConfigs.any { it.id == "log" })
     }

@@ -259,6 +259,14 @@ data class AppSettings(
                     enabled = false,
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.dog to DetectorConfig(
+                    type = TriggerType.dog,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    motionGated = true,
+                    routeToChannelIds = listOf("telegram"),
+                ),
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),
