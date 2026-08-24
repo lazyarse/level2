@@ -15,6 +15,8 @@ object TriggerType {
     const val faceUnknown = "face_unknown"
     const val tamper = "tamper"
     const val health = "health"
+    const val dogBark = "dog_bark"
+    const val growl = "growl"
 }
 
 /** A single detector firing, before batching (port of `lib/core/models.dart`). */

@@ -21,9 +21,14 @@ class AudioDetectorsTest {
         babyCry: Double = 0.0,
         glass: Double = 0.0,
         loudNoise: Double = 0.0,
+        dogBark: Double = 0.0,
+        growl: Double = 0.0,
     ): AudioEventScores = AudioEventScores(
         timestamp = base,
-        classScores = mapOf("baby_cry" to babyCry, "glass" to glass, "loud_noise" to loudNoise),
+        classScores = mapOf(
+            "baby_cry" to babyCry, "glass" to glass, "loud_noise" to loudNoise,
+            "dog_bark" to dogBark, "growl" to growl,
+        ),
     )
 
     @Test
@@ -136,6 +141,65 @@ class AudioDetectorsTest {
         assertTrue(result.scoreOf("baby_cry") < 0.1)
         assertTrue(result.scoreOf("glass") < 0.1)
         assertTrue(result.scoreOf("loud_noise") < 0.1)
+        assertTrue(result.scoreOf("dog_bark") < 0.1)
+        assertTrue(result.scoreOf("growl") < 0.1)
+    }
+
+    @Test
+    fun dogBarkDoesNotTriggerBelowThreshold() {
+        val detector = DogBarkDetector(
+            DetectorConfig(type = TriggerType.dogBark, threshold = 0.5, persistenceFrames = 1),
+        )
+        val result = detector.analyzeScores(scores(dogBark = 0.2))
+        assertFalse(result.triggered)
+    }
+
+    @Test
+    fun dogBarkTriggersOncePersistenceIsMet() {
+        val detector = DogBarkDetector(
+            DetectorConfig(type = TriggerType.dogBark, threshold = 0.5, persistenceFrames = 2),
+        )
+        assertFalse(detector.analyzeScores(scores(dogBark = 0.8)).triggered)
+        assertTrue(detector.analyzeScores(scores(dogBark = 0.8)).triggered)
+    }
+
+    @Test
+    fun dogBarkDoesNotReactToOtherScores() {
+        val detector = DogBarkDetector(
+            DetectorConfig(type = TriggerType.dogBark, threshold = 0.5, persistenceFrames = 1),
+        )
+        assertFalse(detector.analyzeScores(scores(babyCry = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(glass = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(growl = 0.9)).triggered)
+    }
+
+    @Test
+    fun growlDoesNotTriggerBelowThreshold() {
+        val detector = GrowlDetector(
+            DetectorConfig(type = TriggerType.growl, threshold = 0.5, persistenceFrames = 1),
+        )
+        val result = detector.analyzeScores(scores(growl = 0.2))
+        assertFalse(result.triggered)
+    }
+
+    @Test
+    fun growlTriggersOnGrowlScore() {
+        val detector = GrowlDetector(
+            DetectorConfig(type = TriggerType.growl, threshold = 0.5, persistenceFrames = 1),
+        )
+        val result = detector.analyzeScores(scores(growl = 0.9))
+        assertTrue(result.triggered)
+        assertEquals(0.9, result.score, 0.0)
+    }
+
+    @Test
+    fun growlDoesNotReactToOtherScores() {
+        val detector = GrowlDetector(
+            DetectorConfig(type = TriggerType.growl, threshold = 0.5, persistenceFrames = 1),
+        )
+        assertFalse(detector.analyzeScores(scores(babyCry = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(glass = 0.9)).triggered)
+        assertFalse(detector.analyzeScores(scores(dogBark = 0.9)).triggered)
     }
 
     private fun window(scene: AudioScene): AudioWindow = AudioWindow(

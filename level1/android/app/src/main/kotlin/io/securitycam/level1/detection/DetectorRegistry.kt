@@ -32,6 +32,12 @@ object DetectorRegistry {
         TriggerType.tamper to { c: DetectorConfig ->
             TamperDetector(c)
         },
+        TriggerType.dogBark to { c: DetectorConfig ->
+            io.securitycam.level1.detection.audio.DogBarkDetector(c)
+        },
+        TriggerType.growl to { c: DetectorConfig ->
+            io.securitycam.level1.detection.audio.GrowlDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

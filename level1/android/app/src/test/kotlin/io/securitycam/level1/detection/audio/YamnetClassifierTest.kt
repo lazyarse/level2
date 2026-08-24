@@ -38,6 +38,8 @@ class YamnetClassifierTest {
         val mapped = YamnetClassifier.scoresFromClasses(scores521(), FloatArray(15600))
         assertEquals(0.0, mapped["baby_cry"]!!, 0.0)
         assertEquals(0.0, mapped["glass"]!!, 0.0)
+        assertEquals(0.0, mapped["dog_bark"]!!, 0.0)
+        assertEquals(0.0, mapped["growl"]!!, 0.0)
     }
 
     @Test
@@ -54,6 +56,26 @@ class YamnetClassifierTest {
         val scores = FloatArray(400)
         val mapped = YamnetClassifier.scoresFromClasses(scores, FloatArray(15600))
         assertEquals(0.0, mapped["glass"]!!, 0.0)
+        assertEquals(0.0, mapped["dog_bark"]!!, 0.0)
+        assertEquals(0.0, mapped["growl"]!!, 0.0)
+    }
+
+    @Test
+    fun fusesDogBarkClassesByMax() {
+        val scores = scores521()
+        scores[69] = 0.3f   // Dog
+        scores[70] = 0.7f   // Bark
+        scores[73] = 0.5f   // Bow-wow
+        val mapped = YamnetClassifier.scoresFromClasses(scores, FloatArray(15600))
+        assertEquals(0.7, mapped["dog_bark"]!!, 1e-6)
+    }
+
+    @Test
+    fun readsGrowlFromClass74() {
+        val scores = scores521()
+        scores[74] = 0.65f
+        val mapped = YamnetClassifier.scoresFromClasses(scores, FloatArray(15600))
+        assertEquals(0.65, mapped["growl"]!!, 1e-6)
     }
 
     @Test

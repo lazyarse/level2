@@ -25,7 +25,7 @@ class DetectorRegistryTest {
 
     @Test
     fun registryBuildsAudioDetectors() {
-        for (type in listOf(TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise)) {
+        for (type in listOf(TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise, TriggerType.dogBark, TriggerType.growl)) {
             val detector = DetectorRegistry.factoryFor(type)!!(DetectorConfig(type = type))
             assertEquals(type, detector.triggerType)
             assertEquals(type, detector.id)

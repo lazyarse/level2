@@ -40,12 +40,16 @@ class MockAudioEventClassifier : AudioEventClassifier {
         val babyCry = if (rms > 0.02 && zcr < 0.08) scale(rms, 0.02, 0.3) else 0.0
         val glass = if (rms > 0.08 && zcr > 0.25) scale(rms, 0.08, 0.5) else 0.0
         val loudNoise = if (rms > 0.45 && zcr > 0.35) scale(rms, 0.45, 0.6) else 0.0
+        val dogBark = if (rms > 0.05 && zcr in 0.12..0.30) scale(rms, 0.05, 0.4) else 0.0
+        val growl = if (rms > 0.08 && zcr < 0.10) scale(rms, 0.08, 0.35) else 0.0
         return AudioEventScores(
             timestamp = window.timestamp,
             classScores = mapOf(
                 "baby_cry" to babyCry,
                 "glass" to glass,
                 "loud_noise" to loudNoise,
+                "dog_bark" to dogBark,
+                "growl" to growl,
             ),
         )
     }

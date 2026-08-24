@@ -81,6 +81,8 @@ class YamnetClassifier private constructor(
         /** YAMNet AudioSet class indices used for alert types. */
         const val BABY_CRY_CLASS = 20
         val GLASS_CLASSES = intArrayOf(435, 437, 463, 464)
+        val DOG_BARK_CLASSES = intArrayOf(69, 70, 71, 73)  // Dog, Bark, Yip, Bow-wow
+        val GROWL_CLASSES = intArrayOf(74)                    // Growling
 
         /** Expected input sample count for a 0.975 s patch at 16 kHz. */
         const val INPUT_SAMPLES = 15600
@@ -104,6 +106,14 @@ class YamnetClassifier private constructor(
             for (c in GLASS_CLASSES) {
                 if (c < classScores.size && classScores[c] > glass) glass = classScores[c].toDouble()
             }
+            var dogBark = 0.0
+            for (c in DOG_BARK_CLASSES) {
+                if (c < classScores.size && classScores[c] > dogBark) dogBark = classScores[c].toDouble()
+            }
+            var growl = 0.0
+            for (c in GROWL_CLASSES) {
+                if (c < classScores.size && classScores[c] > growl) growl = classScores[c].toDouble()
+            }
             var rms = 0.0
             for (s in windowSamples) rms += s * s
             rms = sqrt(rms / windowSamples.size)
@@ -112,6 +122,8 @@ class YamnetClassifier private constructor(
                 "baby_cry" to if (BABY_CRY_CLASS < classScores.size) classScores[BABY_CRY_CLASS].toDouble() else 0.0,
                 "glass" to glass,
                 "loud_noise" to loudNoise,
+                "dog_bark" to dogBark,
+                "growl" to growl,
             )
         }
 

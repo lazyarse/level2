@@ -4,7 +4,7 @@ import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.math.PI
 
-enum class AudioScene { silence, babyCry, glassBreak, bang }
+enum class AudioScene { silence, babyCry, glassBreak, bang, dogBark, growl }
 
 /**
  * Deterministic synthetic audio windows — test fixture for the audio
@@ -41,6 +41,23 @@ object SimulatedAudioSource {
             AudioScene.bang -> {
                 for (i in 0 until windowSamples) {
                     samples[i] = (rng.nextDouble() * 2 - 1).toFloat()
+                }
+            }
+            AudioScene.dogBark -> {
+                val freq = 400.0
+                for (i in 0 until windowSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val burst = if ((t * 3).toInt() % 2 == 0) 1.0 else 0.2
+                    val mod = 0.6 + 0.4 * sin(2 * PI * 8 * t)
+                    samples[i] = (0.5 * burst * mod * sin(2 * PI * freq * t)).toFloat()
+                }
+            }
+            AudioScene.growl -> {
+                val freq = 120.0
+                for (i in 0 until windowSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val wobble = 0.7 + 0.3 * sin(2 * PI * 2 * t)
+                    samples[i] = (0.4 * wobble * sin(2 * PI * freq * t)).toFloat()
                 }
             }
         }

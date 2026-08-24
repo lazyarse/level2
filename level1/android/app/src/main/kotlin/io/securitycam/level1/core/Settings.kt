@@ -245,6 +245,20 @@ data class AppSettings(
                     cooldown = Duration.ofSeconds(5),
                     routeToChannelIds = listOf("telegram"),
                 ),
+                TriggerType.dogBark to DetectorConfig(
+                    type = TriggerType.dogBark,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    routeToChannelIds = listOf("telegram"),
+                ),
+                TriggerType.growl to DetectorConfig(
+                    type = TriggerType.growl,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    routeToChannelIds = listOf("telegram"),
+                ),
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),
