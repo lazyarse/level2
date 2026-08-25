@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -114,6 +115,12 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 ),
         ) {
             PreviewSurface(Modifier.fillMaxSize())
+            // Hide the frozen last frame whenever nothing is actively
+            // rendering (Idle/Starting/Error) — PreviewView keeps showing its
+            // final buffer after unbind, so blank it out instead.
+            if (state != MonitorState.Monitoring && state != MonitorState.Previewing) {
+                Box(Modifier.matchParentSize().background(Color.Black))
+            }
             RegionOverlay(
                 regions = detectionRegions,
                 rotationDegrees = rotationDegrees,
@@ -121,24 +128,24 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 show = showRegions,
                 exclusionRegions = exclusionRegions,
             )
-            ZoomBadge(
-                zoomRatio = zoomRatio,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-            Text(
-                text = cameraName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 36.dp, top = 4.dp),
-            )
+            // Top overlay bar: camera name + region/camera controls on one
+            // translucent line.
             Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 4.dp, top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = cameraName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
                 IconButton(onClick = { showRegions = !showRegions }) {
                     Icon(
                         Icons.Filled.Visibility,
@@ -155,6 +162,12 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     )
                 }
             }
+            ZoomBadge(
+                zoomRatio = zoomRatio,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 56.dp),
+            )
         }
         MonitorStatusBar(
             cameraName = cameraName,
