@@ -74,6 +74,17 @@ Prefer the fastest platform that can validate the change:
   `e686383a468c9ca7964985f84ff337dd1eee442fc91d6c8335819e00dbd6190f`.
 - Verify signatures with `apksigner verify --print-certs` (jarsigner cannot see v2/v3).
 
+## Versioning
+
+- `versionName`/`versionCode` derive from git at build time
+  (`android/app/build.gradle.kts`): `git describe --tags --dirty` drives the name,
+  commit count drives the code. Never hand-edit them — cut a release by pushing a
+  `vX.Y.Z` tag.
+- Release builds (`assembleRelease`/`bundleRelease`) fail on a dirty working tree;
+  staging/debug/unit tests stay permissive.
+- Builds outside a git repo fall back to `0.0.0-untagged` / versionCode `1`.
+- `.github/workflows/release.yml` checks out with `fetch-depth: 0` so CI sees tags.
+
 ## Emulator discipline
 
 - Run via     `tool/run_android_integration_tests.sh <serial> <fqcn|all>` (waits for
