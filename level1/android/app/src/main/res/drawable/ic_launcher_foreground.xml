@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: pyramid of five horizontal blocks, light borders,
+     second block from the bottom filled amber. Geometry mirrors the approved
+     preview (/tmp/icon_preview): bars bottom->top widths 56/46/36/26/16,
+     height 6, gap 1.5, radius 1.5, centered in the 108dp viewport (66dp safe
+     zone respected: content spans 26..82 x 36..72). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- bottom bar -->
+    <path
+        android:pathData="M27.5,66 L80.5,66 A1.5,1.5 0 0 1 82,67.5 L82,70.5 A1.5,1.5 0 0 1 80.5,72 L27.5,72 A1.5,1.5 0 0 1 26,70.5 L26,67.5 A1.5,1.5 0 0 1 27.5,66 Z"
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="1.5" />
+
+    <!-- second from bottom: amber fill -->
+    <path
+        android:pathData="M32.5,58.5 L75.5,58.5 A1.5,1.5 0 0 1 77,60 L77,63 A1.5,1.5 0 0 1 75.5,64.5 L32.5,64.5 A1.5,1.5 0 0 1 31,63 L31,60 A1.5,1.5 0 0 1 32.5,58.5 Z"
+        android:fillColor="#FDD663"
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="1.5" />
+
+    <!-- middle bar -->
+    <path
+        android:pathData="M37.5,51 L70.5,51 A1.5,1.5 0 0 1 72,52.5 L72,55.5 A1.5,1.5 0 0 1 70.5,57 L37.5,57 A1.5,1.5 0 0 1 36,55.5 L36,52.5 A1.5,1.5 0 0 1 37.5,51 Z"
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="1.5" />
+
+    <!-- second from top -->
+    <path
+        android:pathData="M42.5,43.5 L65.5,43.5 A1.5,1.5 0 0 1 67,45 L67,48 A1.5,1.5 0 0 1 65.5,49.5 L42.5,49.5 A1.5,1.5 0 0 1 41,48 L41,45 A1.5,1.5 0 0 1 42.5,43.5 Z"
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="1.5" />
+
+    <!-- top bar -->
+    <path
+        android:pathData="M47.5,36 L60.5,36 A1.5,1.5 0 0 1 62,37.5 L62,40.5 A1.5,1.5 0 0 1 60.5,42 L47.5,42 A1.5,1.5 0 0 1 46,40.5 L46,37.5 A1.5,1.5 0 0 1 47.5,36 Z"
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="1.5" />
+</vector>
