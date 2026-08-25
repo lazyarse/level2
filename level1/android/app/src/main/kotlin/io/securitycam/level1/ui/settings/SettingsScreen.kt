@@ -242,8 +242,8 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                             )
-                            for ((type, config) in current.detectorConfigs) {
-                                if (type !in cameraDetectorTypes) continue
+                            for (type in cameraDetectorOrder) {
+                                val config = current.detectorConfigs[type] ?: continue
                                 DetectorCard(
                                     config = config,
                                     channelIds = current.channelConfigs.map { it.id },
@@ -1643,15 +1643,17 @@ private fun detectorHint(type: String): String? = when (type) {
     else -> null
 }
 
-private val cameraDetectorTypes = setOf(    TriggerType.motion,
+/** Camera-section display order: pet/animal detectors grouped, then the rest. */
+private val cameraDetectorOrder = listOf(
+    TriggerType.motion,
     TriggerType.person,
     TriggerType.face,
     TriggerType.tamper,
     TriggerType.dog,
     TriggerType.cat,
-    TriggerType.vehicle,
     TriggerType.bird,
     TriggerType.livestock,
+    TriggerType.vehicle,
     TriggerType.loitering,
 )
 
@@ -1666,7 +1668,7 @@ private fun retentionSummary(days: Int): String =
     if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"
 
 private fun detectorSummary(settings: AppSettings): String {
-    val shownTypes = cameraDetectorTypes + audioDetectorTypes + setOf(TriggerType.health)
+    val shownTypes = cameraDetectorOrder.toSet() + audioDetectorTypes + setOf(TriggerType.health)
     val total = settings.detectorConfigs.count { it.key in shownTypes }
     val active = settings.detectorConfigs.count { (type, config) ->
         type in shownTypes && config.enabled
