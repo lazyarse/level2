@@ -50,8 +50,11 @@ object DetectorRegistry {
         TriggerType.vehicle to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.VehicleDetector(c)
         },
-        TriggerType.animal to { c: DetectorConfig ->
-            io.securitycam.level1.detection.person.AnimalDetector(c)
+        TriggerType.bird to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.BirdDetector(c)
+        },
+        TriggerType.livestock to { c: DetectorConfig ->
+            io.securitycam.level1.detection.person.LivestockDetector(c)
         },
         TriggerType.loitering to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.LoiteringDetector(c)

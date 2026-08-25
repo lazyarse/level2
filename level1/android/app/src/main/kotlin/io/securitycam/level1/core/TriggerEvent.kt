@@ -21,7 +21,8 @@ object TriggerType {
     const val cat = "cat"
     const val dog = "dog"
     const val vehicle = "vehicle"
-    const val animal = "animal"
+    const val bird = "bird"
+    const val livestock = "livestock"
     const val loitering = "loitering"
 }
 

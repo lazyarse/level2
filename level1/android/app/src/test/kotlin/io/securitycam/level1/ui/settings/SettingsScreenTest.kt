@@ -241,23 +241,23 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun animalDetectorFoldDownShowsSpeciesHint() {
+    fun livestockDetectorFoldDownShowsSpeciesHint() {
         // The fold-down renders only while the detector is enabled.
         val defaults = AppSettings.defaults()
-        val animalOn = defaults.detectorConfigs.mapValues { (type, cfg) ->
-            if (type == io.securitycam.level1.core.TriggerType.animal) {
+        val livestockOn = defaults.detectorConfigs.mapValues { (type, cfg) ->
+            if (type == io.securitycam.level1.core.TriggerType.livestock) {
                 cfg.copy(enabled = true)
             } else {
                 cfg
             }
         }
-        setContent(Harness(defaults.copyWith(detectorConfigs = animalOn)))
+        setContent(Harness(defaults.copyWith(detectorConfigs = livestockOn)))
 
         expandSection("Detectors")
-        compose.onNodeWithTag("detectorHeader_animal").performScrollTo().performClick()
+        compose.onNodeWithTag("detectorHeader_livestock").performScrollTo().performClick()
         compose.waitForIdle()
 
-        compose.onNodeWithText("Detects birds, horses, sheep and cows.")
+        compose.onNodeWithText("Detects cows, sheep and horses.")
             .performScrollTo()
             .assertIsDisplayed()
     }

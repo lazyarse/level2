@@ -1638,7 +1638,8 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
 
 /** Explainer shown at the top of a detector's fold-down, when non-null. */
 private fun detectorHint(type: String): String? = when (type) {
-    TriggerType.animal -> "Detects birds, horses, sheep and cows."
+    TriggerType.bird -> "Detects birds."
+    TriggerType.livestock -> "Detects cows, sheep and horses."
     else -> null
 }
 
@@ -1649,7 +1650,8 @@ private val cameraDetectorTypes = setOf(    TriggerType.motion,
     TriggerType.dog,
     TriggerType.cat,
     TriggerType.vehicle,
-    TriggerType.animal,
+    TriggerType.bird,
+    TriggerType.livestock,
     TriggerType.loitering,
 )
 

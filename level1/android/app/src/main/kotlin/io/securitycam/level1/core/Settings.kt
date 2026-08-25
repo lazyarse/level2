@@ -334,8 +334,16 @@ data class AppSettings(
                     motionGated = true,
                     routeToChannelIds = listOf("telegram"),
                 ),
-                TriggerType.animal to DetectorConfig(
-                    type = TriggerType.animal,
+                TriggerType.bird to DetectorConfig(
+                    type = TriggerType.bird,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    motionGated = true,
+                    routeToChannelIds = listOf("telegram"),
+                ),
+                TriggerType.livestock to DetectorConfig(
+                    type = TriggerType.livestock,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,

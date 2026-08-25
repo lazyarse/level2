@@ -3,39 +3,39 @@ package io.securitycam.level1.detection.person
 import android.content.Context
 import io.securitycam.level1.detection.ColorBitmap
 
-/** Abstraction over an on-device animal detector (mirrors [DogEngine]). */
-interface AnimalEngine {
+/** Abstraction over an on-device livestock detector (mirrors [DogEngine]). */
+interface LivestockEngine {
     suspend fun init()
 
-    /** Returns detected animals in [frame]'s color bitmap. Empty list = none. */
-    suspend fun detectAnimals(frame: ColorBitmap): List<PersonBox>
+    /** Returns detected livestock in [frame]'s color bitmap. Empty list = none. */
+    suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [animals] was pre-loaded with. */
-class MockAnimalEngine : AnimalEngine {
+class MockLivestockEngine : LivestockEngine {
     val animals = mutableListOf<PersonBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectAnimals(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox> =
         animals.toList()
 
     override suspend fun dispose() {}
 }
 
 /**
- * YOLO26n animal detector via the shared [YoloModelSingleton]. Fuses COCO
- * bird/horse/sheep/cow from the same model the person detector uses — zero
- * extra model load, zero extra inference.
+ * YOLO26n livestock detector via the shared [YoloModelSingleton]. Fuses COCO
+ * horse/sheep/cow from the same model the person detector uses — zero extra
+ * model load, zero extra inference.
  */
-class YoloAnimalEngine(
+class YoloLivestockEngine(
     private val context: Context,
     private val confThreshold: Double = 0.25,
     private val iouThreshold: Double = 0.7,
     private val maxDetections: Int = 10,
-) : AnimalEngine {
+) : LivestockEngine {
 
     private var model: com.google.ai.edge.litert.CompiledModel? = null
 
@@ -44,7 +44,7 @@ class YoloAnimalEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectAnimals(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()
@@ -55,7 +55,7 @@ class YoloAnimalEngine(
                 val output = outputs[0].readFloat()
                 return decodeYoloClasses(
                     output,
-                    classIndices = YoloClasses.WILD_ANIMALS,
+                    classIndices = YoloClasses.LIVESTOCK,
                     conf = confThreshold,
                     iou = iouThreshold,
                     maxDetections = maxDetections,

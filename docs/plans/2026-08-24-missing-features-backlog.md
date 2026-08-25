@@ -48,5 +48,6 @@ their original rows are covered by the design docs.)*
 ## Shipped since audit started
 
 - Vehicle detector (`vehicle`) — COCO car/motorcycle/bus/truck via shared YOLO26n.
-- Animal detector (`animal`) — COCO bird/horse/sheep/cow via shared YOLO26n
-  (cat/dog keep their own dedicated detectors to avoid double-firing).
+- Bird (`bird`) and livestock (`livestock`: cow/sheep/horse) detectors via shared
+  YOLO26n; cat/dog keep their own dedicated detectors. An earlier combined
+  `animal` detector was replaced by this pair on 2026-08-24.

@@ -8,24 +8,22 @@ import io.securitycam.level1.detection.FrameDetector
 import io.securitycam.level1.detection.RegionFilter
 
 /**
- * Animal-detection trigger (bird/horse/sheep/cow). Runs on color analysis
- * frames, motion-gated by the pipeline like
- * [io.securitycam.level1.detection.person.PersonDetector]. Cat/dog have their
- * own detectors and are intentionally not part of this one.
+ * Bird-detection trigger. Runs on color analysis frames (motion-gated by the
+ * pipeline, like [io.securitycam.level1.detection.person.PersonDetector]).
  *
- * Uses the shared YOLO26n model via [YoloAnimalEngine] — zero extra model
- * load when the person detector is also enabled.
+ * Uses the shared YOLO26n model via [YoloBirdEngine] — zero extra model load
+ * when the person detector is also enabled.
  */
-class AnimalDetector(
+class BirdDetector(
     override val config: DetectorConfig,
-    engine: AnimalEngine? = null,
+    engine: BirdEngine? = null,
 ) : FrameDetector() {
 
-    private val engine: AnimalEngine = engine ?: YoloAnimalEngine(AppContextHolder.require())
+    private val engine: BirdEngine = engine ?: YoloBirdEngine(AppContextHolder.require())
     private var persistenceCount = 0
 
     override val id: String get() = config.type
-    override val triggerType: String get() = TriggerType.animal
+    override val triggerType: String get() = TriggerType.bird
 
     override suspend fun init() {
         engine.init()
@@ -44,9 +42,9 @@ class AnimalDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        var animals = engine.detectAnimals(color)
-        if (animals.isNotEmpty()) {
-            animals = animals.filter { p ->
+        var birds = engine.detectBirds(color)
+        if (birds.isNotEmpty()) {
+            birds = birds.filter { p ->
                 val bx = p.x1 / color.width
                 val by = p.y1 / color.height
                 val bw = (p.x2 - p.x1) / color.width
@@ -55,11 +53,11 @@ class AnimalDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
-        if (animals.isEmpty()) {
+        if (birds.isEmpty()) {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)
         }
-        val maxScore = animals.maxOf { it.score }
+        val maxScore = birds.maxOf { it.score }
         val above = maxScore >= config.threshold
         persistenceCount = if (above) persistenceCount + 1 else 0
         if (persistenceCount >= config.persistenceFrames) {

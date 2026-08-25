@@ -38,8 +38,8 @@ object YoloClasses {
     /** All road-vehicle classes, fused by [io.securitycam.level1.detection.person.YoloVehicleEngine]. */
     val VEHICLES = listOf(CAR, MOTORCYCLE, BUS, TRUCK)
 
-    /** Non-pet animal classes; cat/dog have dedicated detectors. */
-    val WILD_ANIMALS = listOf(BIRD, HORSE, SHEEP, COW)
+    /** Grazing livestock, fused by [io.securitycam.level1.detection.person.YoloLivestockEngine]. */
+    val LIVESTOCK = listOf(HORSE, SHEEP, COW)
 }
 
 /**

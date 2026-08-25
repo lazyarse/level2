@@ -42,7 +42,8 @@ enum class DetectorType(
     Dog(TriggerType.dog, "Dog", Icons.Filled.Pets),
     Cat(TriggerType.cat, "Cat", Icons.Filled.Pets),
     Vehicle(TriggerType.vehicle, "Vehicle", Icons.Filled.DirectionsCar),
-    Animal(TriggerType.animal, "Animal", Icons.Filled.Pets),
+    Bird(TriggerType.bird, "Bird", Icons.Filled.Pets),
+    Livestock(TriggerType.livestock, "Livestock", Icons.Filled.Pets),
     Loitering(TriggerType.loitering, "Loitering", Icons.Filled.Timer),
     Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant);
 
