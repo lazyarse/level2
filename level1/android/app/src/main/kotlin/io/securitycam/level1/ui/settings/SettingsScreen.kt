@@ -1207,6 +1207,14 @@ private fun DetectorCard(
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
             if (expanded && config.enabled) {
+                detectorHint(config.type)?.let { hint ->
+                    Text(
+                        hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
                 if (config.type != TriggerType.motion) {
                     SwitchRow(
                         title = "Motion-gated",
@@ -1628,8 +1636,13 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
     }
 }
 
-private val cameraDetectorTypes = setOf(
-    TriggerType.motion,
+/** Explainer shown at the top of a detector's fold-down, when non-null. */
+private fun detectorHint(type: String): String? = when (type) {
+    TriggerType.animal -> "Detects birds, horses, sheep and cows."
+    else -> null
+}
+
+private val cameraDetectorTypes = setOf(    TriggerType.motion,
     TriggerType.person,
     TriggerType.face,
     TriggerType.tamper,

@@ -239,4 +239,26 @@ class SettingsScreenTest {
         compose.onNodeWithTag("preRollSlider").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithTag("postRollSlider").performScrollTo().assertIsNotEnabled()
     }
+
+    @Test
+    fun animalDetectorFoldDownShowsSpeciesHint() {
+        // The fold-down renders only while the detector is enabled.
+        val defaults = AppSettings.defaults()
+        val animalOn = defaults.detectorConfigs.mapValues { (type, cfg) ->
+            if (type == io.securitycam.level1.core.TriggerType.animal) {
+                cfg.copy(enabled = true)
+            } else {
+                cfg
+            }
+        }
+        setContent(Harness(defaults.copyWith(detectorConfigs = animalOn)))
+
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_animal").performScrollTo().performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Detects birds, horses, sheep and cows.")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
 }
