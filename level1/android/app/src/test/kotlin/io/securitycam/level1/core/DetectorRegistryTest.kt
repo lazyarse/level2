@@ -3,6 +3,7 @@ package io.securitycam.level1.core
 import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.DetectorConfig
 import io.securitycam.level1.detection.DetectorRegistry
+import io.securitycam.level1.detection.HybridDetector
 import io.securitycam.level1.detection.MotionDetector
 import io.securitycam.level1.event.triggerLabel
 import org.junit.Assert.assertEquals
@@ -25,10 +26,21 @@ class DetectorRegistryTest {
 
     @Test
     fun registryBuildsAudioDetectors() {
-        for (type in listOf(TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise, TriggerType.dogBark, TriggerType.growl)) {
+        for (type in listOf(TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise)) {
             val detector = DetectorRegistry.factoryFor(type)!!(DetectorConfig(type = type))
             assertEquals(type, detector.triggerType)
             assertEquals(type, detector.id)
+        }
+    }
+
+    @Test
+    fun combinedPetDetectorsAreRegistered() {
+        // Construction requires the YOLO context holder (device-only); here we
+        // just verify registration — hybrid behavior is covered by
+        // PetHybridDetectorTest with mock engines.
+        for (type in listOf(TriggerType.dog, TriggerType.cat)) {
+            assertNotNull(DetectorRegistry.factoryFor(type))
+            assertTrue(DetectorRegistry.supports(type))
         }
     }
 

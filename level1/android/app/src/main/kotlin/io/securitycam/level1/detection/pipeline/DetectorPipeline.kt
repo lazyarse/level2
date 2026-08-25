@@ -9,6 +9,7 @@ import io.securitycam.level1.detection.DetectionRegion
 import io.securitycam.level1.detection.Detector
 import io.securitycam.level1.detection.DetectorRegistry
 import io.securitycam.level1.detection.FrameDetector
+import io.securitycam.level1.detection.HybridDetector
 import io.securitycam.level1.detection.audio.AudioEventClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -99,7 +100,13 @@ class DetectorPipeline(
 
     suspend fun processAudio(window: AudioWindow) {
         val scores = classifier.classify(window)
+        // Standalone audio detectors plus the score half of hybrid (combined
+        // pet) detectors — the frame half runs in processFrame.
         for (d in audioDetectorsInternal) {
+            val result = d.analyzeScores(scores)
+            if (result.triggered) maybeEmit(d, result)
+        }
+        for (d in frameDetectorsInternal.filterIsInstance<HybridDetector>()) {
             val result = d.analyzeScores(scores)
             if (result.triggered) maybeEmit(d, result)
         }

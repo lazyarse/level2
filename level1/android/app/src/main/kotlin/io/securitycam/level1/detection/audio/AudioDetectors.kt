@@ -64,18 +64,3 @@ class LoudNoiseDetector(config: DetectorConfig) :
     PersistenceAudioDetector(config, "loud_noise") {
     override val triggerType: String get() = TriggerType.loudNoise
 }
-
-class DogBarkDetector(config: DetectorConfig) :
-    PersistenceAudioDetector(config, "dog_bark") {
-    override val triggerType: String get() = TriggerType.dogBark
-}
-
-class GrowlDetector(config: DetectorConfig) :
-    PersistenceAudioDetector(config, "growl") {
-    override val triggerType: String get() = TriggerType.growl
-}
-
-class CatMeowDetector(config: DetectorConfig) :
-    PersistenceAudioDetector(config, "cat") {
-    override val triggerType: String get() = TriggerType.catMeow
-}

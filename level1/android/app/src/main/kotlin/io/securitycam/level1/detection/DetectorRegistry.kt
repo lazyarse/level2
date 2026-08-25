@@ -32,15 +32,6 @@ object DetectorRegistry {
         TriggerType.tamper to { c: DetectorConfig ->
             TamperDetector(c)
         },
-        TriggerType.dogBark to { c: DetectorConfig ->
-            io.securitycam.level1.detection.audio.DogBarkDetector(c)
-        },
-        TriggerType.growl to { c: DetectorConfig ->
-            io.securitycam.level1.detection.audio.GrowlDetector(c)
-        },
-        TriggerType.catMeow to { c: DetectorConfig ->
-            io.securitycam.level1.detection.audio.CatMeowDetector(c)
-        },
         TriggerType.dog to { c: DetectorConfig ->
             io.securitycam.level1.detection.person.DogDetector(c)
         },

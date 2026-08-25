@@ -49,5 +49,9 @@ their original rows are covered by the design docs.)*
 
 - Vehicle detector (`vehicle`) — COCO car/motorcycle/bus/truck via shared YOLO26n.
 - Bird (`bird`) and livestock (`livestock`: cow/sheep/horse) detectors via shared
-  YOLO26n; cat/dog keep their own dedicated detectors. An earlier combined
-  `animal` detector was replaced by this pair on 2026-08-24.
+  YOLO26n; cat/dog are now **combined sight+sound detectors** (`HybridDetector`:
+  YOLO boxes + YAMNet vocalisation scores under one toggle with separate
+  visual/audio thresholds). The earlier standalone bark/growl/meow audio
+  detectors and the combined `animal` visual detector were replaced by this
+  design on 2026-08-24. Health detector renamed **Heartbeat** in the UI and
+  grouped under a new System heading (Camera → Audio → Combined → System).

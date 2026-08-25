@@ -236,53 +236,17 @@ fun SettingsScreen(
                             )
                         }
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
-                            Text(
-                                "Camera",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                            )
-                            for (type in cameraDetectorOrder) {
-                                val config = current.detectorConfigs[type] ?: continue
-                                DetectorCard(
-                                    config = config,
-                                    channelIds = current.channelConfigs.map { it.id },
-                                    onChanged = { next ->
-                                        viewModel.update {
-                                            it.copy(detectorConfigs = it.detectorConfigs + (type to next))
-                                        }
-                                    },
-                                )
+                            detectorGroup("Camera", current, cameraDetectorOrder) { type, next ->
+                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
-                            Text(
-                                "Audio",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                            )
-                            for ((type, config) in current.detectorConfigs) {
-                                if (type !in audioDetectorTypes) continue
-                                DetectorCard(
-                                    config = config,
-                                    channelIds = current.channelConfigs.map { it.id },
-                                    onChanged = { next ->
-                                        viewModel.update {
-                                            it.copy(detectorConfigs = it.detectorConfigs + (type to next))
-                                        }
-                                    },
-                                )
+                            detectorGroup("Audio", current, audioGeneralOrder) { type, next ->
+                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
-                            // Internal health monitor — shown without a sub-heading.
-                            current.detectorConfigs[TriggerType.health]?.let { config ->
-                                DetectorCard(
-                                    config = config,
-                                    channelIds = current.channelConfigs.map { it.id },
-                                    onChanged = { next ->
-                                        viewModel.update {
-                                            it.copy(detectorConfigs = it.detectorConfigs + (TriggerType.health to next))
-                                        }
-                                    },
-                                )
+                            detectorGroup("Combined", current, combinedPetOrder) { type, next ->
+                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                            }
+                            detectorGroup("System", current, listOf(TriggerType.health)) { type, next ->
+                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
                             BodyText(
                                 "Optional inclusion zones: motion/face only triggers inside them. " +
@@ -1227,13 +1191,32 @@ private fun DetectorCard(
                         onCheckedChange = { v -> onChanged(config.copy(motionGated = v)) },
                     )
                 }
-                Text("Threshold: %.2f".format(config.threshold))
-                Slider(
-                    value = config.threshold.toFloat().coerceIn(0f, 1f),
-                    onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
-                    valueRange = 0f..1f,
-                    modifier = Modifier.testTag("threshold_${config.type}"),
-                )
+                val hybrid = config.type in combinedPetOrder
+                if (hybrid) {
+                    Text("Sight threshold: %.2f".format(config.threshold))
+                    Slider(
+                        value = config.threshold.toFloat().coerceIn(0f, 1f),
+                        onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.testTag("threshold_${config.type}"),
+                    )
+                    val audioThreshold = config.audioThreshold ?: config.threshold
+                    Text("Sound threshold: %.2f".format(audioThreshold))
+                    Slider(
+                        value = audioThreshold.toFloat().coerceIn(0f, 1f),
+                        onValueChange = { v -> onChanged(config.copy(audioThreshold = v.toDouble())) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.testTag("audioThreshold_${config.type}"),
+                    )
+                } else {
+                    Text("Threshold: %.2f".format(config.threshold))
+                    Slider(
+                        value = config.threshold.toFloat().coerceIn(0f, 1f),
+                        onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.testTag("threshold_${config.type}"),
+                    )
+                }
                 StepperRow(
                     label = "Persistence: ${config.persistenceFrames}",
                     canDecrement = config.persistenceFrames > 1,
@@ -1646,6 +1629,8 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
 private fun detectorHint(type: String): String? = when (type) {
     TriggerType.bird -> "Detects birds."
     TriggerType.livestock -> "Detects cows, sheep and horses."
+    TriggerType.dog -> "Triggers on sight or sound (barking, growling)."
+    TriggerType.cat -> "Triggers on sight or sound (meowing, purring, hissing)."
     else -> null
 }
 
@@ -1655,26 +1640,56 @@ private val cameraDetectorOrder = listOf(
     TriggerType.person,
     TriggerType.face,
     TriggerType.tamper,
-    TriggerType.dog,
-    TriggerType.cat,
     TriggerType.bird,
     TriggerType.livestock,
     TriggerType.vehicle,
     TriggerType.loitering,
 )
 
-private val audioDetectorTypes = setOf(
+/** General-purpose sound detectors (pet sounds live under Combined). */
+private val audioGeneralOrder = listOf(
     TriggerType.loudNoise,
     TriggerType.glassBreak,
     TriggerType.babyCry,
-    TriggerType.catMeow,
 )
+
+/** Combined sight+sound pet detectors. */
+private val combinedPetOrder = listOf(
+    TriggerType.dog,
+    TriggerType.cat,
+)
+
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
+    label: String,
+    settings: AppSettings,
+    types: List<String>,
+    onChanged: (String, DetectorConfig) -> Unit,
+) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
+    for (type in types) {
+        val config = settings.detectorConfigs[type] ?: continue
+        DetectorCard(
+            config = config,
+            channelIds = settings.channelConfigs.map { it.id },
+            onChanged = { next -> onChanged(type, next) },
+        )
+    }
+}
 
 private fun retentionSummary(days: Int): String =
     if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"
 
 private fun detectorSummary(settings: AppSettings): String {
-    val shownTypes = cameraDetectorOrder.toSet() + audioDetectorTypes + setOf(TriggerType.health)
+    val shownTypes = cameraDetectorOrder.toSet() +
+        audioGeneralOrder.toSet() +
+        combinedPetOrder.toSet() +
+        setOf(TriggerType.health)
     val total = settings.detectorConfigs.count { it.key in shownTypes }
     val active = settings.detectorConfigs.count { (type, config) ->
         type in shownTypes && config.enabled

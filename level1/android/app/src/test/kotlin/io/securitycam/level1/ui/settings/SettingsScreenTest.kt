@@ -261,4 +261,19 @@ class SettingsScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
     }
+
+    @Test
+    fun detectorSectionShowsCameraAudioCombinedSystemGroups() {
+        setContent(Harness())
+        expandSection("Detectors")
+
+        for (heading in listOf("Camera", "Audio", "Combined", "System")) {
+            compose.onNodeWithText(heading).performScrollTo().assertIsDisplayed()
+        }
+        // Heartbeat rename + combined pet cards present under their group.
+        compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
+        compose.onNodeWithTag("detectorHeader_health").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("detectorHeader_dog").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("detectorHeader_cat").performScrollTo().assertIsDisplayed()
+    }
 }

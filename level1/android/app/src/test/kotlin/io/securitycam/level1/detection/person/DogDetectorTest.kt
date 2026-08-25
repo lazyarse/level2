@@ -37,7 +37,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base))
@@ -51,7 +51,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.7, persistenceFrames = 2),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -67,7 +67,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.7, persistenceFrames = 1),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -79,7 +79,7 @@ class DogDetectorTest {
     fun noDogDetectionsDoesNotTrigger() = runBlocking {
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            engine = MockDogEngine(),
+            visualEngine = MockDogEngine(),
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -95,7 +95,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -110,7 +110,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 2),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -126,7 +126,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         d.exclusionRegions = listOf(
@@ -143,7 +143,7 @@ class DogDetectorTest {
         engine.dogs.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            engine = engine,
+            visualEngine = engine,
         )
         d.init()
         d.exclusionRegions = listOf(

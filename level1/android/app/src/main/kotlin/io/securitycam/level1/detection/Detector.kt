@@ -17,6 +17,11 @@ data class DetectorConfig(
     val motionGated: Boolean = false,
     /** Loitering only: seconds of continuous presence before firing. */
     val dwellSeconds: Int = 10,
+    /**
+     * Combined pet detectors only: threshold for the sound modality. When
+     * null the visual [threshold] governs both.
+     */
+    val audioThreshold: Double? = null,
 ) {
     fun copyWith(
         type: String? = null,
@@ -27,6 +32,7 @@ data class DetectorConfig(
         routeToChannelIds: List<String>? = null,
         motionGated: Boolean? = null,
         dwellSeconds: Int? = null,
+        audioThreshold: Double? = null,
     ): DetectorConfig = DetectorConfig(
         type = type ?: this.type,
         enabled = enabled ?: this.enabled,
@@ -36,6 +42,7 @@ data class DetectorConfig(
         routeToChannelIds = routeToChannelIds ?: this.routeToChannelIds,
         motionGated = motionGated ?: this.motionGated,
         dwellSeconds = dwellSeconds ?: this.dwellSeconds,
+        audioThreshold = audioThreshold ?: this.audioThreshold,
     )
 
     fun toJson(): Map<String, Any?> = mapOf(
@@ -47,6 +54,7 @@ data class DetectorConfig(
         "routeToChannelIds" to routeToChannelIds,
         "motionGated" to motionGated,
         "dwellSeconds" to dwellSeconds,
+        "audioThreshold" to audioThreshold,
     )
 
     companion object {
@@ -63,6 +71,7 @@ data class DetectorConfig(
                 ?: emptyList(),
             motionGated = json["motionGated"] as? Boolean ?: false,
             dwellSeconds = (json["dwellSeconds"] as? Number)?.toInt() ?: 10,
+            audioThreshold = (json["audioThreshold"] as? Number)?.toDouble(),
         )
     }
 }
@@ -94,5 +103,15 @@ abstract class FrameDetector : Detector {
 
 /** Score-based audio detector. */
 abstract class AudioDetector : Detector {
+    abstract fun analyzeScores(scores: AudioEventScores): DetectionResult
+}
+
+/**
+ * A frame detector that also reacts to classifier scores (combined pet
+ * detectors: sight OR sound). Registered under one config; the pipeline feeds
+ * it frames through [analyzeFrameAsync] and audio windows through
+ * [analyzeScores], each with its own persistence counter.
+ */
+abstract class HybridDetector : FrameDetector() {
     abstract fun analyzeScores(scores: AudioEventScores): DetectionResult
 }

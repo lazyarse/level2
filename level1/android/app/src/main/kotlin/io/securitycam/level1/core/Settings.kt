@@ -289,27 +289,6 @@ data class AppSettings(
                     cooldown = Duration.ofSeconds(5),
                     routeToChannelIds = listOf("telegram"),
                 ),
-                TriggerType.dogBark to DetectorConfig(
-                    type = TriggerType.dogBark,
-                    threshold = 0.5,
-                    persistenceFrames = 2,
-                    enabled = false,
-                    routeToChannelIds = listOf("telegram"),
-                ),
-                TriggerType.growl to DetectorConfig(
-                    type = TriggerType.growl,
-                    threshold = 0.5,
-                    persistenceFrames = 2,
-                    enabled = false,
-                    routeToChannelIds = listOf("telegram"),
-                ),
-                TriggerType.catMeow to DetectorConfig(
-                    type = TriggerType.catMeow,
-                    threshold = 0.5,
-                    persistenceFrames = 2,
-                    enabled = false,
-                    routeToChannelIds = listOf("telegram"),
-                ),
                 TriggerType.dog to DetectorConfig(
                     type = TriggerType.dog,
                     threshold = 0.5,

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
@@ -35,7 +36,7 @@ enum class DetectorType(
     FaceKnown(TriggerType.faceKnown, "Known face", Icons.Filled.Face),
     FaceUnknown(TriggerType.faceUnknown, "Unknown face", Icons.Filled.SentimentDissatisfied),
     Tamper(TriggerType.tamper, "Tamper", Icons.Filled.VideocamOff),
-    Health(TriggerType.health, "Health", Icons.Filled.HealthAndSafety),
+    Health(TriggerType.health, "Heartbeat", Icons.Filled.MonitorHeart),
     DogBark(TriggerType.dogBark, "Dog bark", Icons.Filled.Pets),
     Growl(TriggerType.growl, "Growl", Icons.Filled.VolumeDown),
     CatMeow(TriggerType.catMeow, "Cat vocalisation", Icons.Filled.Pets),
