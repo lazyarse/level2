@@ -24,7 +24,7 @@ UI), and renaming the app to **level1** with a new package id. iOS is out of sco
 | In-flight WIP | Committed first as the regression/reference point |
 | iOS | Out of scope — Android-only |
 | Displayed app name | `level1` (`android:label`) |
-| `applicationId` / namespace | `io.securitycam.security_cam` → **`io.securitycam.level1`** (fresh app identity; old installs' data orphaned — no migration) |
+| `applicationId` / namespace | `io.securitycam.security_cam` → **`io.securitycam.level2`** (fresh app identity; old installs' data orphaned — no migration) |
 | Project directory | `security_cam/` → **`level1/`** (repo becomes `level1/level1/`) |
 | MediaStore clips folder | `Movies/SecurityCam/` → **`Movies/level1/`** |
 | Internal channel names | Gone — no Dart bridge in the native app |
@@ -80,14 +80,14 @@ person) + regions geometry + event pipeline + trigger batcher + 5 channels + sto
 ### Final layout
 
 ```
-/home/tpa/code/level1/                     (git repo root)
+/home/tpa/code/level2/                     (git repo root)
   AGENTS.md                                 (rewritten: native commands, emulator discipline)
   docs/plans/
   level1/                                   (renamed from security_cam/ — the app project)
     android/                                (native Gradle project; Flutter files deleted at Phase 7)
       app/src/main/kotlin/io/securitycam/level1/...
       app/src/main/assets/{yamnet.tflite, yamnet_labels.txt, yolo26n_w8a32.tflite, face.tflite}
-      app/src/main/AndroidManifest.xml      (label=level1, package io.securitycam.level1)
+      app/src/main/AndroidManifest.xml      (label=level1, package io.securitycam.level2)
     tool/run_android_integration_tests.sh   (reworked for Gradle connectedAndroidTest)
 ```
 
@@ -96,7 +96,7 @@ Phases 1–6: the Flutter project still lives at `level1/` and runs **desktop-on
 converted to the pure-native app. Flutter Android integration tests stop after
 Phase 0 (the native instrumentation suite replaces them).
 
-### Kotlin package structure (`io.securitycam.level1`)
+### Kotlin package structure (`io.securitycam.level2`)
 
 ```
 MainActivity.kt                      Compose host; runtime permission flow
@@ -190,13 +190,13 @@ single-slot) preserved with a `Channel<AnalysisFrame>`-style flow + serialized c
 | Item | Old | New |
 |---|---|---|
 | Displayed app name | `security_cam` | `level1` |
-| `applicationId` / namespace | `io.securitycam.security_cam` | `io.securitycam.level1` |
+| `applicationId` / namespace | `io.securitycam.security_cam` | `io.securitycam.level2` |
 | Kotlin source tree | `…/kotlin/io/securitycam/security_cam/` | `…/kotlin/io/securitycam/level1/` |
 | Project dir | `security_cam/` | `level1/` |
 | MediaStore clips folder | `Movies/SecurityCam/` | `Movies/level1/` |
 | FileProvider authority | `${applicationId}.fileprovider` | follows new id automatically |
 | Channel names | `io.securitycam.security_cam/camera|frames|mic_pcm|preview_status` | deleted (no Dart bridge) |
-| Test script PKG | `io.securitycam.security_cam` | `io.securitycam.level1` |
+| Test script PKG | `io.securitycam.security_cam` | `io.securitycam.level2` |
 | Version | `1.0.1+2` | reset (e.g. `1.0.0+1`) — new app identity |
 
 **Consequences accepted:** new `applicationId` ⇒ devices treat it as a brand-new app;
@@ -242,7 +242,7 @@ Post-migration loop:
 - **Zoom acceptance:** pinch 1×→max within `ZoomState` range, animated, overlay
   remains aligned.
 - **Rename acceptance:** `rg -i security_cam` clean (except git history); app
-  installs as `level1` under `io.securitycam.level1`; clips land in `Movies/level1`.
+  installs as `level1` under `io.securitycam.level2`; clips land in `Movies/level1`.
 
 ## Phases (overview — detail in the implementation plan)
 

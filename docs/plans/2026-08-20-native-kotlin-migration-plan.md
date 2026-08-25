@@ -13,7 +13,7 @@ commit (see `git log`); only the Phase 7 boxes were tracked live.
 **Goal:** Convert the Android app to 100% native Kotlin + Jetpack Compose, reuse the
 existing `camera_service` module, port all Dart logic, add native rotation + zoom,
 build the 5 drafted features, and rename the app `security_cam` → `level1` with new
-package `io.securitycam.level1`. Flutter is deleted at Phase 7.
+package `io.securitycam.level2`. Flutter is deleted at Phase 7.
 
 **Architecture:** The `LifecycleService` FGS keeps owning the CameraX bind; the Compose
 Monitor screen attaches a `PreviewView` surface provider (rotation free via texture
@@ -55,7 +55,7 @@ targetSdk 35.
 
 - [ ] **Step 1:** Confirm working tree state:
   ```bash
-  date -R && cd /home/tpa/code/level1 && git status --short
+  date -R && cd /home/tpa/code/level2 && git status --short
   ```
   Expected: the WIP files (`android/app/src/main/AndroidManifest.xml`,
   `…/kotlin/io/securitycam/security_cam/*`, `lib/core/settings.dart`,
@@ -63,7 +63,7 @@ targetSdk 35.
   `lib/ui/*`, `pubspec.yaml`) plus untracked `docs/plans/*` and `AGENTS.md`.
 - [ ] **Step 2:** Stage and commit the WIP as the migration reference point:
   ```bash
-  cd /home/tpa/code/level1 && git add -A && git commit -m "feat: CameraX preview passthrough + orientation lock (pre-migration reference)"
+  cd /home/tpa/code/level2 && git add -A && git commit -m "feat: CameraX preview passthrough + orientation lock (pre-migration reference)"
   ```
 - [ ] **Step 3:** Record the commit hash for the parity baseline.
 
@@ -73,7 +73,7 @@ targetSdk 35.
 
 - [ ] **Step 1:** Run the full Flutter suite green (desktop) and save the pass list:
   ```bash
-  date -R && cd /home/tpa/code/level1/security_cam && flutter analyze && flutter test
+  date -R && cd /home/tpa/code/level2/security_cam && flutter analyze && flutter test
   ```
   Expected: `All tests passed!`, `No issues found!`.
 - [ ] **Step 2:** Copy `test/*_test.dart` → `docs/plans/port-parity-manifest.txt` (one
@@ -88,30 +88,30 @@ targetSdk 35.
 
 **Files:**
 - Modify: `AGENTS.md` (paths `security_cam/` → `level1/`, PKG `io.securitycam.security_cam`
-  → `io.securitycam.level1` where Flutter-reference commands still apply)
+  → `io.securitycam.level2` where Flutter-reference commands still apply)
 - Modify: `level1/tool/run_android_integration_tests.sh` (paths + `PKG`)
 
 - [ ] **Step 1:** Rename the directory (keep the Flutter project runnable on desktop):
   ```bash
-  date -R && cd /home/tpa/code/level1 && git mv security_cam level1
+  date -R && cd /home/tpa/code/level2 && git mv security_cam level1
   ```
 - [ ] **Step 2:** Update `AGENTS.md` and `tool/run_android_integration_tests.sh` paths
   from `security_cam/` → `level1/`. Keep `PKG=io.securitycam.security_cam` for now
-  (the Flutter reference still uses it); Phase 7 switches it to `io.securitycam.level1`.
+  (the Flutter reference still uses it); Phase 7 switches it to `io.securitycam.level2`.
 - [ ] **Step 3:** Verify the Flutter desktop reference still runs:
   ```bash
-  cd /home/tpa/code/level1/level1 && flutter test
+  cd /home/tpa/code/level2/level1 && flutter test
   ```
   Expected: green (same as Task 0.2).
 - [ ] **Step 4:** Commit:
   ```bash
-  cd /home/tpa/code/level1 && git add -A && git commit -m "refactor: rename project directory security_cam -> level1"
+  cd /home/tpa/code/level2 && git add -A && git commit -m "refactor: rename project directory security_cam -> level1"
   ```
 
 ### Task 0.4: Convert `level1/android` to a pure-native Gradle app
 
 Converts the Flutter Android module into the native app with package
-`io.securitycam.level1`. The Flutter project at `level1/` stays (desktop-only).
+`io.securitycam.level2`. The Flutter project at `level1/` stays (desktop-only).
 
 **Files:**
 - Modify: `level1/android/settings.gradle.kts`, `level1/android/build.gradle.kts`,
@@ -127,7 +127,7 @@ Converts the Flutter Android module into the native app with package
   project (`include(":app")`, no Flutter plugin, `pluginManagement` repositories
   `google()`/`mavenCentral()`/`gradlePluginPortal()`).
 - [ ] **Step 2:** `app/build.gradle.kts`: remove `dev.flutter.flutter-gradle-plugin`;
-  set `namespace = "io.securitycam.level1"`, `applicationId = "io.securitycam.level1"`,
+  set `namespace = "io.securitycam.level2"`, `applicationId = "io.securitycam.level2"`,
   `minSdk = 28` (raised in Phase 7; see Task 7.1), `targetSdk = 35`, `compileSdk = 37`, Java/Kotlin 17. Add plugins
   `com.android.application`, `org.jetbrains.kotlin.android`, `org.jetbrains.kotlin.plugin.compose`,
   `com.google.devtools.ksp` (Room). Add deps:
@@ -177,7 +177,7 @@ Converts the Flutter Android module into the native app with package
 - [ ] **Step 8:** Kill the emulator/qemu when done.
 - [ ] **Step 9:** Commit:
   ```bash
-  git add -A && git commit -m "feat: scaffold pure-native Kotlin+Compose app (io.securitycam.level1)"
+  git add -A && git commit -m "feat: scaffold pure-native Kotlin+Compose app (io.securitycam.level2)"
   ```
 
 ### Task 0.5: Publish the parity matrix
@@ -208,7 +208,7 @@ Converts the Flutter Android module into the native app with package
 - Modify: `…/camera_service/MonitoringService.kt` (remove Flutter imports; expose a
   Kotlin listener API instead of channels)
 
-- [ ] **Step 1:** Move the files under `io.securitycam.level1.camera_service`; rewrite
+- [ ] **Step 1:** Move the files under `io.securitycam.level2.camera_service`; rewrite
   package declarations/imports.
 - [ ] **Step 2:** Replace channel publish calls with a Kotlin observer API on
   `CameraFrameBus` (already the internal fan-out) + `fun onMicPcm(pcm, startSample)`
@@ -232,7 +232,7 @@ Converts the Flutter Android module into the native app with package
 - [ ] **Step 8:** Build + commit:
   ```bash
   date -R && ANDROID_HOME=/home/tpa/code/android-env/android-sdk ./gradlew :app:assembleDebug
-  git add -A && git commit -m "refactor: drop Dart bridge, expose Kotlin camera/mic/clip API (io.securitycam.level1)"
+  git add -A && git commit -m "refactor: drop Dart bridge, expose Kotlin camera/mic/clip API (io.securitycam.level2)"
   ```
 
 ### Task 1.2: Compose Monitor screen with native `PreviewView`
@@ -779,7 +779,7 @@ cells are `[x]`.
   `screen_off_gate_test.dart`, `face_detection_linux_test.dart`,
   `person_detection_linux_test.dart`)
 - Modify: `level1/tool/run_android_integration_tests.sh` (Gradle
-  `connectedAndroidTest`, `PKG=io.securitycam.level1`, `[itest]` screen-off markers via
+  `connectedAndroidTest`, `PKG=io.securitycam.level2`, `[itest]` screen-off markers via
   logcat)
 
 - [x] **Step 1:** Instrumentation tests via `androidx.test` + `runner`/`rules`,
@@ -826,7 +826,7 @@ cells are `[x]`.
 - [ ] **Step 1:** `git rm -r` the Flutter-only files; keep `android/`, `tool/`, `docs/`.
 - [ ] **Step 2:** Rename sweep gate:
   ```bash
-  cd /home/tpa/code/level1 && rg -i "security_cam|io\.securitycam\.security_cam" --glob '!docs/plans/*' --glob '!.git/*'
+  cd /home/tpa/code/level2 && rg -i "security_cam|io\.securitycam\.security_cam" --glob '!docs/plans/*' --glob '!.git/*'
   ```
   Expected: **no output**. (Flutter-era docs under `docs/plans/` are exempted as
   historical; optionally add a `## Historical (Flutter era)` note.)
@@ -836,7 +836,7 @@ cells are `[x]`.
 - [ ] **Step 4:** Final full build + unit + one AVD instrumentation pass.
 - [ ] **Step 5:** Commit:
   ```bash
-  git add -A && git commit -m "chore: delete Flutter app, finalize native level1 app (io.securitycam.level1)"
+  git add -A && git commit -m "chore: delete Flutter app, finalize native level1 app (io.securitycam.level2)"
   ```
 
 ### Task 7.4: Final verification
@@ -867,7 +867,7 @@ cells are `[x]`.
   channels/storage ✓ (T4.x); full UI ✓ (T5.x); drafted features ✓ (T6.x); delete Flutter
   + rename + AGENTS.md ✓ (T7.3); on-device + parity tests ✓ (T7.1/T7.2); naming/data
   migration/risk acceptance ✓ (design doc).
-- **Key decisions carried through:** package `io.securitycam.level1` from T0.4 onward
+- **Key decisions carried through:** package `io.securitycam.level2` from T0.4 onward
   (no channel renames later); CameraX 1.3.4 + guava pins preserved; `Movies/level1`;
   LiteRT spike gates Phase 3; parity matrix is the migration oracle.
 - **Blast radius:** phases are independently shippable; the Flutter reference remains

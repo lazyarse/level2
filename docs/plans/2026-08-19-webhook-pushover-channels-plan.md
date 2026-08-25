@@ -23,7 +23,7 @@
 
 `pubspec.lock` currently shows `flutter_litert: dependency: "direct main"` (the change from adding `flutter_litert: ^3.8.0` in the person phase was never committed).
 
-Run: `date -R && git -C /home/tpa/code/level1 add security_cam/pubspec.lock && git -C /home/tpa/code/level1 commit -m "chore: lock flutter_litert as a direct dependency"`
+Run: `date -R && git -C /home/tpa/code/level2 add security_cam/pubspec.lock && git -C /home/tpa/code/level2 commit -m "chore: lock flutter_litert as a direct dependency"`
 Expected: commit succeeds; `AGENTS.md` stays untracked (per project directive — never commit it).
 
 ---
