@@ -1,9 +1,25 @@
+import java.util.concurrent.TimeUnit
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// Git-driven versioning: the latest tag drives versionName, the commit count
+// drives versionCode — releases are cut by pushing a vX.Y.Z tag, never by
+// hand-editing this file. Builds outside a git repo fall back to placeholders.
+fun runGit(vararg args: String): String? = try {
+    val p = ProcessBuilder("git", *args).redirectErrorStream(true).start()
+    p.waitFor(5, TimeUnit.SECONDS)
+    p.inputStream.bufferedReader().readText().trim()
+        .takeIf { p.exitValue() == 0 && it.isNotEmpty() }
+} catch (_: Exception) {
+    null
+}
+
+val gitDescribe: String? = runGit("describe", "--tags", "--dirty")
 
 android {
     namespace = "io.securitycam.level2"
@@ -28,8 +44,8 @@ android {
         // x86_64-capable release (0.10.26+) carries both requirements.
         minSdk = 28
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = runGit("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
+        versionName = gitDescribe?.removePrefix("v") ?: "0.0.0-untagged"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -95,6 +111,19 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+        }
+    }
+}
+
+// Release-only dirty-tree guard: never ship uncommitted state. Staging, debug
+// and unit-test builds stay permissive so the normal dev loop is unaffected.
+tasks.matching { it.name in listOf("assembleRelease", "bundleRelease") }.configureEach {
+    doFirst {
+        if (gitDescribe?.endsWith("-dirty") == true) {
+            throw GradleException(
+                "Refusing release build: working tree is dirty " +
+                    "(git describe: $gitDescribe)"
+            )
         }
     }
 }
