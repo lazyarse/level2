@@ -26,7 +26,7 @@ class MonitorViewModelTest {
     ) = MonitorViewModel(
         application = ApplicationProvider.getApplicationContext(),
         permissionsGranted = { granted },
-        startMonitoring = { startRan.add(1) },
+        startMonitoring = { _, _ -> startRan.add(1) },
         stopMonitoring = { stopRan.add(1) },
         // Robolectric cannot initialize native detectors; runtime-init failures
         // are environmental here, not product bugs.
@@ -108,7 +108,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { startRan.add(1) },
+            startMonitoring = { _, _ -> startRan.add(1) },
             stopMonitoring = { stopRan.add(1) },
             settingsLoader = { scheduleSettings(always = excluded) },
             scheduleCheckInterval = null,
@@ -140,7 +140,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { startRan.add(1) },
+            startMonitoring = { _, _ -> startRan.add(1) },
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
@@ -155,11 +155,43 @@ class MonitorViewModelTest {
     }
 
     @Test
+    fun togglePreviewPersistsAndRebindsWhileMonitoring() = runBlocking {
+        val rebinds = mutableListOf<Boolean>()
+        val saved = mutableListOf<AppSettings>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _ -> },
+            stopMonitoring = {},
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = { saved.add(it) },
+            previewRebind = { rebinds.add(it) },
+            scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
+        )
+        assertTrue(vm.monitorPreview.value)
+
+        vm.togglePreview()
+        assertTrue(!vm.monitorPreview.value)
+        // Not monitoring yet → no rebind, but choice is persisted.
+        assertTrue(rebinds.isEmpty())
+        assertEquals(false, saved.single().monitorPreview)
+
+        vm.start()
+        vm.togglePreview()
+        // Monitoring → rebind fired with the new value; persisted again.
+        assertEquals(listOf(true), rebinds)
+        assertTrue(vm.monitorPreview.value)
+        assertEquals(2, saved.size)
+        assertEquals(true, saved.last().monitorPreview)
+    }
+
+    @Test
     fun manualStopClearsPendingAutoResume() {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = {},
+            startMonitoring = { _, _ -> },
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
@@ -183,7 +215,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = {},
+            startMonitoring = { _, _ -> },
             stopMonitoring = {},
             settingsLoader = {
                 AppSettings.defaults().copyWith(

@@ -54,17 +54,19 @@ class MonitorViewModel(
     private val permissionsGranted: () -> Boolean = {
         hasCorePermissions(application)
     },
-    private val startMonitoring: (cameraId: String) -> Unit = { cameraId ->
-        MonitoringService.start(
-            application,
-            cameraId = cameraId,
-            cameraName = "Hallway",
-            preRollSeconds = 5,
-            postRollSeconds = 5,
-            recordVideo = true,
-            videoQuality = "lowest",
-        )
-    },
+    private val startMonitoring: (cameraId: String, previewEnabled: Boolean) -> Unit =
+        { cameraId, previewEnabled ->
+            MonitoringService.start(
+                application,
+                cameraId = cameraId,
+                cameraName = "Hallway",
+                preRollSeconds = 5,
+                postRollSeconds = 5,
+                recordVideo = true,
+                videoQuality = "lowest",
+                previewEnabled = previewEnabled,
+            )
+        },
     private val stopMonitoring: () -> Unit = {
         MonitoringServiceController.stop()
     },
@@ -76,6 +78,10 @@ class MonitorViewModel(
     },
     private val scheduleCheckInterval: Duration? = Duration.ofMinutes(1),
     private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
+    /** Rebind seam for mid-monitoring preview toggles (test-injectable). */
+    private val previewRebind: (Boolean) -> Unit = {
+        MonitoringServiceController.setMonitoringPreviewEnabled(it)
+    },
     /**
      * Whether a detection-runtime initialization failure flips the session to
      * [MonitorState.Error] instead of only logging. Robolectric JVM tests cannot
@@ -104,6 +110,10 @@ class MonitorViewModel(
 
     private val _cameraId = MutableStateFlow("0")
     val cameraId: StateFlow<String> = _cameraId.asStateFlow()
+
+    /** Whether the monitoring session renders the live preview (battery saver). */
+    private val _monitorPreview = MutableStateFlow(true)
+    val monitorPreview: StateFlow<Boolean> = _monitorPreview.asStateFlow()
 
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
@@ -148,6 +158,7 @@ class MonitorViewModel(
             val settings = runBlocking { settingsLoader() }
             _cameraName.value = settings.cameraName
             _cameraId.value = settings.cameraId
+            _monitorPreview.value = settings.monitorPreview
             _detectionRegions.value = settings.detectionRegions
             _exclusionRegions.value = settings.exclusionRegions
         } catch (t: Throwable) {
@@ -220,9 +231,29 @@ class MonitorViewModel(
                 val settings = settingsLoader()
                 _cameraName.value = settings.cameraName
                 _cameraId.value = settings.cameraId
+                _monitorPreview.value = settings.monitorPreview
                 _detectionRegions.value = settings.detectionRegions
                 _exclusionRegions.value = settings.exclusionRegions
                 scheduleSettings = settings
+            }
+        }
+    }
+
+    /**
+     * Toggles the live preview on the monitor bar: persists the choice and,
+     * while monitoring, rebinds the camera with/without the Preview use case
+     * (detection, clips, snapshots and RTSP are unaffected either way).
+     */
+    fun togglePreview() {
+        val next = !_monitorPreview.value
+        _monitorPreview.value = next
+        if (_state.value == MonitorState.Monitoring) previewRebind(next)
+        viewModelScope.launch {
+            runCatching {
+                val current = settingsLoader()
+                val updated = current.copy(monitorPreview = next)
+                settingsSaver(updated)
+                scheduleSettings = updated
             }
         }
     }
@@ -260,7 +291,7 @@ class MonitorViewModel(
         _error.value = null
         // Use cached cameraId (or default "0") for synchronous service start;
         // full settings are loaded in the coroutine for runtime creation.
-        startMonitoring(_cameraId.value)
+        startMonitoring(_cameraId.value, _monitorPreview.value)
         _state.value = MonitorState.Monitoring
         val gen = ++startGeneration
         // Build the detection→event runtime off the main thread; the service

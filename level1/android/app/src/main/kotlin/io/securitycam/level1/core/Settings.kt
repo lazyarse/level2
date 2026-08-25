@@ -159,6 +159,8 @@ data class AppSettings(
     val videoQuality: String = VideoQuality.lowest,
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
+    /** Monitor screen: bind the Preview use case (live image) while monitoring. */
+    val monitorPreview: Boolean = true,
     val detectionRegions: List<DetectionRegion> = emptyList(),
     val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
@@ -198,6 +200,7 @@ data class AppSettings(
         videoQuality = videoQuality ?: this.videoQuality,
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
+        monitorPreview = monitorPreview ?: this.monitorPreview,
         detectionRegions = detectionRegions ?: this.detectionRegions,
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
@@ -219,6 +222,7 @@ data class AppSettings(
         json["videoQuality"] = videoQuality
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
+        json["monitorPreview"] = monitorPreview
         json["detectionRegions"] = detectionRegions.map { it.toJson() }
         json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
         json["knownFaces"] = knownFaces.map { it.toJson() }
@@ -455,6 +459,8 @@ data class AppSettings(
                     ?: defaults.analysisResolution,
                 screenOrientation = json["screenOrientation"] as? String
                     ?: defaults.screenOrientation,
+                monitorPreview = json["monitorPreview"] as? Boolean
+                    ?: defaults.monitorPreview,
                 detectionRegions = (json["detectionRegions"] as? List<*>)
                     ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),

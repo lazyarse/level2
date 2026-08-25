@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -60,6 +62,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val healthStalled by viewModel.healthStalled.collectAsStateWithLifecycle()
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
+    val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
     val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
@@ -116,9 +119,11 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         ) {
             PreviewSurface(Modifier.fillMaxSize())
             // Hide the frozen last frame whenever nothing is actively
-            // rendering (Idle/Starting/Error) — PreviewView keeps showing its
-            // final buffer after unbind, so blank it out instead.
-            if (state != MonitorState.Monitoring && state != MonitorState.Previewing) {
+            // rendering, or when the user runs preview-less monitoring
+            // (PreviewView keeps showing its final buffer after unbind).
+            val previewLive = (state == MonitorState.Monitoring && monitorPreview) ||
+                state == MonitorState.Previewing
+            if (!previewLive) {
                 Box(Modifier.matchParentSize().background(Color.Black))
             }
             RegionOverlay(
@@ -151,6 +156,17 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                         Icons.Filled.Visibility,
                         contentDescription = "Toggle detection regions",
                         tint = if (showRegions) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(
+                    onClick = { viewModel.togglePreview() },
+                    modifier = Modifier.testTag("previewToggleButton"),
+                ) {
+                    Icon(
+                        if (monitorPreview) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                        contentDescription = "Toggle camera preview",
+                        tint = if (monitorPreview) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

@@ -76,6 +76,7 @@ class MonitoringService : LifecycleService() {
                 intent.getStringExtra(EXTRA_VIDEO_QUALITY) ?: "lowest",
                 intent.getIntExtra(EXTRA_ANALYSIS_WIDTH, 320) ?: 320,
                 intent.getIntExtra(EXTRA_ANALYSIS_HEIGHT, 240) ?: 240,
+                intent.getBooleanExtra(EXTRA_PREVIEW_ENABLED, true),
             )
         }
         return START_STICKY
@@ -98,6 +99,7 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_ANALYSIS_WIDTH = "analysisWidth"
         const val EXTRA_ANALYSIS_HEIGHT = "analysisHeight"
         const val EXTRA_PREVIEW_ONLY = "previewOnly"
+        const val EXTRA_PREVIEW_ENABLED = "previewEnabled"
 
         /** Gate before dispatching: a denied grant must never start an FGS that
          * is then obligated to reach startForeground() within ~5 s. */
@@ -115,6 +117,7 @@ class MonitoringService : LifecycleService() {
             videoQuality: String,
             analysisWidth: Int = 320,
             analysisHeight: Int = 240,
+            previewEnabled: Boolean = true,
         ) {
             if (!hasCameraPermission(context)) return
             val intent = Intent(context, MonitoringService::class.java)
@@ -126,6 +129,7 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_VIDEO_QUALITY, videoQuality)
                 .putExtra(EXTRA_ANALYSIS_WIDTH, analysisWidth)
                 .putExtra(EXTRA_ANALYSIS_HEIGHT, analysisHeight)
+                .putExtra(EXTRA_PREVIEW_ENABLED, previewEnabled)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -169,6 +173,10 @@ object MonitoringServiceController {
     private var frameCount = 0L
     private var lastPublishMs = 0L
     private var recordVideo = true
+
+    /** Whether the monitoring session binds a Preview use case (battery saver). */
+    private var previewEnabled = true
+    private var monitoringCameraId: String? = null
     private var analysisWidth = 320
     private var analysisHeight = 240
 
@@ -202,8 +210,9 @@ object MonitoringServiceController {
         videoQuality: String,
         analysisWidth: Int = 320,
         analysisHeight: Int = 240,
+        previewEnabled: Boolean = true,
     ) {
-        Log.i(TAG, "onStart cameraId=$cameraId")
+        Log.i(TAG, "onStart cameraId=$cameraId previewEnabled=$previewEnabled")
         if (active) return
         previewOnlyMode = false
         // Permission gate before any foreground/wakelock side effects (design
@@ -222,6 +231,8 @@ object MonitoringServiceController {
         this.recordVideo = recordVideo
         this.analysisWidth = analysisWidth
         this.analysisHeight = analysisHeight
+        this.previewEnabled = previewEnabled
+        monitoringCameraId = cameraId
         startForeground(service)
         acquireWakeLock(service)
         VideoClipRecorder.configure(
@@ -242,7 +253,7 @@ object MonitoringServiceController {
         }
         // Start Live View if enabled in settings
         startLiveView(service)
-        bindCamera(service, cameraId)
+        bindCamera(service, cameraId, allowPreview = previewEnabled)
     }
 
     fun onServiceDestroyed(service: Service) {
@@ -484,6 +495,20 @@ object MonitoringServiceController {
     fun setPreviewSurfaceProvider(provider: Preview.SurfaceProvider?) {
         pendingPreviewProvider = provider
         boundPreview?.setSurfaceProvider(provider)
+    }
+
+    /**
+     * Toggles the monitoring session's Preview use case in place (battery
+     * saver). Detection/clips/snapshots/RTSP are unaffected — they never
+     * depended on Preview. No-op when idle or in preview-only mode.
+     */
+    fun setMonitoringPreviewEnabled(enabled: Boolean) {
+        if (!active || previewOnlyMode) return
+        val svc = activeService ?: return
+        val cameraId = monitoringCameraId ?: return
+        Log.i(TAG, "setMonitoringPreviewEnabled enabled=$enabled")
+        previewEnabled = enabled
+        bindCamera(svc, cameraId, allowPreview = enabled)
     }
 
     /** Re-applies the display rotation to the bound preview (display change). */
