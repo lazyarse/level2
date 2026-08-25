@@ -57,11 +57,18 @@ case "$BUILD_TYPE" in
   debug)   BT_TASK="Debug" ;;
   *) echo "unsupported BUILD_TYPE=$BUILD_TYPE (staging|debug)"; exit 1 ;;
 esac
-# 420s: composite build+install — a cold pass re-R8s both APKs (~2-3 min) and
-# streams the ~90 MB staging APK; plain warm installs finish in ~35 s.
-(cd "$ANDROID_ROOT" && timeout 420 $GRADLE ":app:install$BT_TASK" ":app:install${BT_TASK}AndroidTest") || {
-  echo "gradle install failed"; exit 1
+# 420s: composite build — a cold pass re-R8s both APKs (~2-3 min).
+# Only build, then install on the target device to avoid pushing staging to
+# physical hardware.
+(cd "$ANDROID_ROOT" && timeout 420 $GRADLE ":app:assemble$BT_TASK" ":app:assemble${BT_TASK}AndroidTest") || {
+  echo "gradle build failed"; exit 1
 }
+
+APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/$BUILD_TYPE"
+TEST_APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/androidTest/$BUILD_TYPE"
+echo "== installing APKs on $SERIAL =="
+adb install -r "$APK_DIR/app-$BUILD_TYPE.apk" || { echo "app install failed"; exit 1; }
+adb install -r "$TEST_APK_DIR/app-$BUILD_TYPE-androidTest.apk" || { echo "test APK install failed"; exit 1; }
 
 # Grant system permissions on the freshly installed app (never while a
 # streamed install is in flight).

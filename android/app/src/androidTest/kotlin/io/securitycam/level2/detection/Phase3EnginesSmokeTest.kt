@@ -32,7 +32,7 @@ class Phase3EnginesSmokeTest {
         val scores: AudioEventScores = classifier.classify(
             AudioWindow(timestamp = Instant.EPOCH, samples = FloatArray(15600), sampleRate = 16000),
         )
-        assertEquals(setOf("baby_cry", "glass", "loud_noise"), scores.classScores.keys)
+        assertEquals(setOf("baby_cry", "glass", "loud_noise", "dog_bark", "growl", "cat"), scores.classScores.keys)
         assertTrue(scores.classScores.values.all { it in 0.0..1.0 })
         classifier.dispose()
     }
