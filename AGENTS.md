@@ -64,10 +64,14 @@ Prefer the fastest platform that can validate the change:
 
 ## Release signing
 
-- Keystore lives outside the repo at `~/.keystores/level1-release.jks`; credentials in
+- Keystore lives outside the repo at `~/.keystores/level2-release.jks`; credentials in
   user-global `~/.gradle/gradle.properties` as `LEVEL2_RELEASE_STORE_FILE`,
   `LEVEL2_RELEASE_STORE_PASSWORD`, `LEVEL2_RELEASE_KEY_ALIAS`,
   `LEVEL2_RELEASE_KEY_PASSWORD`. Without them, release falls back to the debug key.
+- Expected release cert (re-keyed 2026-08-25; pre-1.0.1 artifacts were signed by the
+  retired `CN=level1` key — see `~/.keystores/level1-release.jks.retired`):
+  `CN=level2, OU=SecurityCam, O=security-cam`, SHA-256
+  `e686383a468c9ca7964985f84ff337dd1eee442fc91d6c8335819e00dbd6190f`.
 - Verify signatures with `apksigner verify --print-certs` (jarsigner cannot see v2/v3).
 
 ## Emulator discipline
