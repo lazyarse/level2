@@ -105,6 +105,25 @@ class SettingsTest {
     }
 
     @Test
+    fun clipTimestampSettingsRoundTrip() {
+        val configured = AppSettings.defaults().copyWith(
+            clipTimestamp = true,
+            clipTimestampPosition = ClipStampPosition.topLeft,
+            clipTimestampCameraName = true,
+        )
+        val restored = AppSettings.fromJson(configured.toJson())
+        assertTrue(restored.clipTimestamp)
+        assertEquals(ClipStampPosition.topLeft, restored.clipTimestampPosition)
+        assertTrue(restored.clipTimestampCameraName)
+
+        // Defaults: disabled, bottom-right, no camera name.
+        val defaults = AppSettings.defaults()
+        assertFalse(defaults.clipTimestamp)
+        assertEquals(ClipStampPosition.bottomRight, defaults.clipTimestampPosition)
+        assertFalse(defaults.clipTimestampCameraName)
+    }
+
+    @Test
     fun videoClipSettingsRoundTripAndDefaultTo55RecordOn() {
         val defaults = AppSettings.defaults()
         assertEquals(5, defaults.preRollSeconds)

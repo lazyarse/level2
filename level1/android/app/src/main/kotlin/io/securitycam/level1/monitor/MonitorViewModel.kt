@@ -54,19 +54,27 @@ class MonitorViewModel(
     private val permissionsGranted: () -> Boolean = {
         hasCorePermissions(application)
     },
-    private val startMonitoring: (cameraId: String, previewEnabled: Boolean) -> Unit =
-        { cameraId, previewEnabled ->
-            MonitoringService.start(
-                application,
-                cameraId = cameraId,
-                cameraName = "Hallway",
-                preRollSeconds = 5,
-                postRollSeconds = 5,
-                recordVideo = true,
-                videoQuality = "lowest",
-                previewEnabled = previewEnabled,
-            )
-        },
+    private val startMonitoring: (
+        cameraId: String,
+        previewEnabled: Boolean,
+        clipTimestamp: Boolean,
+        clipTimestampPosition: String,
+        clipTimestampCameraName: Boolean,
+    ) -> Unit = { cameraId, previewEnabled, clipTimestamp, clipTimestampPosition, clipTimestampCameraName ->
+        MonitoringService.start(
+            application,
+            cameraId = cameraId,
+            cameraName = "Hallway",
+            preRollSeconds = 5,
+            postRollSeconds = 5,
+            recordVideo = true,
+            videoQuality = "lowest",
+            previewEnabled = previewEnabled,
+            clipTimestamp = clipTimestamp,
+            clipTimestampPosition = clipTimestampPosition,
+            clipTimestampCameraName = clipTimestampCameraName,
+        )
+    },
     private val stopMonitoring: () -> Unit = {
         MonitoringServiceController.stop()
     },
@@ -291,7 +299,14 @@ class MonitorViewModel(
         _error.value = null
         // Use cached cameraId (or default "0") for synchronous service start;
         // full settings are loaded in the coroutine for runtime creation.
-        startMonitoring(_cameraId.value, _monitorPreview.value)
+        val clip = scheduleSettings
+        startMonitoring(
+            _cameraId.value,
+            _monitorPreview.value,
+            clip?.clipTimestamp ?: false,
+            clip?.clipTimestampPosition ?: io.securitycam.level1.core.ClipStampPosition.bottomRight,
+            clip?.clipTimestampCameraName ?: false,
+        )
         _state.value = MonitorState.Monitoring
         val gen = ++startGeneration
         // Build the detection→event runtime off the main thread; the service

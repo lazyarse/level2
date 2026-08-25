@@ -26,7 +26,7 @@ class MonitorViewModelTest {
     ) = MonitorViewModel(
         application = ApplicationProvider.getApplicationContext(),
         permissionsGranted = { granted },
-        startMonitoring = { _, _ -> startRan.add(1) },
+        startMonitoring = { _, _, _, _, _ -> startRan.add(1) },
         stopMonitoring = { stopRan.add(1) },
         // Robolectric cannot initialize native detectors; runtime-init failures
         // are environmental here, not product bugs.
@@ -108,7 +108,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { _, _ -> startRan.add(1) },
+            startMonitoring = { _, _, _, _, _ -> startRan.add(1) },
             stopMonitoring = { stopRan.add(1) },
             settingsLoader = { scheduleSettings(always = excluded) },
             scheduleCheckInterval = null,
@@ -140,7 +140,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { _, _ -> startRan.add(1) },
+            startMonitoring = { _, _, _, _, _ -> startRan.add(1) },
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
@@ -161,7 +161,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { _, _ -> },
+            startMonitoring = { _, _, _, _, _ -> },
             stopMonitoring = {},
             settingsLoader = { AppSettings.defaults() },
             settingsSaver = { saved.add(it) },
@@ -191,7 +191,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { _, _ -> },
+            startMonitoring = { _, _, _, _, _ -> },
             stopMonitoring = {},
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
@@ -215,7 +215,7 @@ class MonitorViewModelTest {
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
             permissionsGranted = { true },
-            startMonitoring = { _, _ -> },
+            startMonitoring = { _, _, _, _, _ -> },
             stopMonitoring = {},
             settingsLoader = {
                 AppSettings.defaults().copyWith(

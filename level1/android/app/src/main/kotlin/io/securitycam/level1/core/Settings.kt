@@ -87,8 +87,24 @@ data class LiveViewSettings(
     }
 }
 
-/** Screen orientation lock (Android only). */
-object ScreenOrientation {
+/** Corner placement for the burned-in clip timestamp. */
+object ClipStampPosition {
+    const val topLeft = "topLeft"
+    const val topRight = "topRight"
+    const val bottomLeft = "bottomLeft"
+    const val bottomRight = "bottomRight"
+
+    val values = listOf(topLeft, topRight, bottomLeft, bottomRight)
+
+    fun label(value: String): String = when (value) {
+        topLeft -> "Top left"
+        topRight -> "Top right"
+        bottomLeft -> "Bottom left"
+        else -> "Bottom right"
+    }
+}
+
+/** Screen orientation lock (Android only). */object ScreenOrientation {
     const val portrait = "portrait"
     const val landscape = "landscape"
     const val sensor = "sensor"
@@ -157,6 +173,12 @@ data class AppSettings(
     val postRollSeconds: Int = 5,
     val recordVideo: Boolean = true,
     val videoQuality: String = VideoQuality.lowest,
+    /** Burn a date/time stamp into recorded clips. */
+    val clipTimestamp: Boolean = false,
+    /** One of [ClipStampPosition] values. */
+    val clipTimestampPosition: String = ClipStampPosition.bottomRight,
+    /** Include the camera name in the burned stamp text. */
+    val clipTimestampCameraName: Boolean = false,
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
@@ -179,6 +201,9 @@ data class AppSettings(
         postRollSeconds: Int? = null,
         recordVideo: Boolean? = null,
         videoQuality: String? = null,
+        clipTimestamp: Boolean? = null,
+        clipTimestampPosition: String? = null,
+        clipTimestampCameraName: Boolean? = null,
         analysisResolution: String? = null,
         screenOrientation: String? = null,
         detectionRegions: List<DetectionRegion>? = null,
@@ -198,6 +223,9 @@ data class AppSettings(
         postRollSeconds = postRollSeconds ?: this.postRollSeconds,
         recordVideo = recordVideo ?: this.recordVideo,
         videoQuality = videoQuality ?: this.videoQuality,
+        clipTimestamp = clipTimestamp ?: this.clipTimestamp,
+        clipTimestampPosition = clipTimestampPosition ?: this.clipTimestampPosition,
+        clipTimestampCameraName = clipTimestampCameraName ?: this.clipTimestampCameraName,
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
         monitorPreview = monitorPreview ?: this.monitorPreview,
@@ -220,6 +248,9 @@ data class AppSettings(
         json["postRollSeconds"] = postRollSeconds
         json["recordVideo"] = recordVideo
         json["videoQuality"] = videoQuality
+        json["clipTimestamp"] = clipTimestamp
+        json["clipTimestampPosition"] = clipTimestampPosition
+        json["clipTimestampCameraName"] = clipTimestampCameraName
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
         json["monitorPreview"] = monitorPreview
@@ -455,6 +486,11 @@ data class AppSettings(
                     ?: defaults.postRollSeconds,
                 recordVideo = json["recordVideo"] as? Boolean ?: defaults.recordVideo,
                 videoQuality = json["videoQuality"] as? String ?: defaults.videoQuality,
+                clipTimestamp = json["clipTimestamp"] as? Boolean ?: defaults.clipTimestamp,
+                clipTimestampPosition = json["clipTimestampPosition"] as? String
+                    ?: defaults.clipTimestampPosition,
+                clipTimestampCameraName = json["clipTimestampCameraName"] as? Boolean
+                    ?: defaults.clipTimestampCameraName,
                 analysisResolution = json["analysisResolution"] as? String
                     ?: defaults.analysisResolution,
                 screenOrientation = json["screenOrientation"] as? String

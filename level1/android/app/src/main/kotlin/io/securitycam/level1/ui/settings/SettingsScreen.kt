@@ -95,6 +95,7 @@ import io.securitycam.level1.camera_service.availableCameras
 import io.securitycam.level1.core.AnalysisResolution
 import io.securitycam.level1.core.AppSettings
 import io.securitycam.level1.core.AppSettings.Companion.withFaceRecognition
+import io.securitycam.level1.core.ClipStampPosition
 import io.securitycam.level1.core.KnownFace
 import io.securitycam.level1.core.LiveViewSettings
 import io.securitycam.level1.core.ScheduleWindow
@@ -494,6 +495,37 @@ fun SettingsScreen(
                                 enabled = current.recordVideo,
                                 modifier = Modifier.testTag("postRollSlider"),
                             )
+                            SwitchRow(
+                                title = "Date/time stamp",
+                                subtitle = "Burn the date/time into recorded clips",
+                                checked = current.clipTimestamp,
+                                onCheckedChange = { v ->
+                                    viewModel.update { it.copy(clipTimestamp = v) }
+                                },
+                            )
+                            if (current.clipTimestamp) {
+                                SwitchRow(
+                                    title = "Include camera name",
+                                    subtitle = "Prefix the stamp with the camera name",
+                                    checked = current.clipTimestampCameraName,
+                                    onCheckedChange = { v ->
+                                        viewModel.update {
+                                            it.copy(clipTimestampCameraName = v)
+                                        }
+                                    },
+                                )
+                                DropdownField(
+                                    label = "Stamp position",
+                                    selected = ClipStampPosition.label(current.clipTimestampPosition),
+                                    options = ClipStampPosition.values.map {
+                                        it to ClipStampPosition.label(it)
+                                    },
+                                    testTag = "clipStampPosition",
+                                    onSelect = { p ->
+                                        viewModel.update { it.copy(clipTimestampPosition = p) }
+                                    },
+                                )
+                            }
                         }
                         CollapsibleSection(
                             "Live View",

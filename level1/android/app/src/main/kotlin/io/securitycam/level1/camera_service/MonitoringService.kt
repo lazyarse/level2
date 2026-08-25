@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleService
 import io.securitycam.level1.MainActivity
+import io.securitycam.level1.core.ClipStampPosition
 import io.securitycam.level1.core.LiveViewSettings
 import io.securitycam.level1.storage.EncryptedSecretStore
 import io.securitycam.level1.storage.SettingsStore
@@ -77,6 +78,10 @@ class MonitoringService : LifecycleService() {
                 intent.getIntExtra(EXTRA_ANALYSIS_WIDTH, 320) ?: 320,
                 intent.getIntExtra(EXTRA_ANALYSIS_HEIGHT, 240) ?: 240,
                 intent.getBooleanExtra(EXTRA_PREVIEW_ENABLED, true),
+                intent.getBooleanExtra(EXTRA_CLIP_TIMESTAMP, false),
+                intent.getStringExtra(EXTRA_CLIP_TIMESTAMP_POSITION)
+                    ?: ClipStampPosition.bottomRight,
+                intent.getBooleanExtra(EXTRA_CLIP_TIMESTAMP_CAMERA_NAME, false),
             )
         }
         return START_STICKY
@@ -100,6 +105,9 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_ANALYSIS_HEIGHT = "analysisHeight"
         const val EXTRA_PREVIEW_ONLY = "previewOnly"
         const val EXTRA_PREVIEW_ENABLED = "previewEnabled"
+        const val EXTRA_CLIP_TIMESTAMP = "clipTimestamp"
+        const val EXTRA_CLIP_TIMESTAMP_POSITION = "clipTimestampPosition"
+        const val EXTRA_CLIP_TIMESTAMP_CAMERA_NAME = "clipTimestampCameraName"
 
         /** Gate before dispatching: a denied grant must never start an FGS that
          * is then obligated to reach startForeground() within ~5 s. */
@@ -118,6 +126,9 @@ class MonitoringService : LifecycleService() {
             analysisWidth: Int = 320,
             analysisHeight: Int = 240,
             previewEnabled: Boolean = true,
+            clipTimestamp: Boolean = false,
+            clipTimestampPosition: String = ClipStampPosition.bottomRight,
+            clipTimestampCameraName: Boolean = false,
         ) {
             if (!hasCameraPermission(context)) return
             val intent = Intent(context, MonitoringService::class.java)
@@ -130,6 +141,9 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_ANALYSIS_WIDTH, analysisWidth)
                 .putExtra(EXTRA_ANALYSIS_HEIGHT, analysisHeight)
                 .putExtra(EXTRA_PREVIEW_ENABLED, previewEnabled)
+                .putExtra(EXTRA_CLIP_TIMESTAMP, clipTimestamp)
+                .putExtra(EXTRA_CLIP_TIMESTAMP_POSITION, clipTimestampPosition)
+                .putExtra(EXTRA_CLIP_TIMESTAMP_CAMERA_NAME, clipTimestampCameraName)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -211,6 +225,9 @@ object MonitoringServiceController {
         analysisWidth: Int = 320,
         analysisHeight: Int = 240,
         previewEnabled: Boolean = true,
+        clipTimestamp: Boolean = false,
+        clipTimestampPosition: String = ClipStampPosition.bottomRight,
+        clipTimestampCameraName: Boolean = false,
     ) {
         Log.i(TAG, "onStart cameraId=$cameraId previewEnabled=$previewEnabled")
         if (active) return
@@ -236,7 +253,8 @@ object MonitoringServiceController {
         startForeground(service)
         acquireWakeLock(service)
         VideoClipRecorder.configure(
-            service, cameraName, preRollSeconds, postRollSeconds, videoQuality
+            service, cameraName, preRollSeconds, postRollSeconds, videoQuality,
+            clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
         )
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED

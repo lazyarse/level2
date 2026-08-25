@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
+import io.securitycam.level1.core.ClipStampPosition
 import android.util.Log
 import androidx.camera.video.PendingRecording
 import androidx.camera.video.FallbackStrategy
@@ -73,6 +74,9 @@ object VideoClipRecorder {
     private var postRollMs = 5_000L
     private var cameraName = "Hallway"
     private var videoQuality = "lowest"
+    private var clipTimestamp = false
+    private var clipTimestampPosition = ClipStampPosition.bottomRight
+    private var clipTimestampCameraName = false
 
     @Volatile private var active = false
     @Volatile private var exporting = false
@@ -124,12 +128,18 @@ object VideoClipRecorder {
         preRollSeconds: Int,
         postRollSeconds: Int,
         videoQuality: String,
+        clipTimestamp: Boolean = false,
+        clipTimestampPosition: String = ClipStampPosition.bottomRight,
+        clipTimestampCameraName: Boolean = false,
     ) {
         context = ctx.applicationContext
         cameraName = camName
         segmentMs = preRollSeconds.coerceAtLeast(1) * 1000L
         postRollMs = postRollSeconds.coerceAtLeast(1) * 1000L
         this.videoQuality = videoQuality
+        this.clipTimestamp = clipTimestamp
+        this.clipTimestampPosition = clipTimestampPosition
+        this.clipTimestampCameraName = clipTimestampCameraName
         val dir = File(ctx.applicationContext.cacheDir, "video_segments")
         if (!dir.exists()) dir.mkdirs()
         ringDir = dir
@@ -360,7 +370,35 @@ object VideoClipRecorder {
                     null
                 } else {
                     muxClip(inputs, finalFile, audioStart)
-                    storeInMediaStore(finalFile, name)
+                    // Burn the date/time stamp when enabled. The clip starts
+                    // preRoll before the trigger, so frame wall-clock =
+                    // trigger − preRoll + presentation. Any stamping failure
+                    // falls back to the unstamped clip — never lose evidence.
+                    var storeFile = finalFile
+                    if (clipTimestamp) {
+                        val stamped = File(ringDir, "stamped-${System.currentTimeMillis()}.mp4")
+                        val appContext = context
+                        val ok = if (appContext != null) {
+                            ClipStamper.stamp(
+                                context = appContext,
+                                input = finalFile,
+                                output = stamped,
+                                startWallMs = exportTriggerMs - segmentMs,
+                                position = clipTimestampPosition,
+                                includeCameraName = clipTimestampCameraName,
+                                cameraName = cameraName,
+                            )
+                        } else {
+                            false
+                        }
+                        if (ok) {
+                            storeFile = stamped
+                        } else {
+                            Log.w(TAG, "stamping failed; storing unstamped clip")
+                            stamped.delete()
+                        }
+                    }
+                    storeInMediaStore(storeFile, name)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "export failed", e)
