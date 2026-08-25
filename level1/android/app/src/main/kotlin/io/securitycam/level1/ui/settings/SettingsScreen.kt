@@ -335,6 +335,8 @@ fun SettingsScreen(
                                             },
                                         )
                                     }
+                                    Spacer(Modifier.weight(1f))
+                                    Spacer(Modifier.width(8.dp))
                                     Switch(
                                         checked = AppSettings.faceRecognitionEnabled(current),
                                         onCheckedChange = { on ->
@@ -1093,6 +1095,7 @@ private fun ScheduleWindowCard(
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = "delete_${window.id}")
                 }
+                Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = window.enabled,
                     onCheckedChange = { onChanged(window.copy(enabled = it)) },
@@ -1204,6 +1207,7 @@ private fun DetectorCard(
                 Spacer(Modifier.width(8.dp))
                 Text(detectorLabel(config.type))
                 Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
             if (expanded && config.enabled) {
@@ -1323,6 +1327,7 @@ private fun ChannelCard(
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
                 Text(config.type, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
             }
             if (expanded) {
@@ -1522,6 +1527,7 @@ private fun SwitchRow(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(switchTag(title)))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title)
             if (subtitle.isNotEmpty()) {
