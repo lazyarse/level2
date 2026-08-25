@@ -263,6 +263,20 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun disabledDetectorCardStillUnfolds() {
+        // Dog ships disabled; the fold-down must open anyway so it can be
+        // pre-configured before enabling.
+        setContent(Harness())
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_dog").performScrollTo().performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Triggers on sight or sound (barking, growling).")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun detectorSectionShowsCameraAudioCombinedSystemGroups() {
         setContent(Harness())
         expandSection("Detectors")

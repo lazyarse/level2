@@ -248,6 +248,8 @@ fun SettingsScreen(
                             detectorGroup("System", current, listOf(TriggerType.health)) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
+                        }
+                        CollapsibleSection("Regions", summary = regionsSummary(current)) {
                             BodyText(
                                 "Optional inclusion zones: motion/face only triggers inside them. " +
                                     "Empty = detect everywhere.",
@@ -1174,7 +1176,7 @@ private fun DetectorCard(
                 Spacer(Modifier.width(8.dp))
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
-            if (expanded && config.enabled) {
+            if (expanded) {
                 detectorHint(config.type)?.let { hint ->
                     Text(
                         hint,
@@ -1309,7 +1311,7 @@ private fun ChannelCard(
                     contentDescription = if (expanded) "collapse_${config.id}" else "expand_${config.id}",
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
-                Text(config.type, modifier = Modifier.weight(1f))
+                Text(channelTitle(config.type), modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
             }
@@ -1634,6 +1636,18 @@ private fun detectorHint(type: String): String? = when (type) {
     else -> null
 }
 
+/** Channel header display name: raw type ids rendered Title Case. */
+private fun channelTitle(type: String): String = type.split('_', ' ')
+    .filter { it.isNotEmpty() }
+    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
+/** Regions section summary: inclusion/exclusion counts. */
+private fun regionsSummary(settings: AppSettings): String {
+    val inc = settings.detectionRegions.size
+    val ex = settings.exclusionRegions.size
+    return if (inc == 0 && ex == 0) "none" else "$inc inclusion · $ex exclusion"
+}
+
 /** Camera-section display order: pet/animal detectors grouped, then the rest. */
 private val cameraDetectorOrder = listOf(
     TriggerType.motion,
@@ -1700,8 +1714,7 @@ private fun detectorSummary(settings: AppSettings): String {
 private fun faceRecognitionSummary(settings: AppSettings): String {
     val enabled = AppSettings.faceRecognitionEnabled(settings)
     val count = settings.knownFaces.size
-    val plural = if (count == 1) "face" else "faces"
-    return if (!enabled) "off" else "on, $count $plural enrolled"
+    return if (!enabled) "off" else "On: $count enrolled"
 }
 
 private fun cloudBackupSummary(cb: io.securitycam.level1.core.CloudBackupSettings): String {
