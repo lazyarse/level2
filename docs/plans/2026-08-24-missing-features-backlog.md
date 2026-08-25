@@ -4,14 +4,11 @@ Audit date: 2026-08-24. Common security-camera features not yet implemented,
 ordered by effort/value. Vehicle + animal YOLO detectors were pulled from this
 list and shipped same-day (see git history).
 
-## Designed, pending implementation (2026-08-24)
+## Designed, pending implementation
 
 | Feature | Design doc |
 |---|---|
-| Offline alert outbox (queue notifications per event×channel, WorkManager-drained) | `2026-08-24-offline-alert-outbox-design.md` |
-| Cloud backup of clips & snapshots (WebDAV + S3-compatible; Drive rejected for privacy) | `2026-08-24-cloud-backup-design.md` |
-| Loitering detector (dwell-based person presence) | `2026-08-24-loitering-detector-design.md` |
-| Region editor live preview fix | `2026-08-24-region-editor-preview-fix-design.md` |
+| Privacy masking in recordings | `2026-08-25-privacy-masking-design.md` |
 
 ## Low effort
 
@@ -28,16 +25,12 @@ list and shipped same-day (see git history).
 | Motion heatmap / activity stats | Event data is already in Room with timestamps + trigger types. Aggregate into an hourly/day-of-week view or frame-overlay heatmap. |
 | Two-way audio (talk-back) | `LiveViewServer` currently sends RTP one way. Would need a receive path (RTSP RECORD or back-channel) + `AudioTrack` playback of client PCM. |
 
-*(Cloud backup, loitering, and the offline outbox moved to "Designed" above;
-their original rows are covered by the design docs.)*
-
 ## High effort
 
 | Feature | Notes |
 |---|---|
 | Line crossing / tripwire | Track person-box centers across frames and fire when a defined line is crossed in a set direction. Needs light tracking state; geometry lives alongside `RegionFilter`. |
 | Package detection | No COCO class for parcels. Options: custom TFLite model, or heuristic (small static object near door region appearing while person leaves). |
-| Privacy masking in recordings | Exclusion zones gate *detection* but saved clips/snapshots show everything. Blurring regions would need per-frame processing inside the encode path (`LiveViewEncoder`-style pipeline for clips). |
 
 ## Deliberate non-goals / notes
 
@@ -55,3 +48,17 @@ their original rows are covered by the design docs.)*
   detectors and the combined `animal` visual detector were replaced by this
   design on 2026-08-24. Health detector renamed **Heartbeat** in the UI and
   grouped under a new System heading (Camera → Audio → Combined → System).
+- Offline alert outbox (`89e5357`) — Room schema v5, `OutboxStore`, `OutboxDrainer`,
+  `OutboxWorker` (WorkManager CONNECTED constraint), `ConnectivityMonitor`,
+  late delivery flips, expiry 5 attempts/24h.
+- Cloud backup (`ae9c8bb`) — `CloudUploader` interface, `WebDavUploader` (PUT/PROPFIND/MKCOL),
+  `S3Uploader` (hand-rolled SigV4), `RemoteKeys.forMedia()`, retention pinning,
+  settings UI with backend chips + Test connection.
+- Loitering detector (`43745fd`) — dwell-based person presence with `absentSince`
+  grace tracking (3s), `DetectorConfig.dwellSeconds` (3–120s stepper), motion-gated,
+  fires once per episode.
+- Region editor preview fix (`4fb2e98`) — letterbox-aware `fitCenterBox`/`screenToNorm`/`normToScreen`
+  geometry; drawn regions match detector coordinates exactly.
+- Burned-in clip timestamp (`6e7ac32`) — `TimestampStamp` renderer, `ClipStamper`
+  (Media3 Transformer + `BitmapOverlay`), settings toggle + position dropdown +
+  camera name option.

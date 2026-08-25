@@ -60,7 +60,11 @@ class MonitorViewModel(
         clipTimestamp: Boolean,
         clipTimestampPosition: String,
         clipTimestampCameraName: Boolean,
-    ) -> Unit = { cameraId, previewEnabled, clipTimestamp, clipTimestampPosition, clipTimestampCameraName ->
+        privacyMasking: Boolean,
+        privacyMaskEffect: String,
+        privacyExclusionsJson: String,
+    ) -> Unit = { cameraId, previewEnabled, clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
+        privacyMasking, privacyMaskEffect, privacyExclusionsJson ->
         MonitoringService.start(
             application,
             cameraId = cameraId,
@@ -73,6 +77,9 @@ class MonitorViewModel(
             clipTimestamp = clipTimestamp,
             clipTimestampPosition = clipTimestampPosition,
             clipTimestampCameraName = clipTimestampCameraName,
+            privacyMasking = privacyMasking,
+            privacyMaskEffect = privacyMaskEffect,
+            privacyExclusionsJson = privacyExclusionsJson,
         )
     },
     private val stopMonitoring: () -> Unit = {
@@ -215,6 +222,22 @@ class MonitorViewModel(
         private fun settingsStoreFor(app: Application): SettingsStore =
             settingsStores.getOrPut(app) { SettingsStore(app, EncryptedSecretStore(app)) }
 
+        /** Serialize exclusion regions to a JSON string for the service intent extra. */
+        fun exclusionsToJson(regions: List<io.securitycam.level1.detection.DetectionRegion>): String {
+            val arr = org.json.JSONArray()
+            for (r in regions) {
+                val obj = org.json.JSONObject()
+                obj.put("id", r.id)
+                obj.put("shape", r.shape)
+                obj.put("label", r.label)
+                val pts = org.json.JSONArray()
+                for (p in r.points) pts.put(p)
+                obj.put("points", pts)
+                arr.put(obj)
+            }
+            return arr.toString()
+        }
+
         /** Explicit factory: the default owner factory can't build an AndroidViewModel. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -300,12 +323,16 @@ class MonitorViewModel(
         // Use cached cameraId (or default "0") for synchronous service start;
         // full settings are loaded in the coroutine for runtime creation.
         val clip = scheduleSettings
+        val exclusionsJson = exclusionsToJson(clip?.exclusionRegions ?: emptyList())
         startMonitoring(
             _cameraId.value,
             _monitorPreview.value,
             clip?.clipTimestamp ?: false,
             clip?.clipTimestampPosition ?: io.securitycam.level1.core.ClipStampPosition.bottomRight,
             clip?.clipTimestampCameraName ?: false,
+            clip?.privacyMasking ?: false,
+            clip?.privacyMaskEffect ?: io.securitycam.level1.core.PrivacyMaskEffect.solid,
+            exclusionsJson,
         )
         _state.value = MonitorState.Monitoring
         val gen = ++startGeneration

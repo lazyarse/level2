@@ -18,16 +18,17 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import com.google.common.collect.ImmutableList
+import io.securitycam.level1.detection.DetectionRegion
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Burns the date/time stamp into a concatenated clip via Media3 Transformer
- * (hardware codecs, audio passthrough, rotation-metadata aware). Blocking;
- * returns false on any failure so the caller can fall back to the unstamped
- * clip rather than losing it.
+ * Burns the date/time stamp and/or privacy mask into a concatenated clip via
+ * Media3 Transformer (hardware codecs, audio passthrough, rotation-metadata
+ * aware). Blocking; returns false on any failure so the caller can fall back
+ * to the unstamped clip rather than losing it.
  */
 object ClipStamper {
 
@@ -42,15 +43,23 @@ object ClipStamper {
         position: String,
         includeCameraName: Boolean,
         cameraName: String,
+        exclusionRegions: List<DetectionRegion> = emptyList(),
+        privacyMaskEffect: String = "solid",
     ): Boolean {
         val done = CountDownLatch(1)
         val success = AtomicBoolean(false)
         val thread = HandlerThread("ClipStamper").apply { start() }
         val handler = Handler(thread.looper)
         try {
-            val (frameW, frameH) = videoSize(input)
+            val (frameW, frameH, clipRotation) = videoInfo(input)
             handler.post {
-                val overlay = StampOverlay(
+                val overlays = mutableListOf<BitmapOverlay>()
+                if (exclusionRegions.isNotEmpty()) {
+                    overlays += PrivacyMaskOverlay(
+                        exclusionRegions, privacyMaskEffect, frameW, frameH, clipRotation,
+                    )
+                }
+                overlays += StampOverlay(
                     startWallMs, position, includeCameraName, cameraName, frameW, frameH,
                 )
                 val transformer = Transformer.Builder(context)
@@ -76,7 +85,7 @@ object ClipStamper {
                 })
                 val effects = Effects(
                     emptyList(),
-                    listOf(OverlayEffect(ImmutableList.of(overlay))),
+                    listOf(OverlayEffect(ImmutableList.copyOf(overlays))),
                 )
                 val item = EditedMediaItem.Builder(
                     MediaItem.fromUri(Uri.fromFile(input)),
@@ -96,8 +105,8 @@ object ClipStamper {
         return success.get() && output.exists() && output.length() > 0
     }
 
-    /** Decoded pixel size of the concatenated clip (fallback 1920x1080). */
-    private fun videoSize(file: File): Pair<Int, Int> {
+    /** Video dimensions (pre-rotation pixels) and clip rotation metadata. */
+    private fun videoInfo(file: File): Triple<Int, Int, Int> {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(file.absolutePath)
@@ -111,9 +120,9 @@ object ClipStamper {
                 MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION,
             )?.toIntOrNull() ?: 0
             // Stored frames are pre-rotation pixels; stamp in that space.
-            if (rotation == 90 || rotation == 270) h to w else w to h
+            if (rotation == 90 || rotation == 270) Triple(h, w, rotation) else Triple(w, h, rotation)
         } catch (_: Exception) {
-            1920 to 1080
+            Triple(1920, 1080, 0)
         } finally {
             retriever.release()
         }
@@ -135,7 +144,7 @@ class StampOverlay(
 ) : BitmapOverlay() {
 
     private var cached: Bitmap? = null
-    private var cachedSecond = Long.MIN_VALUE
+    private var cachedSecond: Long = Long.MIN_VALUE
 
     override fun getBitmap(presentationUs: Long): Bitmap {
         val wallMs = startWallMs + presentationUs / 1000

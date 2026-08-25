@@ -124,6 +124,22 @@ class SettingsTest {
     }
 
     @Test
+    fun privacyMaskingSettingsRoundTrip() {
+        val configured = AppSettings.defaults().copyWith(
+            privacyMasking = true,
+            privacyMaskEffect = PrivacyMaskEffect.pixelate,
+        )
+        val restored = AppSettings.fromJson(configured.toJson())
+        assertTrue(restored.privacyMasking)
+        assertEquals(PrivacyMaskEffect.pixelate, restored.privacyMaskEffect)
+
+        // Defaults: disabled, solid effect.
+        val defaults = AppSettings.defaults()
+        assertFalse(defaults.privacyMasking)
+        assertEquals(PrivacyMaskEffect.solid, defaults.privacyMaskEffect)
+    }
+
+    @Test
     fun videoClipSettingsRoundTripAndDefaultTo55RecordOn() {
         val defaults = AppSettings.defaults()
         assertEquals(5, defaults.preRollSeconds)

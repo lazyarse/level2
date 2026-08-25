@@ -77,6 +77,9 @@ object VideoClipRecorder {
     private var clipTimestamp = false
     private var clipTimestampPosition = ClipStampPosition.bottomRight
     private var clipTimestampCameraName = false
+    private var privacyMasking = false
+    private var privacyMaskEffect = "solid"
+    private var exclusionRegions: List<io.securitycam.level1.detection.DetectionRegion> = emptyList()
 
     @Volatile private var active = false
     @Volatile private var exporting = false
@@ -131,6 +134,9 @@ object VideoClipRecorder {
         clipTimestamp: Boolean = false,
         clipTimestampPosition: String = ClipStampPosition.bottomRight,
         clipTimestampCameraName: Boolean = false,
+        privacyMasking: Boolean = false,
+        privacyMaskEffect: String = "solid",
+        exclusionRegions: List<io.securitycam.level1.detection.DetectionRegion> = emptyList(),
     ) {
         context = ctx.applicationContext
         cameraName = camName
@@ -140,6 +146,9 @@ object VideoClipRecorder {
         this.clipTimestamp = clipTimestamp
         this.clipTimestampPosition = clipTimestampPosition
         this.clipTimestampCameraName = clipTimestampCameraName
+        this.privacyMasking = privacyMasking
+        this.privacyMaskEffect = privacyMaskEffect
+        this.exclusionRegions = exclusionRegions
         val dir = File(ctx.applicationContext.cacheDir, "video_segments")
         if (!dir.exists()) dir.mkdirs()
         ringDir = dir
@@ -370,12 +379,15 @@ object VideoClipRecorder {
                     null
                 } else {
                     muxClip(inputs, finalFile, audioStart)
-                    // Burn the date/time stamp when enabled. The clip starts
-                    // preRoll before the trigger, so frame wall-clock =
-                    // trigger − preRoll + presentation. Any stamping failure
-                    // falls back to the unstamped clip — never lose evidence.
+                    // Burn the date/time stamp and/or privacy mask when enabled.
+                    // The clip starts preRoll before the trigger, so frame
+                    // wall-clock = trigger − preRoll + presentation. Any
+                    // stamping/masking failure falls back to the unstamped
+                    // clip — never lose evidence.
                     var storeFile = finalFile
-                    if (clipTimestamp) {
+                    val needsStamp = clipTimestamp
+                    val needsMask = privacyMasking && exclusionRegions.isNotEmpty()
+                    if (needsStamp || needsMask) {
                         val stamped = File(ringDir, "stamped-${System.currentTimeMillis()}.mp4")
                         val appContext = context
                         val ok = if (appContext != null) {
@@ -387,6 +399,8 @@ object VideoClipRecorder {
                                 position = clipTimestampPosition,
                                 includeCameraName = clipTimestampCameraName,
                                 cameraName = cameraName,
+                                exclusionRegions = exclusionRegions,
+                                privacyMaskEffect = privacyMaskEffect,
                             )
                         } else {
                             false

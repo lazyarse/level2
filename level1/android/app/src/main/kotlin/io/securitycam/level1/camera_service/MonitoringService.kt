@@ -82,6 +82,9 @@ class MonitoringService : LifecycleService() {
                 intent.getStringExtra(EXTRA_CLIP_TIMESTAMP_POSITION)
                     ?: ClipStampPosition.bottomRight,
                 intent.getBooleanExtra(EXTRA_CLIP_TIMESTAMP_CAMERA_NAME, false),
+                intent.getBooleanExtra(EXTRA_PRIVACY_MASKING, false),
+                intent.getStringExtra(EXTRA_PRIVACY_EFFECT) ?: "solid",
+                intent.getStringExtra(EXTRA_PRIVACY_EXCLUSIONS_JSON) ?: "[]",
             )
         }
         return START_STICKY
@@ -108,6 +111,9 @@ class MonitoringService : LifecycleService() {
         const val EXTRA_CLIP_TIMESTAMP = "clipTimestamp"
         const val EXTRA_CLIP_TIMESTAMP_POSITION = "clipTimestampPosition"
         const val EXTRA_CLIP_TIMESTAMP_CAMERA_NAME = "clipTimestampCameraName"
+        const val EXTRA_PRIVACY_MASKING = "privacyMasking"
+        const val EXTRA_PRIVACY_EFFECT = "privacyMaskEffect"
+        const val EXTRA_PRIVACY_EXCLUSIONS_JSON = "privacyExclusionsJson"
 
         /** Gate before dispatching: a denied grant must never start an FGS that
          * is then obligated to reach startForeground() within ~5 s. */
@@ -129,6 +135,9 @@ class MonitoringService : LifecycleService() {
             clipTimestamp: Boolean = false,
             clipTimestampPosition: String = ClipStampPosition.bottomRight,
             clipTimestampCameraName: Boolean = false,
+            privacyMasking: Boolean = false,
+            privacyMaskEffect: String = "solid",
+            privacyExclusionsJson: String = "[]",
         ) {
             if (!hasCameraPermission(context)) return
             val intent = Intent(context, MonitoringService::class.java)
@@ -144,6 +153,9 @@ class MonitoringService : LifecycleService() {
                 .putExtra(EXTRA_CLIP_TIMESTAMP, clipTimestamp)
                 .putExtra(EXTRA_CLIP_TIMESTAMP_POSITION, clipTimestampPosition)
                 .putExtra(EXTRA_CLIP_TIMESTAMP_CAMERA_NAME, clipTimestampCameraName)
+                .putExtra(EXTRA_PRIVACY_MASKING, privacyMasking)
+                .putExtra(EXTRA_PRIVACY_EFFECT, privacyMaskEffect)
+                .putExtra(EXTRA_PRIVACY_EXCLUSIONS_JSON, privacyExclusionsJson)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -211,6 +223,26 @@ object MonitoringServiceController {
 
     // Bound Camera handle for zoom (net-new Phase 1.4).
     private var boundCamera: Camera? = null
+
+    /** Parse a JSON array of exclusion regions from the intent extra. */
+    private fun parseExclusionRegions(json: String): List<io.securitycam.level1.detection.DetectionRegion> {
+        return try {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                io.securitycam.level1.detection.DetectionRegion(
+                    id = obj.getString("id"),
+                    shape = obj.getString("shape"),
+                    label = obj.getString("label"),
+                    points = obj.getJSONArray("points").let { pts ->
+                        (0 until pts.length()).map { pts.getDouble(it) }
+                    },
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
     private val _zoomRatio = MutableStateFlow(1f)
     val zoomRatio: StateFlow<Float> = _zoomRatio.asStateFlow()
 
@@ -228,6 +260,9 @@ object MonitoringServiceController {
         clipTimestamp: Boolean = false,
         clipTimestampPosition: String = ClipStampPosition.bottomRight,
         clipTimestampCameraName: Boolean = false,
+        privacyMasking: Boolean = false,
+        privacyMaskEffect: String = "solid",
+        privacyExclusionsJson: String = "[]",
     ) {
         Log.i(TAG, "onStart cameraId=$cameraId previewEnabled=$previewEnabled")
         if (active) return
@@ -252,9 +287,11 @@ object MonitoringServiceController {
         monitoringCameraId = cameraId
         startForeground(service)
         acquireWakeLock(service)
+        val exclusionRegions = parseExclusionRegions(privacyExclusionsJson)
         VideoClipRecorder.configure(
             service, cameraName, preRollSeconds, postRollSeconds, videoQuality,
             clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
+            privacyMasking, privacyMaskEffect, exclusionRegions,
         )
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED

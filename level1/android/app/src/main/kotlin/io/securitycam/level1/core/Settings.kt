@@ -104,6 +104,21 @@ object ClipStampPosition {
     }
 }
 
+/** Privacy mask effect for exclusion zones in exported clips. */
+object PrivacyMaskEffect {
+    const val solid = "solid"
+    const val pixelate = "pixelate"
+    const val blur = "blur"
+
+    val values = listOf(solid, pixelate, blur)
+
+    fun label(value: String): String = when (value) {
+        pixelate -> "Pixelate"
+        blur -> "Blur"
+        else -> "Solid dark"
+    }
+}
+
 /** Screen orientation lock (Android only). */object ScreenOrientation {
     const val portrait = "portrait"
     const val landscape = "landscape"
@@ -179,6 +194,10 @@ data class AppSettings(
     val clipTimestampPosition: String = ClipStampPosition.bottomRight,
     /** Include the camera name in the burned stamp text. */
     val clipTimestampCameraName: Boolean = false,
+    /** Mask exclusion zones in exported clips (opaque overlay over private areas). */
+    val privacyMasking: Boolean = false,
+    /** One of [PrivacyMaskEffect] values: "solid", "pixelate", "blur". */
+    val privacyMaskEffect: String = PrivacyMaskEffect.solid,
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
@@ -204,6 +223,8 @@ data class AppSettings(
         clipTimestamp: Boolean? = null,
         clipTimestampPosition: String? = null,
         clipTimestampCameraName: Boolean? = null,
+        privacyMasking: Boolean? = null,
+        privacyMaskEffect: String? = null,
         analysisResolution: String? = null,
         screenOrientation: String? = null,
         detectionRegions: List<DetectionRegion>? = null,
@@ -226,6 +247,8 @@ data class AppSettings(
         clipTimestamp = clipTimestamp ?: this.clipTimestamp,
         clipTimestampPosition = clipTimestampPosition ?: this.clipTimestampPosition,
         clipTimestampCameraName = clipTimestampCameraName ?: this.clipTimestampCameraName,
+        privacyMasking = privacyMasking ?: this.privacyMasking,
+        privacyMaskEffect = privacyMaskEffect ?: this.privacyMaskEffect,
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
         monitorPreview = monitorPreview ?: this.monitorPreview,
@@ -251,6 +274,8 @@ data class AppSettings(
         json["clipTimestamp"] = clipTimestamp
         json["clipTimestampPosition"] = clipTimestampPosition
         json["clipTimestampCameraName"] = clipTimestampCameraName
+        json["privacyMasking"] = privacyMasking
+        json["privacyMaskEffect"] = privacyMaskEffect
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
         json["monitorPreview"] = monitorPreview
@@ -491,6 +516,10 @@ data class AppSettings(
                     ?: defaults.clipTimestampPosition,
                 clipTimestampCameraName = json["clipTimestampCameraName"] as? Boolean
                     ?: defaults.clipTimestampCameraName,
+                privacyMasking = json["privacyMasking"] as? Boolean
+                    ?: defaults.privacyMasking,
+                privacyMaskEffect = json["privacyMaskEffect"] as? String
+                    ?: defaults.privacyMaskEffect,
                 analysisResolution = json["analysisResolution"] as? String
                     ?: defaults.analysisResolution,
                 screenOrientation = json["screenOrientation"] as? String

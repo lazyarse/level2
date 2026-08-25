@@ -526,6 +526,27 @@ fun SettingsScreen(
                                     },
                                 )
                             }
+                            SwitchRow(
+                                title = "Privacy mask",
+                                subtitle = "Obscure exclusion zones in recorded clips",
+                                checked = current.privacyMasking,
+                                onCheckedChange = { v ->
+                                    viewModel.update { it.copy(privacyMasking = v) }
+                                },
+                            )
+                            if (current.privacyMasking) {
+                                DropdownField(
+                                    label = "Mask effect",
+                                    selected = io.securitycam.level1.core.PrivacyMaskEffect.label(current.privacyMaskEffect),
+                                    options = io.securitycam.level1.core.PrivacyMaskEffect.values.map {
+                                        it to io.securitycam.level1.core.PrivacyMaskEffect.label(it)
+                                    },
+                                    testTag = "privacyMaskEffect",
+                                    onSelect = { e ->
+                                        viewModel.update { it.copy(privacyMaskEffect = e) }
+                                    },
+                                )
+                            }
                         }
                         CollapsibleSection(
                             "Live View",
