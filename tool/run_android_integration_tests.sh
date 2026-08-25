@@ -35,7 +35,7 @@ RUNNER="androidx.test.runner.AndroidJUnitRunner"
 OUT="/tmp/opencode/itest_native_$(basename "${TEST_CLASS##*.}").log"
 LOGCAT="/tmp/opencode/itest_native_$(basename "${TEST_CLASS##*.}").logcat.log"
 
-# tool/ lives inside level2/android's parent; gradle runs in android/.
+# tool/ lives inside the android/ parent; gradle runs in android/.
 ANDROID_ROOT="$(cd "$(dirname "$0")/../android" && pwd)"
 GRADLE="./gradlew"
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"

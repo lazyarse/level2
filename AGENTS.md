@@ -2,16 +2,16 @@
 
 **Run `date -R` before every command.**
 
-Native Android security-camera app in `level2/android/` (100% Kotlin + Jetpack Compose,
+Native Android security-camera app in `android/` (100% Kotlin + Jetpack Compose,
 package `io.securitycam.level2`); the Flutter tree was removed after the Phase 7 cutover
 (2026-08-21). Design docs in `docs/plans/`; the Dart→Kotlin test mapping lives in
 `docs/plans/2026-08-20-native-kotlin-parity-matrix.md`. Emulator-based instrumentation
-suite under `level2/android/app/src/androidTest/`, driven by
-`level2/tool/run_android_integration_tests.sh`.
+suite under `android/app/src/androidTest/`, driven by
+`tool/run_android_integration_tests.sh`.
 
 ## Commands
 
-- **All Gradle builds** run from `level2/android/` with both env prefixes:
+- **All Gradle builds** run from `android/` with both env prefixes:
   `ANDROID_HOME=/home/tpa/code/android-env/android-sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
   The native-assets toolchain locates the NDK via `ANDROID_HOME` (NOT `ANDROID_SDK_ROOT`;
   the shell only exports the latter), and host default Java is 25 which Gradle 8.14 refuses.
@@ -19,7 +19,7 @@ suite under `level2/android/app/src/androidTest/`, driven by
   - Unit suite: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testDebugUnitTest`
   - Debug APK: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
   - Instrumentation (or use the runner below, which sets nothing itself):
-    `ANDROID_HOME=... JAVA_HOME=... level2/tool/run_android_integration_tests.sh <serial> <fqcn|all>`
+    `ANDROID_HOME=... JAVA_HOME=... tool/run_android_integration_tests.sh <serial> <fqcn|all>`
 - **Cap command timeouts tightly so hangs surface fast.** Measured baselines:
   full unit suite ~45 s; cold Gradle build ~2 min (minified release ~4.5 min);
   emulator boot ~30 s; warm APK install ~35 s; the whole instrumentation "all"
@@ -72,7 +72,7 @@ Prefer the fastest platform that can validate the change:
 
 ## Emulator discipline
 
-- Run via     `level2/tool/run_android_integration_tests.sh <serial> <fqcn|all>` (waits for
+- Run via     `tool/run_android_integration_tests.sh <serial> <fqcn|all>` (waits for
   boot, grants CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant`, coordinates the
   screen-off test through `[itest]` logcat markers, parses the final `OK (N tests)` line).
   Set `EXPECT_CLIP_AUDIO=true` in the environment to assert clip audio tracks too.

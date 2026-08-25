@@ -25,7 +25,7 @@ Requires JDK 17 (`JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` here) and an And
 (`ANDROID_HOME=/home/tpa/code/android-env/android-sdk`):
 
 ```sh
-cd level2/android
+cd android
 ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testDebugUnitTest   # JVM suite
 ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug       # debug APK
 ```
