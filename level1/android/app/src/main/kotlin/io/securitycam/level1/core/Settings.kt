@@ -421,6 +421,17 @@ data class AppSettings(
                 ?.associate { (k, v) ->
                     k as String to DetectorConfig.fromJson(v as Map<String, Any?>)
                 }
+            // Upgrade merge: stored values win for known types; types shipped
+            // after the blob was written appear with their defaults so upgraded
+            // installs see every detector (dog/cat/vehicle/loitering/...).
+            val storedDetectors = detectors ?: emptyMap()
+            val mergedDetectors = LinkedHashMap<String, DetectorConfig>()
+            for ((type, def) in defaults.detectorConfigs) {
+                mergedDetectors[type] = storedDetectors[type] ?: def
+            }
+            for ((type, cfg) in storedDetectors) {
+                if (!mergedDetectors.containsKey(type)) mergedDetectors[type] = cfg
+            }
             val stored = (json["channelConfigs"] as? List<*>)
                 ?.mapNotNull { e ->
                     val config = ChannelConfig.fromJson(e as Map<String, Any?>)
@@ -439,7 +450,7 @@ data class AppSettings(
             return AppSettings(
                 cameraName = json["cameraName"] as? String ?: defaults.cameraName,
                 cameraId = json["cameraId"] as? String ?: defaults.cameraId,
-                detectorConfigs = detectors ?: defaults.detectorConfigs,
+                detectorConfigs = mergedDetectors,
                 channelConfigs = channels,
                 notificationMergeWindow = Duration.ofMillis(
                     (json["notificationMergeWindowMs"] as? Number)?.toLong()

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -568,6 +569,28 @@ fun SettingsScreen(
                                     }
                                 }
                                 if (current.liveView.mode == "server") {
+                                    if (current.liveView.username.isBlank() &&
+                                        current.liveView.password.isBlank()
+                                    ) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("liveViewNoAuthWarning"),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                            ),
+                                        ) {
+                                            Text(
+                                                "No password set — anyone on this Wi-Fi " +
+                                                    "network can watch the stream. Set a " +
+                                                    "username and password below to require login.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(12.dp),
+                                            )
+                                        }
+                                    }
                                     Spacer(Modifier.height(8.dp))
                                     OutlinedTextField(
                                         value = current.liveView.port.toString(),
@@ -1656,7 +1679,7 @@ private fun cloudBackupSummary(cb: io.securitycam.level1.core.CloudBackupSetting
 private fun liveViewSummary(lv: LiveViewSettings): String {
     if (!lv.enabled) return "off"
     return if (lv.mode == "server") {
-        val auth = if (lv.username.isNotEmpty()) " auth" else ""
+        val auth = if (lv.username.isNotEmpty()) " auth" else " · no password"
         "server :${lv.port}$auth"
     } else {
         val host = try {

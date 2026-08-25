@@ -50,6 +50,53 @@ class SettingsTest {
     }
 
     @Test
+    fun legacyBlobWithoutNewerDetectorsGainsThemOnParse() {
+        // A blob written before dog/cat/vehicle/animal/cat_meow/loitering
+        // shipped: only the original detector keys exist, with one tuned value.
+        val legacyDetectorBlob = linkedMapOf<String, Any?>(
+            "motion" to DetectorConfig(
+                type = "motion",
+                threshold = 0.07,
+                persistenceFrames = 2,
+                routeToChannelIds = listOf("telegram"),
+            ).toJson(),
+            "baby_cry" to DetectorConfig(type = "baby_cry", enabled = false).toJson(),
+            "glass_break" to DetectorConfig(type = "glass_break", enabled = false).toJson(),
+            "loud_noise" to DetectorConfig(type = "loud_noise", enabled = false).toJson(),
+            "face" to DetectorConfig(type = "face", enabled = true).toJson(),
+            "person" to DetectorConfig(type = "person", enabled = false).toJson(),
+            "tamper" to DetectorConfig(type = "tamper", enabled = false).toJson(),
+            "health" to DetectorConfig(type = "health", enabled = true).toJson(),
+            // Routing-only entries written by an older recognition flow.
+            "face_known" to DetectorConfig(type = "face_known", enabled = true).toJson(),
+        )
+        val parsed = AppSettings.fromJson(
+            jsonOf("detectorConfigs" to legacyDetectorBlob),
+        )
+
+        // Every currently-shipped type appears…
+        val expectedTypes = AppSettings.defaults().detectorConfigs.keys
+        assertTrue(parsed.detectorConfigs.keys.containsAll(expectedTypes))
+
+        // …stored routing extras survive the upgrade…
+        assertTrue(parsed.detectorConfigs[TriggerType.faceKnown]!!.enabled)
+
+        // …new types carry their defaults (disabled + motion-gated for dog)…
+        val dog = parsed.detectorConfigs[TriggerType.dog]!!
+        assertFalse(dog.enabled)
+        assertTrue(dog.motionGated)
+        assertEquals(10, parsed.detectorConfigs[TriggerType.loitering]!!.dwellSeconds)
+
+        // …and stored tuning survives untouched.
+        assertEquals(0.07, parsed.detectorConfigs[TriggerType.motion]!!.threshold, 0.0)
+        assertTrue(parsed.detectorConfigs[TriggerType.face]!!.enabled)
+
+        // Round-trip keeps the full set (no re-loss on next save).
+        val resaved = AppSettings.fromJson(parsed.toJson())
+        assertEquals(parsed.detectorConfigs.keys, resaved.detectorConfigs.keys)
+    }
+
+    @Test
     fun videoClipSettingsRoundTripAndDefaultTo55RecordOn() {
         val defaults = AppSettings.defaults()
         assertEquals(5, defaults.preRollSeconds)
