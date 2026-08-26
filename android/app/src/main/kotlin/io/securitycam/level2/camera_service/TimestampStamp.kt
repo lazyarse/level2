@@ -43,8 +43,8 @@ object TimestampStamp {
         val text = text(wallMs, includeCameraName, cameraName)
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = max(30f, height * 0.032f)
-            isFakeBoldText = true
+            textSize = max(30f, height * 0.022f)
+            isFakeBoldText = false
             setShadowLayer(4f, 0f, 0f, Color.argb(140, 0, 0, 0))
         }
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
