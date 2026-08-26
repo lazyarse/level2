@@ -1230,7 +1230,7 @@ private fun DetectorCard(
                 Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
             }
             if (expanded) {
-                detectorHint(config.type)?.let { hint ->
+                DetectorType.fromKey(config.type)?.hint?.let { hint ->
                     Text(
                         hint,
                         style = MaterialTheme.typography.bodySmall,
@@ -1678,15 +1678,6 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
             )
         }
     }
-}
-
-/** Explainer shown at the top of a detector's fold-down, when non-null. */
-private fun detectorHint(type: String): String? = when (type) {
-    TriggerType.bird -> "Detects birds."
-    TriggerType.livestock -> "Detects cows, sheep and horses."
-    TriggerType.dog -> "Triggers on sight or sound (barking, growling)."
-    TriggerType.cat -> "Triggers on sight or sound (meowing, purring, hissing)."
-    else -> null
 }
 
 /** Channel header display name: raw type ids rendered Title Case. */
