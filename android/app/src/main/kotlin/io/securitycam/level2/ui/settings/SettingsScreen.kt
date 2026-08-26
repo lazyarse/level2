@@ -1238,7 +1238,7 @@ private fun DetectorCard(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                if (config.type != TriggerType.motion) {
+                if (config.type !in setOf(TriggerType.motion, TriggerType.health)) {
                     SwitchRow(
                         title = "Motion-gated",
                         subtitle = "Only check for this after motion is detected (saves battery).",
