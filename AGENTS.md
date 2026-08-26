@@ -110,3 +110,54 @@ Prefer the fastest platform that can validate the change:
 - **After tests complete, kill the emulator and qemu processes**: `adb -s <serial> emu kill`,
   then `pkill -9 -f qemu-system`; verify with `pgrep -c qemu-system` (expect 0). Note:
   `pkill` can wedge the calling shell — follow it with a separate short-status check.
+
+## Emulator virtual camera
+
+The goldfish camera HAL in the Android emulator has two quirks that break CameraX:
+
+1. It does **not** set `LENS_FACING` on any camera, so the default
+   `CameraSelector.DEFAULT_BACK_CAMERA` limiter filters it out before CameraX's
+   camera repository is populated — `bindToLifecycle()` fails with
+   "Invalid use of CameraSelector: no camera available".
+2. The camera is assigned ID `"10"` (not `"0"`), which
+   `MonitoringService.cameraSelectorFor` already handles via its `else` branch.
+
+**Fix in `Level2App.kt`**: the app implements `CameraXConfig.Provider` and overrides
+`getCameraXConfig()`:
+
+```kotlin
+CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())
+    .setAvailableCamerasLimiter(CameraSelector.Builder().build())
+    .build()
+```
+
+`fromConfig(Camera2Config.defaultConfig())` copies the mandatory Camera2 providers
+(CameraFactory, DeviceSurfaceManager, UseCaseConfigFactory). The unfiltered selector
+(`CameraSelector.Builder().build()`) accepts all cameras regardless of `LENS_FACING`.
+
+**Virtual camera pipeline** (`tool/take_app_screenshots.sh` sets this up automatically):
+
+```sh
+# 1. Load the v4l2loopback kernel module (requires sudo)
+sudo modprobe v4l2loopback   # creates /dev/video2, /dev/video3
+
+# 2. Set the capture format — MUST match exactly what ffmpeg writes
+v4l2loopback-ctl set-caps /dev/video2 "YUYV:1280x720"
+
+# 3. Stream a scene image into the loopback device
+ffmpeg -re -loop 1 -i tool/virtual-scene/scene.jpg \
+  -vf "scale=1280:720,format=yuyv422" \
+  -f v4l2 /dev/video2
+
+# 4. Launch the emulator with -camera-back webcam1
+emulator -avd pixel_34_aosp -no-snapshot -no-window -camera-back webcam1 ...
+```
+
+- Goldfish HAL only recognises `webcam1` — higher indices (webcam2, etc.) are
+  ignored and produce 0 cameras.
+- `v4l2loopback-ctl set-caps` **must** be run before ffmpeg; without it the
+  device advertises no fixed format and goldfish HAL rejects it.
+- CameraX 1.3.4 is intentionally pinned — 1.4.x breaks Kotlin compilation due
+  to a vararg collision with `bindToLifecycle` overload.
+- `screencap` captures the live preview when the pipeline is active (the preview
+  area is not black).
