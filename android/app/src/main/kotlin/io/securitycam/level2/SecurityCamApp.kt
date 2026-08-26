@@ -1,5 +1,7 @@
 package io.securitycam.level2
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,7 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.ui.events.EventsScreen
 import io.securitycam.level2.ui.events.EventsViewModel
 import io.securitycam.level2.ui.monitor.MonitorScreen
@@ -57,6 +62,21 @@ fun SecurityCamApp(
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
     val enrollmentActive = enrollingLabel != null
     val enrollmentSessionLocal by settingsViewModel.enrollmentSessionLocal.collectAsState()
+
+    // Apply screen orientation from settings.
+    val activity = LocalContext.current as Activity
+    val settings by settingsViewModel.draft.collectAsState()
+    LaunchedEffect(settings?.screenOrientation) {
+        when (settings?.screenOrientation) {
+            ScreenOrientation.landscape ->
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            ScreenOrientation.sensor ->
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            else ->
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (!showRegionEditor && !enrollmentActive) {
