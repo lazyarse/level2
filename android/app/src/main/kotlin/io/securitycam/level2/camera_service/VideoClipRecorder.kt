@@ -314,9 +314,9 @@ object VideoClipRecorder {
         exportTriggerMs = triggerAtMs
         cameraName = camName
         exportResult = result
+        preFile = ringSegment
         val current = ringRecording
         if (current == null) {
-            preFile = ringSegment
             tailFile = null
             startPostRollRecording()
         } else {
