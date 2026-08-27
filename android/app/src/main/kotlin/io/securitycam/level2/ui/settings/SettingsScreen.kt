@@ -887,6 +887,10 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Advanced") {
+                            BodyText(
+                                "When multiple triggers fire within this window, they are " +
+                                    "grouped into a single notification to reduce noise.",
+                            )
                             Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
                             Slider(
                                 value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
