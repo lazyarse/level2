@@ -1675,16 +1675,6 @@ private fun StepperRow(
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 24.dp, bottom = 4.dp),
-    )
-}
-
-@Composable
 private fun BodyText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall)
 }

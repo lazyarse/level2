@@ -6,7 +6,6 @@ import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Person
@@ -14,8 +13,6 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SentimentDissatisfied
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.VolumeDown
-import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -40,9 +37,6 @@ enum class DetectorType(
     FaceUnknown(TriggerType.faceUnknown, "Unknown face", Icons.Filled.SentimentDissatisfied, "Detects an unknown face in the camera view."),
     Tamper(TriggerType.tamper, "Tamper", Icons.Filled.VideocamOff, "Detects camera covered, moved or obstructed."),
     Health(TriggerType.health, "Heartbeat", Icons.Filled.MonitorHeart, "Monitors the app's internal heartbeat signal."),
-    DogBark(TriggerType.dogBark, "Dog bark", Icons.Filled.Pets, "Listens for a dog barking."),
-    Growl(TriggerType.growl, "Growl", Icons.Filled.VolumeDown, "Listens for a growling sound."),
-    CatMeow(TriggerType.catMeow, "Cat vocalisation", Icons.Filled.Pets, "Listens for a cat meowing or hissing."),
     Dog(TriggerType.dog, "Dog", Icons.Filled.Pets, "Triggers on sight or sound (barking, growling)."),
     Cat(TriggerType.cat, "Cat", Icons.Filled.Pets, "Triggers on sight or sound (meowing, purring, hissing)."),
     Vehicle(TriggerType.vehicle, "Vehicle", Icons.Filled.DirectionsCar, "Detects a car or truck in the camera view."),
@@ -50,7 +44,6 @@ enum class DetectorType(
     Livestock(TriggerType.livestock, "Livestock", Icons.Filled.Pets, "Detects cows, sheep and horses."),
     Loitering(TriggerType.loitering, "Loitering", Icons.Filled.Timer, "Triggers when a person lingers longer than the dwell time."),
     Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant, "Groups multiple triggers from the same event."),
-    Siren(TriggerType.siren, "Siren", Icons.Filled.Alarm, "Plays a loud alarm on the device speaker when triggered."),
     Tripwire(TriggerType.tripwire, "Tripwire", Icons.Filled.NearMe, "Triggers when a person crosses a tripwire boundary.");
 
     companion object {

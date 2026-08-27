@@ -26,30 +26,6 @@ data class DetectorConfig(
     /** Tripwire detector: which target classes to detect crossing. */
     val tripwireTargets: List<String> = listOf("person"),
 ) {
-    fun copyWith(
-        type: String? = null,
-        enabled: Boolean? = null,
-        threshold: Double? = null,
-        persistenceFrames: Int? = null,
-        cooldown: Duration? = null,
-        routeToChannelIds: List<String>? = null,
-        motionGated: Boolean? = null,
-        dwellSeconds: Int? = null,
-        audioThreshold: Double? = null,
-        tripwireTargets: List<String>? = null,
-    ): DetectorConfig = DetectorConfig(
-        type = type ?: this.type,
-        enabled = enabled ?: this.enabled,
-        threshold = threshold ?: this.threshold,
-        persistenceFrames = persistenceFrames ?: this.persistenceFrames,
-        cooldown = cooldown ?: this.cooldown,
-        routeToChannelIds = routeToChannelIds ?: this.routeToChannelIds,
-        motionGated = motionGated ?: this.motionGated,
-        dwellSeconds = dwellSeconds ?: this.dwellSeconds,
-        audioThreshold = audioThreshold ?: this.audioThreshold,
-        tripwireTargets = tripwireTargets ?: this.tripwireTargets,
-    )
-
     fun toJson(): Map<String, Any?> = mapOf(
         "type" to type,
         "enabled" to enabled,

@@ -15,16 +15,12 @@ object TriggerType {
     const val faceUnknown = "face_unknown"
     const val tamper = "tamper"
     const val health = "health"
-    const val dogBark = "dog_bark"
-    const val growl = "growl"
-    const val catMeow = "cat_meow"
     const val cat = "cat"
     const val dog = "dog"
     const val vehicle = "vehicle"
     const val bird = "bird"
     const val livestock = "livestock"
     const val loitering = "loitering"
-    const val siren = "siren"
     const val tripwire = "tripwire"
 }
 

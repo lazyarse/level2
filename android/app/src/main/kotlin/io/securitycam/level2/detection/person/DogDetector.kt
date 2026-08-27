@@ -5,7 +5,6 @@ import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.audio.AudioEventScores
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
-import io.securitycam.level2.detection.FrameDetector
 import io.securitycam.level2.detection.HybridDetector
 import io.securitycam.level2.detection.RegionFilter
 
