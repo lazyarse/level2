@@ -149,6 +149,7 @@ class MonitoringRuntime private constructor(
             )
             runtime.pipeline.init()
             runtime.pipeline.setRegions(settings.detectionRegions, settings.exclusionRegions)
+            runtime.pipeline.setTripwireRegions(settings.tripwireRegions)
             runtime.eventPipeline = EventPipeline(
                 cameraName = settings.cameraName,
                 detectorConfigs = settings.detectorConfigs,

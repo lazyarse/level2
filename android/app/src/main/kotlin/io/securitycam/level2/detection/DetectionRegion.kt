@@ -3,6 +3,7 @@ package io.securitycam.level2.detection
 object DetectionRegionShape {
     const val rect = "rect"
     const val poly = "poly"
+    const val tripwire = "tripwire"
     val values = listOf(rect, poly)
 }
 
@@ -16,12 +17,14 @@ data class DetectionRegion(
     val shape: String,
     val label: String,
     val points: List<Double>,
+    val direction: String = "either",
 ) {
     fun toJson(): Map<String, Any?> = mapOf(
         "id" to id,
         "shape" to shape,
         "label" to label,
         "points" to points,
+        "direction" to direction,
     )
 
     companion object {
@@ -32,6 +35,7 @@ data class DetectionRegion(
             points = (json["points"] as? List<*>)
                 ?.map { (it as Number).toDouble() }
                 ?: emptyList(),
+            direction = json["direction"] as? String ?: "either",
         )
     }
 }

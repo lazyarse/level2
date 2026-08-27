@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,12 +71,15 @@ private val RegionPalette = listOf(
 /** Distinct color for exclusion (privacy) zones. */
 private val ExclusionBase = Color(0xFFEA4335)
 
-/** Palette entry for the active editor mode: red in exclusion mode. */
+/** Distinct color for tripwire zones. */
+private val TripwireBase = Color(0xFFFF9800)
+
+/** Palette entry for the active editor mode: red in exclusion mode, orange in tripwire mode. */
 private fun regionColor(mode: RegionEditorMode, index: Int): Color =
-    if (mode == RegionEditorMode.exclusion) {
-        ExclusionBase
-    } else {
-        RegionPalette[index % RegionPalette.size]
+    when (mode) {
+        RegionEditorMode.exclusion -> ExclusionBase
+        RegionEditorMode.tripwire -> TripwireBase
+        else -> RegionPalette[index % RegionPalette.size]
     }
 
 /**
@@ -93,15 +97,16 @@ private fun regionColor(mode: RegionEditorMode, index: Int): Color =
 @Composable
 fun RegionEditorScreen(
     initialRegions: List<DetectionRegion>,
-    onSave: (inclusions: List<DetectionRegion>, exclusions: List<DetectionRegion>) -> Unit,
+    onSave: (inclusions: List<DetectionRegion>, exclusions: List<DetectionRegion>, tripwires: List<DetectionRegion>) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     showPreview: Boolean = true,
     initialExclusions: List<DetectionRegion> = emptyList(),
+    initialTripwireRegions: List<DetectionRegion> = emptyList(),
     frameWidth: Int = 320,
     frameHeight: Int = 240,
 ) {
-    val vm = remember { RegionEditorViewModel(initialRegions, initialExclusions) }
+    val vm = remember { RegionEditorViewModel(initialRegions, initialExclusions, initialTripwireRegions) }
     var confirmClear by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -112,7 +117,7 @@ fun RegionEditorScreen(
                 actions = {
                     TextButton(
                         onClick = {
-                            onSave(vm.inclusionRegions, vm.exclusionRegions)
+                            onSave(vm.inclusionRegions, vm.exclusionRegions, vm.tripwireRegions)
                             onClose()
                         },
                         modifier = Modifier.testTag("regionDone"),
@@ -130,15 +135,45 @@ fun RegionEditorScreen(
                 SegmentedButton(
                     selected = vm.mode == RegionEditorMode.inclusion,
                     onClick = { vm.chooseMode(RegionEditorMode.inclusion) },
-                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                    shape = SegmentedButtonDefaults.itemShape(0, 3),
                     modifier = Modifier.testTag("regionMode_inclusion"),
                 ) { Text("Inclusion") }
                 SegmentedButton(
                     selected = vm.mode == RegionEditorMode.exclusion,
                     onClick = { vm.chooseMode(RegionEditorMode.exclusion) },
-                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                    shape = SegmentedButtonDefaults.itemShape(1, 3),
                     modifier = Modifier.testTag("regionMode_exclusion"),
                 ) { Text("Exclusion") }
+                SegmentedButton(
+                    selected = vm.mode == RegionEditorMode.tripwire,
+                    onClick = { vm.chooseMode(RegionEditorMode.tripwire) },
+                    shape = SegmentedButtonDefaults.itemShape(2, 3),
+                    modifier = Modifier.testTag("regionMode_tripwire"),
+                ) { Text("Tripwire") }
+            }
+            if (vm.mode == RegionEditorMode.tripwire) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Direction:", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(8.dp))
+                    listOf("in" to "Entry", "out" to "Exit", "either" to "Either").forEach { (value, label) ->
+                        OutlinedButton(
+                            onClick = { vm.chooseTripwireDirection(value) },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (vm.tripwireDirection == value) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    Color.Unspecified
+                                },
+                            ),
+                        ) { Text(label) }
+                        Spacer(Modifier.width(4.dp))
+                    }
+                }
             }
             EditorCanvas(vm, showPreview, frameWidth, frameHeight, Modifier.weight(1f).padding(8.dp))
             Column(Modifier.padding(12.dp)) {
@@ -258,12 +293,16 @@ fun RegionEditorScreen(
             title = { Text("Clear all regions?") },
             text = {
                 Text(
-                    if (vm.mode == RegionEditorMode.exclusion) {
-                        "This removes every exclusion zone. Detection will no " +
-                            "longer ignore those areas."
-                    } else {
-                        "This removes every inclusion region. Detection will apply " +
-                            "to the whole frame."
+                    when (vm.mode) {
+                        RegionEditorMode.exclusion ->
+                            "This removes every exclusion zone. Detection will no " +
+                                "longer ignore those areas."
+                        RegionEditorMode.tripwire ->
+                            "This removes every tripwire region. Person-crossing " +
+                                "detection will no longer be active."
+                        else ->
+                            "This removes every inclusion region. Detection will apply " +
+                                "to the whole frame."
                     },
                 )
             },

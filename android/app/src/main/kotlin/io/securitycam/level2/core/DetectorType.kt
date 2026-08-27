@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.SentimentDissatisfied
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -47,7 +49,9 @@ enum class DetectorType(
     Bird(TriggerType.bird, "Bird", Icons.Filled.Pets, "Detects birds."),
     Livestock(TriggerType.livestock, "Livestock", Icons.Filled.Pets, "Detects cows, sheep and horses."),
     Loitering(TriggerType.loitering, "Loitering", Icons.Filled.Timer, "Triggers when a person lingers longer than the dwell time."),
-    Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant, "Groups multiple triggers from the same event.");
+    Merged(TriggerType.merged, "Multiple triggers", Icons.Filled.NotificationImportant, "Groups multiple triggers from the same event."),
+    Siren(TriggerType.siren, "Siren", Icons.Filled.Alarm, "Plays a loud alarm on the device speaker when triggered."),
+    Tripwire(TriggerType.tripwire, "Tripwire", Icons.Filled.NearMe, "Triggers when a person crosses a tripwire boundary.");
 
     companion object {
         private val byKey = entries.associateBy { it.key }

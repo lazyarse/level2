@@ -58,6 +58,7 @@ data class LiveViewSettings(
     val resolution: String = "720p",   // "480p" | "720p" | "1080p"
     val fps: Int = 15,
     val audioEnabled: Boolean = true,
+    val talkBackEnabled: Boolean = false,
 ) {
     fun toJson(): Map<String, Any?> = mapOf(
         "enabled" to enabled,
@@ -68,6 +69,7 @@ data class LiveViewSettings(
         "resolution" to resolution,
         "fps" to fps,
         "audioEnabled" to audioEnabled,
+        "talkBackEnabled" to talkBackEnabled,
     )
 
     companion object {
@@ -83,6 +85,7 @@ data class LiveViewSettings(
             resolution = json["resolution"] as? String ?: "720p",
             fps = (json["fps"] as? Number)?.toInt() ?: 15,
             audioEnabled = json["audioEnabled"] as? Boolean ?: true,
+            talkBackEnabled = json["talkBackEnabled"] as? Boolean ?: false,
         )
     }
 }
@@ -206,6 +209,7 @@ data class AppSettings(
     val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
     val knownFaces: List<KnownFace> = emptyList(),
+    val tripwireRegions: List<DetectionRegion> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
 ) {
@@ -231,6 +235,7 @@ data class AppSettings(
         exclusionRegions: List<DetectionRegion>? = null,
         scheduleExclusions: List<ScheduleWindow>? = null,
         knownFaces: List<KnownFace>? = null,
+        tripwireRegions: List<DetectionRegion>? = null,
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
     ): AppSettings = AppSettings(
@@ -255,7 +260,9 @@ data class AppSettings(
         detectionRegions = detectionRegions ?: this.detectionRegions,
         exclusionRegions = exclusionRegions ?: this.exclusionRegions,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
-        knownFaces = knownFaces ?: this.knownFaces,        liveView = liveView ?: this.liveView,
+        knownFaces = knownFaces ?: this.knownFaces,
+        tripwireRegions = tripwireRegions ?: this.tripwireRegions,
+        liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
     )
 
@@ -282,6 +289,7 @@ data class AppSettings(
         json["detectionRegions"] = detectionRegions.map { it.toJson() }
         json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
         json["knownFaces"] = knownFaces.map { it.toJson() }
+        json["tripwireRegions"] = tripwireRegions.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
@@ -396,6 +404,14 @@ data class AppSettings(
                     enabled = false,
                     motionGated = true,
                     dwellSeconds = 10,
+                    routeToChannelIds = listOf("telegram"),
+                ),
+                TriggerType.tripwire to DetectorConfig(
+                    type = TriggerType.tripwire,
+                    threshold = 0.5,
+                    persistenceFrames = 2,
+                    enabled = false,
+                    motionGated = true,
                     routeToChannelIds = listOf("telegram"),
                 ),
             ),
@@ -534,6 +550,9 @@ data class AppSettings(
                     ?: emptyList(),
                 knownFaces = (json["knownFaces"] as? List<*>)
                     ?.map { KnownFace.fromJson(it as Map<String, Any?>) }
+                    ?: emptyList(),
+                tripwireRegions = (json["tripwireRegions"] as? List<*>)
+                    ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
                 scheduleExclusions = (json["scheduleExclusions"] as? List<*>)
                     ?.map { ScheduleWindow.fromJson(it as Map<String, Any?>) }

@@ -9,7 +9,7 @@ import io.securitycam.level2.detection.DetectionRegionShape
 import io.securitycam.level2.detection.RegionFilter.pointInRegion
 
 /** Which list the editor tools currently operate on. */
-enum class RegionEditorMode { inclusion, exclusion }
+enum class RegionEditorMode { inclusion, exclusion, tripwire }
 
 /**
  * Interaction logic for the region editor. Port of the state machine in
@@ -23,18 +23,27 @@ enum class RegionEditorMode { inclusion, exclusion }
 class RegionEditorViewModel(
     initialRegions: List<DetectionRegion>,
     initialExclusions: List<DetectionRegion> = emptyList(),
+    initialTripwireRegions: List<DetectionRegion> = emptyList(),
 ) {
 
     var inclusionRegions by mutableStateOf(initialRegions)
         private set
     var exclusionRegions by mutableStateOf(initialExclusions)
         private set
+    var tripwireRegions by mutableStateOf(initialTripwireRegions)
+        private set
+    var tripwireDirection by mutableStateOf("either")
+        private set
     var mode by mutableStateOf(RegionEditorMode.inclusion)
         private set
 
     /** The list the current [mode] edits; every tool below operates on it. */
     val regions: List<DetectionRegion>
-        get() = if (mode == RegionEditorMode.inclusion) inclusionRegions else exclusionRegions
+        get() = when (mode) {
+            RegionEditorMode.inclusion -> inclusionRegions
+            RegionEditorMode.exclusion -> exclusionRegions
+            RegionEditorMode.tripwire -> tripwireRegions
+        }
 
     var selected by mutableIntStateOf(-1)
         private set
@@ -59,11 +68,15 @@ class RegionEditorViewModel(
         dragRect = null
     }
 
+    fun chooseTripwireDirection(direction: String) {
+        tripwireDirection = direction
+    }
+
     private fun setActive(value: List<DetectionRegion>) {
-        if (mode == RegionEditorMode.inclusion) {
-            inclusionRegions = value
-        } else {
-            exclusionRegions = value
+        when (mode) {
+            RegionEditorMode.inclusion -> inclusionRegions = value
+            RegionEditorMode.exclusion -> exclusionRegions = value
+            RegionEditorMode.tripwire -> tripwireRegions = value
         }
     }
 
@@ -211,12 +224,14 @@ class RegionEditorViewModel(
     private fun addRegion(shapeValue: String, points: List<Double>) {
         val id = "r${nextId}"
         nextId++
+        val direction = if (mode == RegionEditorMode.tripwire) tripwireDirection else "either"
         setActive(
             regions + DetectionRegion(
                 id = id,
                 shape = shapeValue,
                 label = "Region $nextId",
                 points = points,
+                direction = direction,
             ),
         )
         select(regions.size - 1)

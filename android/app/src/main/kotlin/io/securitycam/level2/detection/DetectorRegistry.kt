@@ -50,6 +50,9 @@ object DetectorRegistry {
         TriggerType.loitering to { c: DetectorConfig ->
             io.securitycam.level2.detection.person.LoiteringDetector(c)
         },
+        TriggerType.tripwire to { c: DetectorConfig ->
+            io.securitycam.level2.detection.TripwireDetector(c)
+        },
     )
 
     fun register(type: String, factory: DetectorFactory) {

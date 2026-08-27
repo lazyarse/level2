@@ -28,6 +28,7 @@ class RegionEditorScreenTest {
 
     private var savedInclusions: List<DetectionRegion>? = null
     private var savedExclusions: List<DetectionRegion>? = null
+    private var savedTripwires: List<DetectionRegion>? = null
 
     @Before
     fun setUp() {
@@ -45,9 +46,10 @@ class RegionEditorScreenTest {
                         points = listOf(0.1, 0.2, 0.5, 0.8),
                     ),
                 ),
-                onSave = { inclusions, exclusions ->
+                onSave = { inclusions, exclusions, tripwires ->
                     savedInclusions = inclusions
                     savedExclusions = exclusions
+                    savedTripwires = tripwires
                 },
                 onClose = {},
                 showPreview = false,

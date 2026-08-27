@@ -121,9 +121,14 @@ fun SecurityCamApp(
                 RegionEditorScreen(
                     initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
                     initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),
-                    onSave = { regions, exclusions ->
+                    initialTripwireRegions = settingsViewModel.draft.value?.tripwireRegions.orEmpty(),
+                    onSave = { regions, exclusions, tripwires ->
                         settingsViewModel.update {
-                            it.copy(detectionRegions = regions, exclusionRegions = exclusions)
+                            it.copy(
+                                detectionRegions = regions,
+                                exclusionRegions = exclusions,
+                                tripwireRegions = tripwires,
+                            )
                         }
                     },
                     onClose = { showRegionEditor = false },

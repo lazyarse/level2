@@ -10,6 +10,7 @@ import io.securitycam.level2.detection.Detector
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.FrameDetector
 import io.securitycam.level2.detection.HybridDetector
+import io.securitycam.level2.detection.TripwireDetector
 import io.securitycam.level2.detection.audio.AudioEventClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,6 +66,15 @@ class DetectorPipeline(
         for (d in frameDetectorsInternal) {
             d.regions = regions
             d.exclusionRegions = exclusionRegions
+        }
+    }
+
+    /** Sets tripwire regions on all TripwireDetector instances. */
+    fun setTripwireRegions(regions: List<DetectionRegion>) {
+        for (d in frameDetectorsInternal) {
+            if (d is TripwireDetector) {
+                d.tripwireRegions = regions
+            }
         }
     }
 

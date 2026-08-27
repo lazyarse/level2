@@ -24,6 +24,8 @@ object TriggerType {
     const val bird = "bird"
     const val livestock = "livestock"
     const val loitering = "loitering"
+    const val siren = "siren"
+    const val tripwire = "tripwire"
 }
 
 /** A single detector firing, before batching (port of `lib/core/models.dart`). */
