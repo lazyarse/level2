@@ -38,6 +38,13 @@ object ChannelRegistry {
                 settings = PushoverChannelSettings.fromJson(c.settingsJson),
             )
         },
+        "siren" to { c ->
+            SirenChannel(
+                id = c.id,
+                enabled = c.enabled,
+                settings = SirenChannelSettings.fromJson(c.settingsJson),
+            )
+        },
     )
 
     fun factoryFor(type: String): ChannelFactory? = factories[type]
@@ -53,6 +60,7 @@ object ChannelRegistry {
             "email" -> EmailChannelSettings.fromJson(json)
             "webhook" -> WebhookChannelSettings.fromJson(json)
             "pushover" -> PushoverChannelSettings.fromJson(json)
+            "siren" -> SirenChannelSettings.fromJson(json)
             else -> throw IllegalArgumentException("unsupported channel type: $type")
         }
 }
