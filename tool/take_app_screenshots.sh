@@ -359,15 +359,6 @@ sleep 5 # camera preview warm-up (goldfish HAL needs time to enumerate + open de
 # Tap "Preview" to activate the camera (shows the live feed in the preview area).
 tap_node text "Preview" 2>/dev/null && sleep 5
 
-# Clean old captures for requested targets so gallery only lists this run.
-for f in monitor events settings; do
-  want "$f" && rm -f "$IMG_DIR/$f.png"
-done
-for entry in "${SECTIONS[@]}"; do
-  slug="${entry##*|}"
-  want "$slug" && rm -f "$IMG_DIR/settings_${slug}.png"
-done
-
 if want monitor; then
   shot "$IMG_DIR/monitor.png"
   echo "captured monitor.png"
