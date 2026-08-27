@@ -62,6 +62,7 @@ class DogDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
+        latestBoxes = dogs
         if (dogs.isEmpty()) {
             visualStreak = 0
             return result(frame.timestamp, 0.0, false, null)

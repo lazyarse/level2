@@ -55,6 +55,7 @@ class PersonDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
+        latestBoxes = people
         if (people.isEmpty()) {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)

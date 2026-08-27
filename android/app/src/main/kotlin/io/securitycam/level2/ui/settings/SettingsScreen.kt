@@ -1321,6 +1321,39 @@ private fun DetectorCard(
                         modifier = Modifier.testTag("dwell_${config.type}"),
                     )
                 }
+                if (config.type == TriggerType.tripwire) {
+                    Text("Targets", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        val targets = config.tripwireTargets
+                        val options = listOf(
+                            "person" to "Person",
+                            "vehicle" to "Vehicle",
+                            "bird" to "Bird",
+                            "cat" to "Cat",
+                            "dog" to "Dog",
+                            "livestock" to "Livestock",
+                        )
+                        for ((key, label) in options) {
+                            FilterChip(
+                                selected = key in targets,
+                                onClick = {
+                                    val newTargets = if (key in targets) {
+                                        targets.toMutableList().apply { remove(key) }
+                                    } else {
+                                        targets + key
+                                    }
+                                    onChanged(config.copy(tripwireTargets = newTargets))
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 Text("Route to channels", style = MaterialTheme.typography.bodySmall)
                 for (id in channelIds) {
                     Row(

@@ -53,6 +53,7 @@ class BirdDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
+        latestBoxes = birds
         if (birds.isEmpty()) {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)

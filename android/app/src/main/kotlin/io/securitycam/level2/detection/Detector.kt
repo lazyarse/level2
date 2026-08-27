@@ -1,6 +1,7 @@
 package io.securitycam.level2.detection
 
 import io.securitycam.level2.detection.audio.AudioEventScores
+import io.securitycam.level2.detection.person.PersonBox
 import java.time.Duration
 
 /**
@@ -22,6 +23,8 @@ data class DetectorConfig(
      * null the visual [threshold] governs both.
      */
     val audioThreshold: Double? = null,
+    /** Tripwire detector: which target classes to detect crossing. */
+    val tripwireTargets: List<String> = listOf("person"),
 ) {
     fun copyWith(
         type: String? = null,
@@ -33,6 +36,7 @@ data class DetectorConfig(
         motionGated: Boolean? = null,
         dwellSeconds: Int? = null,
         audioThreshold: Double? = null,
+        tripwireTargets: List<String>? = null,
     ): DetectorConfig = DetectorConfig(
         type = type ?: this.type,
         enabled = enabled ?: this.enabled,
@@ -43,6 +47,7 @@ data class DetectorConfig(
         motionGated = motionGated ?: this.motionGated,
         dwellSeconds = dwellSeconds ?: this.dwellSeconds,
         audioThreshold = audioThreshold ?: this.audioThreshold,
+        tripwireTargets = tripwireTargets ?: this.tripwireTargets,
     )
 
     fun toJson(): Map<String, Any?> = mapOf(
@@ -55,6 +60,7 @@ data class DetectorConfig(
         "motionGated" to motionGated,
         "dwellSeconds" to dwellSeconds,
         "audioThreshold" to audioThreshold,
+        "tripwireTargets" to tripwireTargets,
     )
 
     companion object {
@@ -72,6 +78,8 @@ data class DetectorConfig(
             motionGated = json["motionGated"] as? Boolean ?: false,
             dwellSeconds = (json["dwellSeconds"] as? Number)?.toInt() ?: 10,
             audioThreshold = (json["audioThreshold"] as? Number)?.toDouble(),
+            tripwireTargets = (json["tripwireTargets"] as? List<*>)?.map { it as String }
+                ?: listOf("person"),
         )
     }
 }
@@ -93,6 +101,9 @@ interface Detector {
 abstract class FrameDetector : Detector {
     var regions: List<DetectionRegion> = emptyList()
     var exclusionRegions: List<DetectionRegion> = emptyList()
+
+    /** Boxes from the most recent analysis frame, updated by subclasses for sharing. */
+    open var latestBoxes: List<PersonBox> = emptyList()
 
     abstract fun analyzeFrame(frame: AnalysisFrame): DetectionResult
 

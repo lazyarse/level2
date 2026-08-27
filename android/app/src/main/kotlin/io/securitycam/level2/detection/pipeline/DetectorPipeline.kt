@@ -71,9 +71,24 @@ class DetectorPipeline(
 
     /** Sets tripwire regions on all TripwireDetector instances. */
     fun setTripwireRegions(regions: List<DetectionRegion>) {
-        for (d in frameDetectorsInternal) {
-            if (d is TripwireDetector) {
-                d.tripwireRegions = regions
+        for (d in frameDetectorsInternal.filterIsInstance<TripwireDetector>()) {
+            d.tripwireRegions = regions
+            d.sourceDetectors = frameDetectorsInternal.filter {
+                it != d && matchesTripwireTarget(it, d.config.tripwireTargets)
+            }
+        }
+    }
+
+    private fun matchesTripwireTarget(detector: FrameDetector, targets: List<String>): Boolean {
+        return targets.any { target ->
+            when (target) {
+                "person" -> detector.triggerType == TriggerType.person
+                "vehicle" -> detector.triggerType == TriggerType.vehicle
+                "dog" -> detector.triggerType == TriggerType.dog
+                "cat" -> detector.triggerType == TriggerType.cat
+                "bird" -> detector.triggerType == TriggerType.bird
+                "livestock" -> detector.triggerType == TriggerType.livestock
+                else -> false
             }
         }
     }

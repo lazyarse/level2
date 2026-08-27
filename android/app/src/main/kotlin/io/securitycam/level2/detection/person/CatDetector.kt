@@ -62,6 +62,7 @@ class CatDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
+        latestBoxes = cats
         if (cats.isEmpty()) {
             visualStreak = 0
             return result(frame.timestamp, 0.0, false, null)

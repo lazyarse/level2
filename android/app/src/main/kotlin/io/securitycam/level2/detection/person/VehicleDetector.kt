@@ -54,6 +54,7 @@ class VehicleDetector(
                     !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
             }
         }
+        latestBoxes = vehicles
         if (vehicles.isEmpty()) {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)
