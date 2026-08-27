@@ -18,6 +18,7 @@ import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.SchedulePolicy
+import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.detection.DetectionRegion
 import io.securitycam.level2.storage.AppDatabase
 import io.securitycam.level2.storage.EncryptedSecretStore
@@ -130,6 +131,12 @@ class MonitorViewModel(
     private val _monitorPreview = MutableStateFlow(true)
     val monitorPreview: StateFlow<Boolean> = _monitorPreview.asStateFlow()
 
+    private val _cameraLabel = MutableStateFlow("")
+    val cameraLabel: StateFlow<String> = _cameraLabel.asStateFlow()
+
+    private val _screenOrientationLabel = MutableStateFlow("")
+    val screenOrientationLabel: StateFlow<String> = _screenOrientationLabel.asStateFlow()
+
     private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
     val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
     private val _exclusionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
@@ -174,8 +181,10 @@ class MonitorViewModel(
             _cameraName.value = settings.cameraName
             _cameraId.value = settings.cameraId
             _monitorPreview.value = settings.monitorPreview
-            _detectionRegions.value = settings.detectionRegions
-            _exclusionRegions.value = settings.exclusionRegions
+                _detectionRegions.value = settings.detectionRegions
+                _exclusionRegions.value = settings.exclusionRegions
+                updateDisplayLabels(settings.cameraId, settings.screenOrientation)
+            updateDisplayLabels(settings.cameraId, settings.screenOrientation)
         } catch (t: Throwable) {
             Log.w(TAG, "init settings load failed", t)
         }
@@ -255,6 +264,19 @@ class MonitorViewModel(
                 PackageManager.PERMISSION_GRANTED
     }
 
+    private fun resolveCameraLabel(cameraId: String): String {
+        val cameras = runBlocking { availableCameras(getApplication()) }
+        return cameras.firstOrNull { it.id == cameraId }?.label ?: cameraId
+    }
+
+    private fun orientationLabel(orientation: String): String =
+        ScreenOrientation.label(orientation).let { if (it == "Auto (sensor)") "Auto" else it }
+
+    private fun updateDisplayLabels(cameraId: String, orientation: String) {
+        _cameraLabel.value = resolveCameraLabel(cameraId)
+        _screenOrientationLabel.value = orientationLabel(orientation)
+    }
+
     /** Reload settings from disk so the UI reflects changes made in Settings. */
     fun refreshSettings() {
         viewModelScope.launch {
@@ -266,6 +288,7 @@ class MonitorViewModel(
                 _detectionRegions.value = settings.detectionRegions
                 _exclusionRegions.value = settings.exclusionRegions
                 scheduleSettings = settings
+                updateDisplayLabels(settings.cameraId, settings.screenOrientation)
             }
         }
     }

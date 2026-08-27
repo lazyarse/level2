@@ -62,6 +62,8 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val healthStalled by viewModel.healthStalled.collectAsStateWithLifecycle()
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
+    val cameraLabel by viewModel.cameraLabel.collectAsStateWithLifecycle()
+    val screenOrientationLabel by viewModel.screenOrientationLabel.collectAsStateWithLifecycle()
     val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
     val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
     val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
@@ -104,6 +106,11 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         else -> 0
     }
     var showRegions by rememberSaveable { mutableStateOf(false) }
+    val displayLabel = listOfNotNull(
+        cameraName.ifEmpty { null },
+        cameraLabel.ifEmpty { null },
+        screenOrientationLabel.ifEmpty { null },
+    ).joinToString(" | ")
 
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -144,7 +151,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = cameraName,
+                    text = displayLabel,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -186,7 +193,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             )
         }
         MonitorStatusBar(
-            cameraName = cameraName,
+            cameraName = displayLabel,
             state = state,
             previewActive = previewActive,
             error = error,

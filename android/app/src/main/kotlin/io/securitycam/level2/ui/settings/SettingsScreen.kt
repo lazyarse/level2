@@ -220,10 +220,13 @@ fun SettingsScreen(
                     ) {
                         OutlinedTextField(
                             value = current.cameraName,
-                            onValueChange = { name -> viewModel.update { it.copy(cameraName = name) } },
+                            onValueChange = { name -> viewModel.update { it.copy(cameraName = name.take(20)) } },
                             label = { Text("Camera name") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
+                            supportingText = {
+                                Text("${current.cameraName.length}/20", modifier = Modifier.testTag("cameraNameCounter"))
+                            },
                         )
                         // CameraManager enumeration is IPC: keep it off the
                         // composition's main thread.
