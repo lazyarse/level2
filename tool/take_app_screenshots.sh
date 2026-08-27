@@ -29,7 +29,7 @@
 #     preview area will show the live camera feed (not black).
 #   - Shots: monitor / events / settings tabs plus every Settings
 #     CollapsibleSection unfolded, cropped to the section's region on screen.
-#   - Rewrites docs/gallery.md deterministically (no timestamps).
+#   - Merges into docs/gallery.md (preserves existing entries, adds new, prunes missing).
 #
 # docs/images/ and docs/gallery.md are git-tracked; re-run this script
 # whenever the Monitor/Events/Settings layouts change (AGENTS.md).

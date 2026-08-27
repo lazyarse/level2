@@ -161,3 +161,12 @@ emulator -avd pixel_34_aosp -no-snapshot -no-window -camera-back webcam1 ...
   to a vararg collision with `bindToLifecycle` overload.
 - `screencap` captures the live preview when the pipeline is active (the preview
   area is not black).
+
+## Screenshots & gallery
+
+- `tool/take_app_screenshots.sh` captures app screenshots into `docs/images/` and
+  merges them into `docs/gallery.md` via `tool/gallery_sync.py`.
+- The merge script preserves existing gallery entries, adds entries for newly captured
+  screenshots, and removes entries whose images no longer exist on disk.
+- Re-run the screenshot script after any Monitor/Events/Settings layout change — the
+  gallery self-heals without manual edits.
