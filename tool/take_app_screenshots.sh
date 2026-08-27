@@ -497,4 +497,19 @@ EOF
 }
 generate_gallery
 echo "== gallery written to ${GALLERY#$REPO_ROOT/} =="
+
+# Resize all screenshots to half size for faster loading.
+for f in "$IMG_DIR"/*.png; do
+  [ -f "$f" ] || continue
+  python3 - "$f" <<'PY'
+import sys
+from PIL import Image
+path = sys.argv[1]
+img = Image.open(path)
+w, h = img.size
+img.resize((w // 2, h // 2), Image.LANCZOS).save(path)
+PY
+done
+echo "== resized screenshots to 50% =="
+
 ls -la "$IMG_DIR"
