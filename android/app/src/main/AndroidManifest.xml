@@ -14,7 +14,7 @@
         android:maxSdkVersion="28" />
     <application
         android:name=".Level2App"
-        android:label="level2"
+        android:label="Level 2"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher">
         <activity
