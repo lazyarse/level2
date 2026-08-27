@@ -87,6 +87,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
+import io.securitycam.level2.channels.SirenChannelSettings
 import io.securitycam.level2.channels.TelegramChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.channels.webhookPresets
@@ -164,6 +165,11 @@ fun SettingsScreen(
                     fields["${c.id}.appToken"] = it.appToken
                     fields["${c.id}.userKey"] = it.userKey
                     fields["${c.id}.sound"] = it.sound
+                }
+
+                "siren" -> SirenChannelSettings.fromJson(c.settingsJson).let {
+                    fields["${c.id}.duration"] = it.durationSeconds.toString()
+                    fields["${c.id}.volume"] = it.volume.toString()
                 }
             }
         }
@@ -709,6 +715,14 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(liveView = it.liveView.copy(audioEnabled = v)) }
                                     },
                                 )
+                                SwitchRow(
+                                    title = "Talk-back",
+                                    subtitle = "Let RTSP client speak through phone speaker",
+                                    checked = current.liveView.talkBackEnabled,
+                                    onCheckedChange = { v ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(talkBackEnabled = v)) }
+                                    },
+                                )
                             }
                         }
                         CollapsibleSection("Cloud backup", summary = cloudBackupSummary(current.cloudBackup)) {
@@ -1089,6 +1103,13 @@ internal fun buildChannelConfigs(
             ).toJson(),
         )
 
+        "siren" -> c.copy(
+            settingsJson = SirenChannelSettings(
+                durationSeconds = f("duration").toIntOrNull() ?: 15,
+                volume = f("volume").toFloatOrNull() ?: 0.8f,
+            ).toJson(),
+        )
+
         else -> c
     }
 }
@@ -1443,6 +1464,26 @@ private fun ChannelBody(
                     SecretField("App token", fields, "${config.id}.appToken", setField)
                     SecretField("User key", fields, "${config.id}.userKey", setField)
                     Field("Sound", fields, "${config.id}.sound", setField)
+                }
+
+                "siren" -> {
+                    val duration = (fields["${config.id}.duration"] ?: "15").toFloatOrNull() ?: 15f
+                    Text("Duration: ${duration.toInt()} s")
+                    Slider(
+                        value = duration,
+                        onValueChange = { v -> setField("${config.id}.duration", v.toInt().toString()) },
+                        valueRange = 5f..60f,
+                        steps = 10,
+                        modifier = Modifier.testTag("sirenDuration_${config.id}"),
+                    )
+                    val vol = (fields["${config.id}.volume"] ?: "0.8").toFloatOrNull() ?: 0.8f
+                    Text("Volume: %.0f%%".format(vol * 100))
+                    Slider(
+                        value = vol,
+                        onValueChange = { v -> setField("${config.id}.volume", "%.2f".format(v)) },
+                        valueRange = 0.1f..1.0f,
+                        modifier = Modifier.testTag("sirenVolume_${config.id}"),
+                    )
                 }
             }
             val draftValid = remember(config.id, config.type, fields.toMap()) {

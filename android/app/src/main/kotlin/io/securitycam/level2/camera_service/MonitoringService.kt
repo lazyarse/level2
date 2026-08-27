@@ -211,6 +211,7 @@ object MonitoringServiceController {
     private var liveViewServer: LiveViewServer? = null
     private var liveViewPushClient: LiveViewPushClient? = null
     private var liveViewPacketizer: RtpPacketizer? = null
+    private var liveViewSpeakerOutput: SpeakerOutput? = null
     private var liveViewActive = false
 
     // Preview use case bound into the CameraX group; its surface provider is
@@ -737,6 +738,9 @@ object MonitoringServiceController {
             encoder.start()
 
             if (lv.mode == "server") {
+                val speakerOut = if (lv.talkBackEnabled) SpeakerOutput() else null
+                liveViewSpeakerOutput = speakerOut
+                speakerOut?.start()
                 val server = LiveViewServer(
                     port = lv.port,
                     username = lv.username,
@@ -744,6 +748,8 @@ object MonitoringServiceController {
                     videoStream = { Log.i(TAG, "LiveView client connected") },
                     stopStream = { Log.i(TAG, "LiveView client disconnected") },
                     requestKeyFrame = { encoder.requestKeyFrame() },
+                    talkBackEnabled = lv.talkBackEnabled,
+                    speakerOutput = speakerOut,
                 )
                 liveViewServer = server
                 server.start()
@@ -771,10 +777,12 @@ object MonitoringServiceController {
         try { liveViewServer?.stop() } catch (_: Exception) {}
         try { liveViewPushClient?.disconnect() } catch (_: Exception) {}
         try { liveViewEncoder?.stop() } catch (_: Exception) {}
+        try { liveViewSpeakerOutput?.stop() } catch (_: Exception) {}
         liveViewServer = null
         liveViewPushClient = null
         liveViewEncoder = null
         liveViewPacketizer = null
+        liveViewSpeakerOutput = null
     }
 
     private fun resolutionToSize(resolution: String): Pair<Int, Int> = when (resolution) {

@@ -2,8 +2,7 @@ package io.securitycam.level2.camera_service
 
 import android.util.Log
 import android.util.Base64
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -16,6 +15,8 @@ class LiveViewServer(
     private val videoStream: () -> Unit,
     private val stopStream: () -> Unit,
     private val requestKeyFrame: () -> Unit = {},
+    private val talkBackEnabled: Boolean = false,
+    private val speakerOutput: SpeakerOutput? = null,
 ) {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
@@ -83,9 +84,9 @@ class LiveViewServer(
 
     private fun handleClient(client: Socket) {
         try {
-            val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+            val input = client.getInputStream()
             while (running) {
-                val request = readRequest(reader) ?: break
+                val request = readRequest(input) ?: break
                 handleRequest(request)
             }
         } catch (_: Exception) {
@@ -99,14 +100,56 @@ class LiveViewServer(
         }
     }
 
-    private fun readRequest(reader: BufferedReader): String? {
+    private fun readRequest(input: InputStream): String? {
         val sb = StringBuilder()
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            sb.appendLine(line)
-            if (line.isNullOrEmpty()) break
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (sb.isNotEmpty()) sb.toString() else null
+            if (b == '$'.code) {
+                // Interleaved RTP frame — read channel (1) + length (2) + payload
+                val channel = input.read()
+                if (channel < 0) return if (sb.isNotEmpty()) sb.toString() else null
+                val lenHi = input.read()
+                val lenLo = input.read()
+                if (lenHi < 0 || lenLo < 0) return if (sb.isNotEmpty()) sb.toString() else null
+                val length = (lenHi shl 8) or lenLo
+                if (length > 0) {
+                    val payload = readExact(input, length) ?: break
+                    if (channel == 2 && talkBackEnabled) {
+                        handleIncomingAudio(payload)
+                    }
+                }
+                continue
+            }
+            val prev = if (sb.length >= 2) sb[sb.length - 2].code else 0
+            val prevPrev = if (sb.length >= 3) sb[sb.length - 3].code else 0
+            sb.append(b.toChar())
+            // Detect end-of-headers: \r\n\r\n
+            if (b == '\n'.code && prev == '\r'.code && prevPrev == '\n'.code) {
+                return sb.toString()
+            }
         }
         return if (sb.isNotEmpty()) sb.toString() else null
+    }
+
+    private fun readExact(input: InputStream, n: Int): ByteArray? {
+        val buf = ByteArray(n)
+        var off = 0
+        while (off < n) {
+            val read = input.read(buf, off, n - off)
+            if (read < 0) return null
+            off += read
+        }
+        return buf
+    }
+
+    private fun handleIncomingAudio(payload: ByteArray) {
+        try {
+            val pcm = PcmuDecoder.decode(payload)
+            speakerOutput?.feedPcm(pcm)
+        } catch (e: Exception) {
+            Log.w("LiveViewServer", "Talk-back decode failed", e)
+        }
     }
 
     private fun handleRequest(request: String) {
@@ -154,7 +197,11 @@ class LiveViewServer(
     }
 
     private fun handleSetup(path: String, transport: String) {
-        val transportHeader = "RTP/AVP/TCP;unicast;interleaved=0-1;session=$session"
+        val transportHeader = if (talkBackEnabled) {
+            "RTP/AVP/TCP;unicast;interleaved=0-1,2-3;session=$session"
+        } else {
+            "RTP/AVP/TCP;unicast;interleaved=0-1;session=$session"
+        }
         val headers = mapOf(
             "CSeq" to cseq,
             "Transport" to transportHeader,
@@ -243,6 +290,11 @@ class LiveViewServer(
         }
         sb.appendLine(fmtp)
         sb.appendLine("a=control:track1")
+        if (talkBackEnabled) {
+            sb.appendLine("m=audio 0 RTP/AVP 0")
+            sb.appendLine("a=rtpmap:0 PCMU/8000")
+            sb.appendLine("a=control:track2")
+        }
         return sb.toString()
     }
 
