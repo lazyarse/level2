@@ -232,16 +232,25 @@ fun SettingsScreen(
                                 kotlinx.coroutines.Dispatchers.IO
                             ) { availableCameras(ctx) }
                         }
-                        if (cameras.size > 1) {
-                            DropdownField(
-                                label = "Camera",
-                                selected = cameras.firstOrNull { it.id == current.cameraId }?.label
-                                    ?: current.cameraId,
-                                options = cameras.map { it.id to it.label },
-                                testTag = "cameraDropdown",
-                                onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
-                            )
-                        }
+                        DropdownField(
+                            label = "Camera",
+                            selected = cameras.firstOrNull { it.id == current.cameraId }?.label
+                                ?: current.cameraId,
+                            options = cameras.map { it.id to it.label },
+                            testTag = "cameraDropdown",
+                            onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
+                        )
+                        BodyText(
+                            "Screen orientation: locks the monitor screen to portrait or " +
+                                "landscape, or follows the device sensor.",
+                        )
+                        DropdownField(
+                            label = "Screen orientation",
+                            selected = ScreenOrientation.label(current.screenOrientation),
+                            options = ScreenOrientation.values.map { it to ScreenOrientation.label(it) },
+                            testTag = "screenOrientationDropdown",
+                            onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
+                        )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             detectorGroup("Camera", current, cameraDetectorOrder) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
@@ -900,17 +909,6 @@ fun SettingsScreen(
                                 options = AnalysisResolution.values.map { it to AnalysisResolution.label(it) },
                                 testTag = "analysisResolutionDropdown",
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
-                            )
-                            BodyText(
-                                "Screen orientation: locks the monitor screen to portrait or " +
-                                    "landscape, or follows the device sensor.",
-                            )
-                            DropdownField(
-                                label = "Screen orientation",
-                                selected = ScreenOrientation.label(current.screenOrientation),
-                                options = ScreenOrientation.values.map { it to ScreenOrientation.label(it) },
-                                testTag = "screenOrientationDropdown",
-                                onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
                             )
                         }
                         Spacer(Modifier.height(24.dp))
@@ -1802,7 +1800,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
         label,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag("detectorGroup_$label"),
     )
     for (type in types) {
         val config = settings.detectorConfigs[type] ?: continue

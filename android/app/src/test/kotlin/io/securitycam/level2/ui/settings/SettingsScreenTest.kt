@@ -282,7 +282,7 @@ class SettingsScreenTest {
         expandSection("Detectors")
 
         for (heading in listOf("Camera", "Audio", "Combined", "System")) {
-            compose.onNodeWithText(heading).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag("detectorGroup_$heading").performScrollTo().assertIsDisplayed()
         }
         // Heartbeat rename + combined pet cards present under their group.
         compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
