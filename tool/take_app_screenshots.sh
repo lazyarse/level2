@@ -340,6 +340,16 @@ PY
 
 shot() { adb exec-out screencap -p >"$1"; [ -s "$1" ] || die "empty screenshot: $1"; }
 
+resize_half() { # file
+  python3 - "$1" <<'PY'
+import sys
+from PIL import Image
+p = sys.argv[1]
+img = Image.open(p)
+img.resize((img.size[0] // 2, img.size[1] // 2), Image.LANCZOS).save(p)
+PY
+}
+
 wait_for() { # attr value [tries]
   local tries="${3:-30}" i
   for i in $(seq 1 "$tries"); do
@@ -361,6 +371,7 @@ tap_node text "Preview" 2>/dev/null && sleep 5
 
 if want monitor; then
   shot "$IMG_DIR/monitor.png"
+  resize_half "$IMG_DIR/monitor.png"
   echo "captured monitor.png"
 fi
 
@@ -370,6 +381,7 @@ if want events; then
   sleep 0.5
   dump_ui
   shot "$IMG_DIR/events.png"
+  resize_half "$IMG_DIR/events.png"
   echo "captured events.png"
 fi
 
@@ -379,6 +391,7 @@ if want settings || [ "${#TARGETS[@]}" -gt 1 ]; then
   sleep 0.5
   dump_ui
   shot "$IMG_DIR/settings.png"
+  resize_half "$IMG_DIR/settings.png"
   echo "captured settings.png"
 fi
 
@@ -438,6 +451,7 @@ for entry in "${SECTIONS[@]}"; do
 
   shot "$WORK/full.png"
   crop_png "$WORK/full.png" "$out" 0 0 "$W" "$NAV_TOP" || die "crop failed for '$title'"
+  resize_half "$out"
   echo "captured settings_${slug}.png"
 
   dump_ui
@@ -488,19 +502,4 @@ EOF
 }
 generate_gallery
 echo "== gallery written to ${GALLERY#$REPO_ROOT/} =="
-
-# Resize all screenshots to half size for faster loading.
-for f in "$IMG_DIR"/*.png; do
-  [ -f "$f" ] || continue
-  python3 - "$f" <<'PY'
-import sys
-from PIL import Image
-path = sys.argv[1]
-img = Image.open(path)
-w, h = img.size
-img.resize((w // 2, h // 2), Image.LANCZOS).save(path)
-PY
-done
-echo "== resized screenshots to 50% =="
-
 ls -la "$IMG_DIR"
