@@ -2,6 +2,8 @@
 package io.securitycam.level2.ui.settings
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -85,6 +87,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.SirenChannelSettings
@@ -917,6 +920,48 @@ fun SettingsScreen(
                                 testTag = "analysisResolutionDropdown",
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
                             )
+                        }
+                        Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Level 2",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Open-source security camera for Android",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Version ${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val intent = Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse("https://github.com/lazyarse/level2"),
+                                            )
+                                            ctx.startActivity(intent)
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "github.com/lazyarse/level2",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                                }
+                            }
                         }
                         Spacer(Modifier.height(24.dp))
                     }
