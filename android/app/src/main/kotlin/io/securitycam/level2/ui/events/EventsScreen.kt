@@ -269,13 +269,7 @@ private fun DayHeader(date: LocalDate, count: Int) {
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("dayHeader_$date"),
     ) {
-        Text(label, style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            "$count",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text("$label ($count)", style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -367,6 +361,8 @@ private fun GalleryTile(
     modifier: Modifier = Modifier,
 ) {
     val typeLabel = triggerLabel(row.triggerType)
+    val local = row.timestamp.atZone(ZoneId.systemDefault())
+    val timeText = "%02d:%02d".format(local.hour, local.minute)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(1f),
@@ -396,10 +392,21 @@ private fun GalleryTile(
                 }
             }
         }
-        Text(
-            typeLabel,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                eventIconFor(row.triggerType),
+                contentDescription = null,
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                timeText,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
     }
 }

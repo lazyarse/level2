@@ -204,7 +204,7 @@ data class AppSettings(
     val analysisResolution: String = AnalysisResolution.balanced,
     val screenOrientation: String = ScreenOrientation.portrait,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
-    val monitorPreview: Boolean = true,
+    val monitorPreview: Boolean = false,
     val detectionRegions: List<DetectionRegion> = emptyList(),
     val exclusionRegions: List<DetectionRegion> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),

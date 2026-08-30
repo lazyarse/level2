@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,6 +71,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
     val activeTriggers by viewModel.activeTriggers.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     // Whether Start or Preview initiated the permission request, so the grant
     // callback resumes the action the user actually tapped.
@@ -158,7 +161,10 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = { showRegions = !showRegions }) {
+                IconButton(onClick = {
+                    showRegions = !showRegions
+                    Toast.makeText(context, "Show regions: ${if (showRegions) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                }) {
                     Icon(
                         Icons.Filled.Visibility,
                         contentDescription = "Toggle detection regions",
@@ -167,7 +173,10 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     )
                 }
                 IconButton(
-                    onClick = { viewModel.togglePreview() },
+                    onClick = {
+                        viewModel.togglePreview()
+                        Toast.makeText(context, "Live feed: ${if (!monitorPreview) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                    },
                     modifier = Modifier.testTag("previewToggleButton"),
                 ) {
                     Icon(

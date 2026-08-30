@@ -30,7 +30,7 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
-import android.widget.Toast
+
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -128,7 +128,7 @@ class MonitorViewModel(
     val cameraId: StateFlow<String> = _cameraId.asStateFlow()
 
     /** Whether the monitoring session renders the live preview (battery saver). */
-    private val _monitorPreview = MutableStateFlow(true)
+    private val _monitorPreview = MutableStateFlow(false)
     val monitorPreview: StateFlow<Boolean> = _monitorPreview.asStateFlow()
 
     private val _cameraLabel = MutableStateFlow("")
@@ -475,11 +475,7 @@ class MonitorViewModel(
             // Restart below must bind the NEW camera: start()/startPreview()
             // read the cached id synchronously.
             _cameraId.value = nextId
-            Toast.makeText(
-                getApplication(),
-                cameras[nextIndex].label,
-                Toast.LENGTH_SHORT,
-            ).show()
+            updateDisplayLabels(nextId, updated.screenOrientation)
             // Restart monitoring/preview with the new camera if currently active
             val currentState = _state.value
             if (currentState == MonitorState.Monitoring) {

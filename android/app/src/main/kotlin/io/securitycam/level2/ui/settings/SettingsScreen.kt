@@ -227,8 +227,13 @@ fun SettingsScreen(
                             label = { Text("Camera name") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            supportingText = {
-                                Text("${current.cameraName.length}/20", modifier = Modifier.testTag("cameraNameCounter"))
+                            trailingIcon = {
+                                Text(
+                                    "${current.cameraName.length}/20",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("cameraNameCounter"),
+                                )
                             },
                         )
                         // CameraManager enumeration is IPC: keep it off the
@@ -245,10 +250,6 @@ fun SettingsScreen(
                             options = cameras.map { it.id to it.label },
                             testTag = "cameraDropdown",
                             onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
-                        )
-                        BodyText(
-                            "Screen orientation: locks the monitor screen to portrait or " +
-                                "landscape, or follows the device sensor.",
                         )
                         DropdownField(
                             label = "Screen orientation",
@@ -401,8 +402,12 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection(
-                            "Channels",
-                            summary = "${current.channelConfigs.count { it.type != "log" }} channels",
+                            "Notification Channels",
+                            summary = run {
+                                val nonLog = current.channelConfigs.filter { it.type != "log" }
+                                val active = nonLog.count { it.enabled }
+                                "$active/${nonLog.size} active"
+                            },
                         ) {
                             for (config in current.channelConfigs) {
                                 if (config.type != "log") {
@@ -1318,30 +1323,32 @@ private fun DetectorCard(
                     )
                 }
                 val hybrid = config.type in combinedPetOrder
-                if (hybrid) {
-                    Text("Sight threshold: %.2f".format(config.threshold))
-                    Slider(
-                        value = config.threshold.toFloat().coerceIn(0f, 1f),
-                        onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.testTag("threshold_${config.type}"),
-                    )
-                    val audioThreshold = config.audioThreshold ?: config.threshold
-                    Text("Sound threshold: %.2f".format(audioThreshold))
-                    Slider(
-                        value = audioThreshold.toFloat().coerceIn(0f, 1f),
-                        onValueChange = { v -> onChanged(config.copy(audioThreshold = v.toDouble())) },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.testTag("audioThreshold_${config.type}"),
-                    )
-                } else {
-                    Text("Threshold: %.2f".format(config.threshold))
-                    Slider(
-                        value = config.threshold.toFloat().coerceIn(0f, 1f),
-                        onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.testTag("threshold_${config.type}"),
-                    )
+                if (config.type != TriggerType.health) {
+                    if (hybrid) {
+                        Text("Sight threshold: %.2f".format(config.threshold))
+                        Slider(
+                            value = config.threshold.toFloat().coerceIn(0f, 1f),
+                            onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.testTag("threshold_${config.type}"),
+                        )
+                        val audioThreshold = config.audioThreshold ?: config.threshold
+                        Text("Sound threshold: %.2f".format(audioThreshold))
+                        Slider(
+                            value = audioThreshold.toFloat().coerceIn(0f, 1f),
+                            onValueChange = { v -> onChanged(config.copy(audioThreshold = v.toDouble())) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.testTag("audioThreshold_${config.type}"),
+                        )
+                    } else {
+                        Text("Threshold: %.2f".format(config.threshold))
+                        Slider(
+                            value = config.threshold.toFloat().coerceIn(0f, 1f),
+                            onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.testTag("threshold_${config.type}"),
+                        )
+                    }
                 }
                 StepperRow(
                     label = "Persistence: ${config.persistenceFrames}",
