@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /** Presentation mode of the merged events screen. */
-enum class EventsViewMode { LIST, GRID }
+enum class EventsViewMode { LIST, GRID, TIMELINE }
 
 /** One calendar day's events, newest first. */
 data class DaySection(

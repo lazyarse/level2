@@ -1,26 +1,34 @@
 package io.securitycam.level2.ui.events
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,12 +41,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
@@ -52,6 +65,29 @@ private const val GRID_COLUMNS = 3
 
 /** How close to the end of the list the older-page fetch triggers, in items. */
 private const val LOAD_MORE_THRESHOLD = 6
+
+/** Fractional position (0–1) within the day for a 24-hour timeline. */
+private fun fractionOfDay(timestamp: java.time.Instant): Float {
+    val local = timestamp.atZone(ZoneId.systemDefault())
+    return (local.hour * 3600 + local.minute * 60 + local.second) / 86400f
+}
+
+private fun confidenceLabel(score: Double): String = when {
+    score < 0.5 -> "Low"
+    score < 0.75 -> "Med"
+    else -> "High"
+}
+
+private fun triggerColor(type: String): Color = when (type) {
+    TriggerType.faceKnown -> Color(0xFF4CAF50)
+    TriggerType.face, TriggerType.faceUnknown -> Color(0xFFE53935)
+    TriggerType.dog, TriggerType.cat, TriggerType.bird, TriggerType.livestock ->
+        Color(0xFFFFA726)
+    TriggerType.loudNoise, TriggerType.babyCry, TriggerType.glassBreak ->
+        Color(0xFF42A5F5)
+    TriggerType.vehicle -> Color(0xFF7E57C2)
+    else -> Color(0xFF2196F3)
+}
 
 /**
  * Merged trigger-event browser: day-grouped paged list plus a per-day
@@ -84,7 +120,7 @@ fun EventsScreen(
                 modifier = Modifier.padding(8.dp).fillMaxWidth(),
             ) {
                 Text(
-                    "Trigger events",
+                    "Events",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.weight(1f))
@@ -110,6 +146,20 @@ fun EventsScreen(
                         Icons.Filled.GridView,
                         contentDescription = "Grid view",
                         tint = if (viewMode == EventsViewMode.GRID) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                IconButton(
+                    onClick = { viewModel.setViewMode(EventsViewMode.TIMELINE) },
+                    modifier = Modifier.testTag("eventsViewTimeline"),
+                ) {
+                    Icon(
+                        Icons.Filled.Timeline,
+                        contentDescription = "Timeline view",
+                        tint = if (viewMode == EventsViewMode.TIMELINE) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -199,6 +249,15 @@ private fun EventsList(
                         showPlayButton = showPlayButton,
                     )
                     if (index < section.rows.lastIndex) HorizontalDivider()
+                }
+            } else if (viewMode == EventsViewMode.TIMELINE) {
+                item(key = "timeline_${section.date}") {
+                    TimelineDay(
+                        section = section,
+                        snapshotLoader = snapshotLoader,
+                        onPlay = onPlay,
+                        showPlayButton = showPlayButton,
+                    )
                 }
             } else {
                 val tiles = section.rows.filter { it.snapshotName != null }
@@ -320,7 +379,7 @@ private fun EventRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "$timeText · $typeLabel · score ${"%.2f".format(event.score)}",
+                "$timeText · $typeLabel · confidence: ${confidenceLabel(event.score)}",
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
@@ -345,6 +404,186 @@ private fun EventRow(
                 onClick = { onPlay(event.videoName) },
                 modifier = Modifier.testTag("eventPlay_${event.id}"),
             ) {
+                Icon(Icons.Filled.PlayCircleOutline, contentDescription = "Play video")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineDay(
+    section: DaySection,
+    snapshotLoader: suspend (String) -> Snapshot?,
+    onPlay: (String) -> Unit,
+    showPlayButton: Boolean,
+) {
+    val rows = section.rows.sortedBy { it.timestamp }
+    var selectedId by remember { mutableStateOf<Long?>(null) }
+    val selectedRow = rows.find { it.id == selectedId }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        // Timeline bar
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+        ) {
+            val barWidth = maxWidth
+
+            // Horizontal axis line
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .align(Alignment.CenterStart),
+            ) {
+                drawLine(
+                    color = Color.Gray,
+                    start = Offset(0f, size.height / 2),
+                    end = Offset(size.width, size.height / 2),
+                    strokeWidth = 2.dp.toPx(),
+                )
+            }
+
+            // Hour ticks and labels
+            listOf(0, 6, 12, 18, 24).forEach { hour ->
+                val xDp = barWidth * (hour / 24f)
+                Canvas(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(10.dp)
+                        .offset(x = xDp)
+                        .align(Alignment.CenterStart),
+                ) {
+                    drawLine(
+                        color = Color.Gray,
+                        start = Offset(size.width / 2, 0f),
+                        end = Offset(size.width / 2, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+                Text(
+                    text = "%02d:00".format(hour.coerceAtMost(23)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .width(36.dp)
+                        .offset(x = xDp - 18.dp)
+                        .align(Alignment.CenterStart),
+                )
+            }
+
+            // Event dots
+            rows.forEach { row ->
+                val xFraction = fractionOfDay(row.timestamp).coerceIn(0f, 1f)
+                val dotColor = triggerColor(
+                    row.triggerTypes.firstOrNull() ?: row.triggerType,
+                )
+                val isSelected = selectedId == row.id
+                val dotSize = if (isSelected) 14.dp else 10.dp
+                Box(
+                    modifier = Modifier
+                        .size(dotSize)
+                        .offset(
+                            x = barWidth * xFraction - dotSize / 2,
+                            y = 28.dp - dotSize / 2,
+                        )
+                        .background(dotColor, shape = CircleShape)
+                        .clickable {
+                            selectedId = if (selectedId == row.id) null else row.id
+                        },
+                )
+            }
+        }
+
+        // Expanded detail card
+        if (selectedRow != null) {
+            Spacer(Modifier.height(4.dp))
+            TimelineDetailCard(
+                event = selectedRow,
+                snapshotLoader = snapshotLoader,
+                onPlay = onPlay,
+                showPlayButton = showPlayButton,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineDetailCard(
+    event: RecordedEventRow,
+    snapshotLoader: suspend (String) -> Snapshot?,
+    onPlay: (String) -> Unit,
+    showPlayButton: Boolean,
+) {
+    val typeLabel = if (event.triggerTypes.isEmpty()) {
+        triggerLabel(event.triggerType)
+    } else {
+        event.triggerTypes.joinToString(" + ") { triggerLabel(it) }
+    }
+    val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
+    val faceName = event.detail?.takeIf {
+        event.triggerTypes.contains(TriggerType.faceKnown) ||
+            event.triggerType == TriggerType.faceKnown
+    }
+    val local = event.timestamp.atZone(ZoneId.systemDefault())
+    val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
+    val statuses = event.channelStatuses.entries.joinToString(", ") { (k, v) -> "$k=$v" }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+            .padding(8.dp)
+            .testTag("timelineDetail_${event.id}"),
+    ) {
+        if (event.snapshotName == null) {
+            Icon(
+                eventIconFor(iconType),
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+            )
+        } else {
+            SnapshotThumb(
+                name = event.snapshotName,
+                fallbackIcon = eventIconFor(iconType),
+                title = typeLabel,
+                loader = snapshotLoader,
+                tag = "timelineThumb_${event.id}",
+                size = 36.dp,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "$timeText · $typeLabel",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                buildString {
+                    if (faceName != null) {
+                        append("Recognised: ")
+                        append(faceName)
+                        append(" — ")
+                    }
+                    append(event.cameraName)
+                    if (statuses.isNotEmpty()) {
+                        append(" — ")
+                        append(statuses)
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (event.videoName != null && showPlayButton) {
+            IconButton(onClick = { onPlay(event.videoName) }) {
                 Icon(Icons.Filled.PlayCircleOutline, contentDescription = "Play video")
             }
         }
