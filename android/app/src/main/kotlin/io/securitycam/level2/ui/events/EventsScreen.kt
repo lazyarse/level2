@@ -236,6 +236,16 @@ private fun EventsList(
     }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("eventsList")) {
+        if (viewMode == EventsViewMode.TIMELINE) {
+            item(key = "timelineHint") {
+                Text(
+                    "Pinch to zoom, drag to pan the timeline.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
         sections.forEach { section ->
             if (viewMode == EventsViewMode.GRID &&
                 section.rows.none { it.snapshotName != null }

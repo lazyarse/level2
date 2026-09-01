@@ -900,8 +900,7 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Advanced") {
-                            Text("System", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
-                            detectorGroup("System", current, listOf(TriggerType.health)) { type, next ->
+                            detectorGroup(null, current, listOf(TriggerType.health)) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -1329,7 +1328,10 @@ private fun DetectorCard(
                         Text("Sight threshold: %.2f".format(config.threshold))
                         Slider(
                             value = config.threshold.toFloat().coerceIn(0f, 1f),
-                            onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
+                            onValueChange = { v -> onChanged(config.copy(
+                                threshold = v.toDouble(),
+                                audioThreshold = config.audioThreshold ?: config.threshold,
+                            )) },
                             valueRange = 0f..1f,
                             modifier = Modifier.testTag("threshold_${config.type}"),
                         )
@@ -1351,24 +1353,26 @@ private fun DetectorCard(
                         )
                     }
                 }
-                StepperRow(
-                    label = "Persistence: ${config.persistenceFrames}",
-                    canDecrement = config.persistenceFrames > 1,
-                    canIncrement = true,
-                    onDecrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames - 1)) },
-                    onIncrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames + 1)) },
-                )
-                StepperRow(
-                    label = "Cooldown: ${config.cooldown.toSeconds()}s",
-                    canDecrement = config.cooldown.toSeconds() > 0,
-                    canIncrement = config.cooldown.toSeconds() < 600,
-                    onDecrement = {
-                        onChanged(config.copy(cooldown = config.cooldown.minusSeconds(15)))
-                    },
-                    onIncrement = {
-                        onChanged(config.copy(cooldown = config.cooldown.plusSeconds(15)))
-                    },
-                )
+                if (config.type != TriggerType.health) {
+                    StepperRow(
+                        label = "Persistence: ${config.persistenceFrames}",
+                        canDecrement = config.persistenceFrames > 1,
+                        canIncrement = true,
+                        onDecrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames - 1)) },
+                        onIncrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames + 1)) },
+                    )
+                    StepperRow(
+                        label = "Cooldown: ${config.cooldown.toSeconds()}s",
+                        canDecrement = config.cooldown.toSeconds() > 0,
+                        canIncrement = config.cooldown.toSeconds() < 600,
+                        onDecrement = {
+                            onChanged(config.copy(cooldown = config.cooldown.minusSeconds(15)))
+                        },
+                        onIncrement = {
+                            onChanged(config.copy(cooldown = config.cooldown.plusSeconds(15)))
+                        },
+                    )
+                }
                 if (config.type == TriggerType.loitering) {
                     StepperRow(
                         label = "Dwell time: ${config.dwellSeconds}s",
@@ -1841,17 +1845,19 @@ private val combinedPetOrder = listOf(
 
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
-    label: String,
+    label: String?,
     settings: AppSettings,
     types: List<String>,
     onChanged: (String, DetectorConfig) -> Unit,
 ) {
-    Text(
-        label,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag("detectorGroup_$label"),
-    )
+    if (label != null) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag("detectorGroup_$label"),
+        )
+    }
     for (type in types) {
         val config = settings.detectorConfigs[type] ?: continue
         DetectorCard(
