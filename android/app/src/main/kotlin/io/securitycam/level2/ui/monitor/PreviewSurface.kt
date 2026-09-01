@@ -26,8 +26,8 @@ import io.securitycam.level2.camera_service.MonitoringServiceController
  * target rotation when the display changes.
  *
  * [fillCrop]: FILL_CENTER crops overflow when aspect ratios differ (monitor
- * screen). Pass false for FIT_CENTER letterboxing — the region editor needs
- * uncropped geometry so drawn regions map 1:1 onto analyzed frames.
+ * screen). Pass false for FIT_CENTER letterboxing — the zone editor needs
+ * uncropped geometry so drawn zones map 1:1 onto analyzed frames.
  */
 @Composable
 fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {

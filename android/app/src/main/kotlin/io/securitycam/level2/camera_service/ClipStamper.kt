@@ -18,7 +18,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import com.google.common.collect.ImmutableList
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -43,7 +43,7 @@ object ClipStamper {
         position: String,
         includeCameraName: Boolean,
         cameraName: String,
-        exclusionRegions: List<DetectionRegion> = emptyList(),
+        exclusionZones: List<DetectionZone> = emptyList(),
         privacyMaskEffect: String = "solid",
     ): Boolean {
         val done = CountDownLatch(1)
@@ -54,9 +54,9 @@ object ClipStamper {
             val (frameW, frameH, clipRotation) = videoInfo(input)
             handler.post {
                 val overlays = mutableListOf<BitmapOverlay>()
-                if (exclusionRegions.isNotEmpty()) {
+                if (exclusionZones.isNotEmpty()) {
                     overlays += PrivacyMaskOverlay(
-                        exclusionRegions, privacyMaskEffect, frameW, frameH, clipRotation,
+                        exclusionZones, privacyMaskEffect, frameW, frameH, clipRotation,
                     )
                 }
                 overlays += StampOverlay(

@@ -3,7 +3,7 @@ package io.securitycam.level2.ui.monitor
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class RegionDisplayMapperTest {
+class ZoneDisplayMapperTest {
 
     private val frameAspect = 4f / 3f
 
@@ -13,7 +13,7 @@ class RegionDisplayMapperTest {
     }
 
     private fun map(nx: Float, ny: Float, rotation: Int, w: Float, h: Float): Pair<Float, Float> {
-        val o = RegionDisplayMapper.mapPoint(nx, ny, rotation, w, h, frameAspect)
+        val o = ZoneDisplayMapper.mapPoint(nx, ny, rotation, w, h, frameAspect)
         return o.x to o.y
     }
 
@@ -59,7 +59,7 @@ class RegionDisplayMapperTest {
     }
 
     @Test
-    fun rectRegion_rotatesCorrectly() {
+    fun rectZone_rotatesCorrectly() {
         // Portrait 240x320, rect (0.25,0.25)-(0.75,0.75): 90° rotation maps the
         // 0.25..0.75 sensor band to the display middle column (x 60..180) and
         // top 0.25..0.75 of the height (y 80..240).

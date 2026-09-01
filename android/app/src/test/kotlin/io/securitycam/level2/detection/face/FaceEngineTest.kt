@@ -3,7 +3,7 @@ package io.securitycam.level2.detection.face
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
 import java.time.Instant
@@ -104,8 +104,8 @@ class FaceEngineTest {
         d.dispose()
     }
 
-    // Rect region covering the left half of the frame.
-    private val halfRegion = DetectionRegion(
+    // Rect zone covering the left half of the frame.
+    private val halfZone = DetectionZone(
         id = "r1",
         shape = "rect",
         label = "left",
@@ -113,8 +113,8 @@ class FaceEngineTest {
     )
 
     @Test
-    fun faceOutsideAllRegionsDoesNotTrigger() = runBlocking {
-        // Normalized box x 0.567..0.933, outside the left-half region
+    fun faceOutsideAllZonesDoesNotTrigger() = runBlocking {
+        // Normalized box x 0.567..0.933, outside the left-half zone
         // [0,0.5]x[0,1].
         val engine = MockFaceEngine()
         engine.faces.add(FaceDetection(0.567, 0.4, 0.933, 0.6, 0.9))
@@ -122,7 +122,7 @@ class FaceEngineTest {
             DetectorConfig(type = TriggerType.face, threshold = 0.5, persistenceFrames = 1),
             engine = engine,
         )
-        d.regions = listOf(halfRegion)
+        d.zones = listOf(halfZone)
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
         assertFalse(r.triggered)
@@ -130,15 +130,15 @@ class FaceEngineTest {
     }
 
     @Test
-    fun faceOverlappingARegionTriggers() = runBlocking {
-        // Normalized box x 0.4..0.8 crosses the region's x=0.5 edge.
+    fun faceOverlappingAZoneTriggers() = runBlocking {
+        // Normalized box x 0.4..0.8 crosses the zone's x=0.5 edge.
         val engine = MockFaceEngine()
         engine.faces.add(FaceDetection(0.4, 0.4, 0.8, 0.6, 0.9))
         val d = FaceDetector(
             DetectorConfig(type = TriggerType.face, threshold = 0.5, persistenceFrames = 1),
             engine = engine,
         )
-        d.regions = listOf(halfRegion)
+        d.zones = listOf(halfZone)
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
         assertTrue(r.triggered)
@@ -146,7 +146,7 @@ class FaceEngineTest {
     }
 
     @Test
-    fun emptyRegionsAllFacesPass() = runBlocking {
+    fun emptyZonesAllFacesPass() = runBlocking {
         val engine = MockFaceEngine()
         engine.faces.add(FaceDetection(0.9, 0.1, 0.95, 0.2, 0.9))
         val d = FaceDetector(

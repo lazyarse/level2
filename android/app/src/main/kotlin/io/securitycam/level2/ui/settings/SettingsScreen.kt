@@ -121,7 +121,7 @@ import kotlinx.coroutines.flow.first
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onOpenRegionEditor: () -> Unit = {},
+    onOpenZoneEditor: () -> Unit = {},
 ) {
     val draft by viewModel.draft.collectAsState()
     val message by viewModel.message.collectAsState()
@@ -400,7 +400,7 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                        CollapsibleSection("Regions", summary = regionsSummary(current)) {
+                        CollapsibleSection("Zones", summary = zonesSummary(current)) {
                             BodyText(
                                 "Optional inclusion zones: motion/face only triggers inside them. " +
                                     "Empty = detect everywhere.",
@@ -410,18 +410,18 @@ fun SettingsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable(onClick = onOpenRegionEditor)
+                                        .clickable(onClick = onOpenZoneEditor)
                                         .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(Icons.Filled.CropFree, contentDescription = null)
                                     Spacer(Modifier.width(12.dp))
                                     Text(
-                                        if (current.detectionRegions.isEmpty()) {
-                                            "No regions — detecting everywhere"
+                                        if (current.detectionZones.isEmpty()) {
+                                            "No zones — detecting everywhere"
                                         } else {
-                                            "${current.detectionRegions.size} region" +
-                                                if (current.detectionRegions.size == 1) "" else "s"
+                                            "${current.detectionZones.size} zone" +
+                                                if (current.detectionZones.size == 1) "" else "s"
                                         },
                                         modifier = Modifier.weight(1f),
                                     )
@@ -1811,10 +1811,10 @@ private fun channelTitle(type: String): String = type.split('_', ' ')
     .filter { it.isNotEmpty() }
     .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
 
-/** Regions section summary: inclusion/exclusion counts. */
-private fun regionsSummary(settings: AppSettings): String {
-    val inc = settings.detectionRegions.size
-    val ex = settings.exclusionRegions.size
+/** Zones section summary: inclusion/exclusion counts. */
+private fun zonesSummary(settings: AppSettings): String {
+    val inc = settings.detectionZones.size
+    val ex = settings.exclusionZones.size
     return if (inc == 0 && ex == 0) "none" else "$inc inclusion · $ex exclusion"
 }
 

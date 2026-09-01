@@ -5,7 +5,7 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.ScheduleWindow
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -205,12 +205,12 @@ class MonitorViewModelTest {
     }
 
     @Test
-    fun startLoadsBothRegionListsIntoFlows() {
+    fun startLoadsBothZoneListsIntoFlows() {
         val inclusion = listOf(
-            DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8)),
+            DetectionZone("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8)),
         )
         val exclusions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.6, 0.6, 0.9, 0.9)),
+            DetectionZone("e1", "rect", "private", listOf(0.6, 0.6, 0.9, 0.9)),
         )
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
@@ -219,21 +219,21 @@ class MonitorViewModelTest {
             stopMonitoring = {},
             settingsLoader = {
                 AppSettings.defaults().copyWith(
-                    detectionRegions = inclusion,
-                    exclusionRegions = exclusions,
+                    detectionZones = inclusion,
+                    exclusionZones = exclusions,
                 )
             },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
         )
-        assertEquals(exclusions, vm.exclusionRegions.value)
-        assertEquals(inclusion, vm.detectionRegions.value)
+        assertEquals(exclusions, vm.exclusionZones.value)
+        assertEquals(inclusion, vm.detectionZones.value)
         vm.start()
         // Pump the main-looper coroutine; runtime creation may fail under
         // Robolectric (no native MediaPipe) but is swallowed after the flows
         // are populated.
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(inclusion, vm.detectionRegions.value)
-        assertEquals(exclusions, vm.exclusionRegions.value)
+        assertEquals(inclusion, vm.detectionZones.value)
+        assertEquals(exclusions, vm.exclusionZones.value)
     }
 }

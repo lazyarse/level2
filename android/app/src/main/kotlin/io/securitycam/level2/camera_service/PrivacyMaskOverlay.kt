@@ -7,8 +7,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import androidx.media3.effect.BitmapOverlay
-import io.securitycam.level2.detection.DetectionRegion
-import io.securitycam.level2.detection.DetectionRegionShape
+import io.securitycam.level2.detection.DetectionZone
+import io.securitycam.level2.detection.DetectionZoneShape
 
 /**
  * Full-frame overlay that obscures exclusion zones in exported clips.
@@ -24,7 +24,7 @@ import io.securitycam.level2.detection.DetectionRegionShape
  * When [sourceFrames] is null or empty, pixelate/blur fall back to solid.
  */
 class PrivacyMaskOverlay(
-    private val exclusionRegions: List<DetectionRegion>,
+    private val exclusionZones: List<DetectionZone>,
     private val effect: String,
     private val frameWidth: Int,
     private val frameHeight: Int,
@@ -43,38 +43,38 @@ class PrivacyMaskOverlay(
 
         val srcFrame = sourceFrames?.get(nearestKey(sourceFrames, presentationUs))
 
-        for (region in exclusionRegions) {
+        for (zone in exclusionZones) {
             when (effect) {
-                "pixelate" -> drawPixelatedRegion(canvas, region, srcFrame)
-                "blur" -> drawBlurredRegion(canvas, region, srcFrame)
-                else -> drawSolidRegion(canvas, region)
+                "pixelate" -> drawPixelatedZone(canvas, zone, srcFrame)
+                "blur" -> drawBlurredZone(canvas, zone, srcFrame)
+                else -> drawSolidZone(canvas, zone)
             }
         }
         return bmp
     }
 
-    /** Semi-transparent dark fill for a single exclusion region. */
-    private fun drawSolidRegion(canvas: Canvas, region: DetectionRegion) {
-        when (region.shape) {
-            DetectionRegionShape.rect -> {
-                val (x0, y0) = rotated(region.points[0], region.points[1])
-                val (x1, y1) = rotated(region.points[2], region.points[3])
+    /** Semi-transparent dark fill for a single exclusion zone. */
+    private fun drawSolidZone(canvas: Canvas, zone: DetectionZone) {
+        when (zone.shape) {
+            DetectionZoneShape.rect -> {
+                val (x0, y0) = rotated(zone.points[0], zone.points[1])
+                val (x1, y1) = rotated(zone.points[2], zone.points[3])
                 val left = minOf(x0, x1) * frameWidth
                 val top = minOf(y0, y1) * frameHeight
                 val right = maxOf(x0, x1) * frameWidth
                 val bottom = maxOf(y0, y1) * frameHeight
                 canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), maskPaint)
             }
-            DetectionRegionShape.poly -> {
-                canvas.drawPath(regionPath(region), maskPaint)
+            DetectionZoneShape.poly -> {
+                canvas.drawPath(zonePath(zone), maskPaint)
             }
         }
     }
 
-    /** Pixelated (mosaic) rendering for a single exclusion region. */
-    private fun drawPixelatedRegion(canvas: Canvas, region: DetectionRegion, srcFrame: Bitmap?) {
-        if (srcFrame == null) { drawSolidRegion(canvas, region); return }
-        val path = regionPath(region)
+    /** Pixelated (mosaic) rendering for a single exclusion zone. */
+    private fun drawPixelatedZone(canvas: Canvas, zone: DetectionZone, srcFrame: Bitmap?) {
+        if (srcFrame == null) { drawSolidZone(canvas, zone); return }
+        val path = zonePath(zone)
         val bounds = RectF()
         path.computeBounds(bounds, true)
 
@@ -109,10 +109,10 @@ class PrivacyMaskOverlay(
         canvas.drawPath(path, maskPaint)
     }
 
-    /** Box-blur rendering for a single exclusion region. */
-    private fun drawBlurredRegion(canvas: Canvas, region: DetectionRegion, srcFrame: Bitmap?) {
-        if (srcFrame == null) { drawSolidRegion(canvas, region); return }
-        val path = regionPath(region)
+    /** Box-blur rendering for a single exclusion zone. */
+    private fun drawBlurredZone(canvas: Canvas, zone: DetectionZone, srcFrame: Bitmap?) {
+        if (srcFrame == null) { drawSolidZone(canvas, zone); return }
+        val path = zonePath(zone)
         val bounds = RectF()
         path.computeBounds(bounds, true)
 
@@ -157,13 +157,13 @@ class PrivacyMaskOverlay(
         else -> x to y
     }
 
-    /** Build a [Path] from a polygon region's rotated normalised points. */
-    private fun regionPath(region: DetectionRegion): Path {
+    /** Build a [Path] from a polygon zone's rotated normalised points. */
+    private fun zonePath(zone: DetectionZone): Path {
         val path = Path()
-        when (region.shape) {
-            DetectionRegionShape.rect -> {
-                val (x0, y0) = rotated(region.points[0], region.points[1])
-                val (x1, y1) = rotated(region.points[2], region.points[3])
+        when (zone.shape) {
+            DetectionZoneShape.rect -> {
+                val (x0, y0) = rotated(zone.points[0], zone.points[1])
+                val (x1, y1) = rotated(zone.points[2], zone.points[3])
                 path.addRect(
                     RectF(
                         minOf(x0, x1).toFloat() * frameWidth,
@@ -174,8 +174,8 @@ class PrivacyMaskOverlay(
                     Path.Direction.CW,
                 )
             }
-            DetectionRegionShape.poly -> {
-                val pts = region.points
+            DetectionZoneShape.poly -> {
+                val pts = zone.points
                 if (pts.size >= 4) {
                     val (sx, sy) = rotated(pts[0], pts[1])
                     path.moveTo(sx.toFloat() * frameWidth, sy.toFloat() * frameHeight)

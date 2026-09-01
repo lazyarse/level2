@@ -67,8 +67,8 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val cameraLabel by viewModel.cameraLabel.collectAsStateWithLifecycle()
     val screenOrientationLabel by viewModel.screenOrientationLabel.collectAsStateWithLifecycle()
     val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
-    val detectionRegions by viewModel.detectionRegions.collectAsStateWithLifecycle()
-    val exclusionRegions by viewModel.exclusionRegions.collectAsStateWithLifecycle()
+    val detectionZones by viewModel.detectionZones.collectAsStateWithLifecycle()
+    val exclusionZones by viewModel.exclusionZones.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
     val activeTriggers by viewModel.activeTriggers.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -108,7 +108,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         Surface.ROTATION_270 -> 270
         else -> 0
     }
-    var showRegions by rememberSaveable { mutableStateOf(false) }
+    var showZones by rememberSaveable { mutableStateOf(false) }
     val displayLabel = listOfNotNull(
         cameraName.ifEmpty { null },
         cameraLabel.ifEmpty { null },
@@ -136,14 +136,14 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             if (!previewLive) {
                 Box(Modifier.matchParentSize().background(Color.Black))
             }
-            RegionOverlay(
-                regions = detectionRegions,
+            ZoneOverlay(
+                zones = detectionZones,
                 rotationDegrees = rotationDegrees,
                 modifier = Modifier.fillMaxSize(),
-                show = showRegions,
-                exclusionRegions = exclusionRegions,
+                show = showZones,
+                exclusionZones = exclusionZones,
             )
-            // Top overlay bar: camera name + region/camera controls on one
+            // Top overlay bar: camera name + zone/camera controls on one
             // translucent line.
             Row(
                 modifier = Modifier
@@ -162,13 +162,13 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = {
-                    showRegions = !showRegions
-                    Toast.makeText(context, "Show Regions: ${if (showRegions) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                    showZones = !showZones
+                    Toast.makeText(context, "Show Zones: ${if (showZones) "On" else "Off"}", Toast.LENGTH_SHORT).show()
                 }) {
                     Icon(
                         Icons.Filled.Visibility,
-                        contentDescription = "Toggle detection regions",
-                        tint = if (showRegions) MaterialTheme.colorScheme.primary
+                        contentDescription = "Toggle detection zones",
+                        tint = if (showZones) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

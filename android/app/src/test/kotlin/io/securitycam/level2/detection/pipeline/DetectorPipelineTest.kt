@@ -6,7 +6,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.AudioWindow
 import io.securitycam.level2.detection.DetectorRegistry
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.FrameDetector
 import io.securitycam.level2.detection.GrayscaleBitmap
@@ -248,7 +248,7 @@ class DetectorPipelineTest {
     }
 
     @Test
-    fun setRegionsFansOutToFrameDetectors() = runBlocking {
+    fun setZonesFansOutToFrameDetectors() = runBlocking {
         val pipeline = DetectorPipeline(
             classifier = MockAudioEventClassifier(),
             configs = listOf(
@@ -257,17 +257,17 @@ class DetectorPipelineTest {
         )
         pipeline.init()
         val motion = pipeline.frameDetectors.first()
-        assertEquals(emptyList<DetectionRegion>(), motion.regions)
+        assertEquals(emptyList<DetectionZone>(), motion.zones)
 
-        val region = DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))
-        pipeline.setRegions(listOf(region))
-        assertEquals(listOf(region), motion.regions)
-        assertEquals(emptyList<DetectionRegion>(), motion.exclusionRegions)
+        val zone = DetectionZone("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))
+        pipeline.setZones(listOf(zone))
+        assertEquals(listOf(zone), motion.zones)
+        assertEquals(emptyList<DetectionZone>(), motion.exclusionZones)
 
-        val exclusion = DetectionRegion("e1", "rect", "privacy", listOf(0.6, 0.6, 0.9, 0.9))
-        pipeline.setRegions(listOf(region), listOf(exclusion))
-        assertEquals(listOf(region), motion.regions)
-        assertEquals(listOf(exclusion), motion.exclusionRegions)
+        val exclusion = DetectionZone("e1", "rect", "privacy", listOf(0.6, 0.6, 0.9, 0.9))
+        pipeline.setZones(listOf(zone), listOf(exclusion))
+        assertEquals(listOf(zone), motion.zones)
+        assertEquals(listOf(exclusion), motion.exclusionZones)
         pipeline.dispose()
     }
 }

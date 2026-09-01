@@ -1,6 +1,6 @@
 package io.securitycam.level2.core
 
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -379,62 +379,62 @@ class SettingsTest {
     }
 
     @Test
-    fun detectionRegionsDefaultToEmpty() {
+    fun detectionZonesDefaultToEmpty() {
         val s = AppSettings.defaults()
-        assertEquals(emptyList<DetectionRegion>(), s.detectionRegions)
+        assertEquals(emptyList<DetectionZone>(), s.detectionZones)
     }
 
     @Test
-    fun detectionRegionsJsonRoundTripRectPlusPoly() {
+    fun detectionZonesJsonRoundTripRectPlusPoly() {
         val s = AppSettings.defaults().copyWith(
-            detectionRegions = listOf(
-                DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8)),
-                DetectionRegion("p1", "poly", "driveway", listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8)),
+            detectionZones = listOf(
+                DetectionZone("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8)),
+                DetectionZone("p1", "poly", "driveway", listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8)),
             ),
         )
         val back = AppSettings.fromJson(s.toJson())
-        assertEquals(2, back.detectionRegions.size)
-        assertEquals("doorway", back.detectionRegions[0].label)
-        assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8), back.detectionRegions[1].points)
+        assertEquals(2, back.detectionZones.size)
+        assertEquals("doorway", back.detectionZones[0].label)
+        assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8), back.detectionZones[1].points)
     }
 
     @Test
-    fun oldJsonWithoutDetectionRegionsFallsBackToEmpty() {
+    fun oldJsonWithoutDetectionZonesFallsBackToEmpty() {
         val back = AppSettings.fromJson(emptyMap())
-        assertEquals(emptyList<DetectionRegion>(), back.detectionRegions)
+        assertEquals(emptyList<DetectionZone>(), back.detectionZones)
     }
 
     @Test
-    fun exclusionRegionsDefaultToEmpty() {
+    fun exclusionZonesDefaultToEmpty() {
         val s = AppSettings.defaults()
-        assertEquals(emptyList<DetectionRegion>(), s.exclusionRegions)
+        assertEquals(emptyList<DetectionZone>(), s.exclusionZones)
     }
 
     @Test
-    fun exclusionRegionsJsonRoundTrip() {
+    fun exclusionZonesJsonRoundTrip() {
         val s = AppSettings.defaults().copyWith(
-            detectionRegions = listOf(DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))),
-            exclusionRegions = listOf(
-                DetectionRegion("e1", "poly", "privacy", listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6)),
+            detectionZones = listOf(DetectionZone("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))),
+            exclusionZones = listOf(
+                DetectionZone("e1", "poly", "privacy", listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6)),
             ),
         )
         val back = AppSettings.fromJson(s.toJson())
-        assertEquals(1, back.exclusionRegions.size)
-        assertEquals("privacy", back.exclusionRegions[0].label)
-        assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6), back.exclusionRegions[0].points)
-        assertEquals(1, back.detectionRegions.size)
+        assertEquals(1, back.exclusionZones.size)
+        assertEquals("privacy", back.exclusionZones[0].label)
+        assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6), back.exclusionZones[0].points)
+        assertEquals(1, back.detectionZones.size)
     }
 
     @Test
-    fun oldJsonWithoutExclusionRegionsFallsBackToEmpty() {
+    fun oldJsonWithoutExclusionZonesFallsBackToEmpty() {
         val legacy = AppSettings.defaults()
-            .copyWith(detectionRegions = listOf(DetectionRegion("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))))
+            .copyWith(detectionZones = listOf(DetectionZone("r1", "rect", "doorway", listOf(0.1, 0.2, 0.5, 0.8))))
             .toJson()
             .toMutableMap()
-        legacy.remove("exclusionRegions")
+        legacy.remove("exclusionZones")
         val back = AppSettings.fromJson(legacy)
-        assertEquals(emptyList<DetectionRegion>(), back.exclusionRegions)
-        assertEquals(1, back.detectionRegions.size)
+        assertEquals(emptyList<DetectionZone>(), back.exclusionZones)
+        assertEquals(1, back.detectionZones.size)
     }
 
     @Test

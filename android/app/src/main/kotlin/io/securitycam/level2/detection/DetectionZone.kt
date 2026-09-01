@@ -1,6 +1,6 @@
 package io.securitycam.level2.detection
 
-object DetectionRegionShape {
+object DetectionZoneShape {
     const val rect = "rect"
     const val poly = "poly"
     const val tripwire = "tripwire"
@@ -8,11 +8,11 @@ object DetectionRegionShape {
 }
 
 /**
- * Inclusion region in normalized analysis-frame space (0..1, flattened
+ * Inclusion zone in normalized analysis-frame space (0..1, flattened
  * [x0,y0,x1,y1] for rects, [x0,y0,x1,y1,...] vertex pairs for polys).
- * Empty regions = detect everywhere. Port of `lib/core/models.dart`.
+ * Empty zones = detect everywhere. Port of `lib/core/models.dart`.
  */
-data class DetectionRegion(
+data class DetectionZone(
     val id: String,
     val shape: String,
     val label: String,
@@ -28,7 +28,7 @@ data class DetectionRegion(
     )
 
     companion object {
-        fun fromJson(json: Map<String, Any?>): DetectionRegion = DetectionRegion(
+        fun fromJson(json: Map<String, Any?>): DetectionZone = DetectionZone(
             id = json["id"] as String,
             shape = json["shape"] as String,
             label = json["label"] as String,

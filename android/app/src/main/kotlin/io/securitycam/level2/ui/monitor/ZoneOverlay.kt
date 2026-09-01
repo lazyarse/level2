@@ -8,8 +8,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import io.securitycam.level2.detection.DetectionRegion
-import io.securitycam.level2.detection.DetectionRegionShape
+import io.securitycam.level2.detection.DetectionZone
+import io.securitycam.level2.detection.DetectionZoneShape
 import kotlin.math.min
 
 /**
@@ -17,7 +17,7 @@ import kotlin.math.min
  * view space, letterboxing the rotated frame aspect into the view (the same
  * fit `PreviewView.ScaleType.FILL_CENTER` applies to the camera preview).
  */
-object RegionDisplayMapper {
+object ZoneDisplayMapper {
 
     /**
      * @param nx/ny normalized analysis-frame coordinate (0..1)
@@ -49,25 +49,25 @@ object RegionDisplayMapper {
         return Offset(ox + dx * dispW, oy + dy * dispH)
     }
 
-    /** Builds the display-space Path for a region (rects → closed box). */
-    fun regionPath(
-        region: DetectionRegion,
+    /** Builds the display-space Path for a zone (rects → closed box). */
+    fun zonePath(
+        zone: DetectionZone,
         rotationDegrees: Int,
         viewWidth: Float,
         viewHeight: Float,
         frameAspect: Float = 4f / 3f,
     ): Path {
         val path = Path()
-        if (region.shape == DetectionRegionShape.rect && region.points.size >= 4) {
-            val p0 = mapPoint(region.points[0].toFloat(), region.points[1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
-            val p1 = mapPoint(region.points[2].toFloat(), region.points[3].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
+        if (zone.shape == DetectionZoneShape.rect && zone.points.size >= 4) {
+            val p0 = mapPoint(zone.points[0].toFloat(), zone.points[1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
+            val p1 = mapPoint(zone.points[2].toFloat(), zone.points[3].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
             path.addRect(Rect(p0, p1))
             return path
         }
         var first = true
         var i = 0
-        while (i + 1 < region.points.size) {
-            val p = mapPoint(region.points[i].toFloat(), region.points[i + 1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
+        while (i + 1 < zone.points.size) {
+            val p = mapPoint(zone.points[i].toFloat(), zone.points[i + 1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
             if (first) {
                 path.moveTo(p.x, p.y)
                 first = false
@@ -81,7 +81,7 @@ object RegionDisplayMapper {
     }
 }
 
-private val RegionPalette = listOf(
+private val ZonePalette = listOf(
     Color(0xCC8AB4F8),
     Color(0xCC81C995),
     Color(0xCCFDD663),
@@ -92,18 +92,18 @@ private val RegionPalette = listOf(
 /** Distinct overlay color for exclusion (privacy) zones. */
 private val ExclusionOverlay = Color(0xCCEA4335)
 
-/** Draws [regions] over the preview in display space, plus [exclusionRegions] in red. */
+/** Draws [zones] over the preview in display space, plus [exclusionZones] in red. */
 @Composable
-fun RegionOverlay(
-    regions: List<DetectionRegion>,
+fun ZoneOverlay(
+    zones: List<DetectionZone>,
     rotationDegrees: Int,
     modifier: Modifier = Modifier,
     show: Boolean = true,
-    exclusionRegions: List<DetectionRegion> = emptyList(),
+    exclusionZones: List<DetectionZone> = emptyList(),
 ) {
     if (!show) return
     Canvas(modifier = modifier) {
-        if (regions.isEmpty() && exclusionRegions.isEmpty()) {
+        if (zones.isEmpty() && exclusionZones.isEmpty()) {
             drawRect(
                 color = Color(0x80FFFFFF),
                 style = Stroke(width = 2f),
@@ -111,19 +111,19 @@ fun RegionOverlay(
             return@Canvas
         }
         val size = this.size
-        regions.forEachIndexed { index, region ->
-            val path = RegionDisplayMapper.regionPath(
-                region, rotationDegrees, size.width, size.height,
+        zones.forEachIndexed { index, zone ->
+            val path = ZoneDisplayMapper.zonePath(
+                zone, rotationDegrees, size.width, size.height,
             )
             drawPath(
                 path = path,
-                color = RegionPalette[index % RegionPalette.size],
+                color = ZonePalette[index % ZonePalette.size],
                 style = Stroke(width = 1.5f),
             )
         }
-        exclusionRegions.forEach { region ->
-            val path = RegionDisplayMapper.regionPath(
-                region, rotationDegrees, size.width, size.height,
+        exclusionZones.forEach { zone ->
+            val path = ZoneDisplayMapper.zonePath(
+                zone, rotationDegrees, size.width, size.height,
             )
             drawPath(
                 path = path,

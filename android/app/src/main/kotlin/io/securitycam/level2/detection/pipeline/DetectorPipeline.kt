@@ -5,7 +5,7 @@ import io.securitycam.level2.core.TriggerEvent
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AudioDetector
 import io.securitycam.level2.detection.AudioWindow
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.Detector
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.FrameDetector
@@ -22,7 +22,7 @@ import java.time.Instant
  * Runs all configured detectors over frames and audio windows (port of
  * `lib/detection/pipeline.dart`). Sync frame detectors run every frame;
  * motion-gated detectors run only when motion fires. Per-detector cooldown
- * suppresses repeat triggers; region fans out to every frame detector.
+ * suppresses repeat triggers; zone fans out to every frame detector.
  */
 class DetectorPipeline(
     private val classifier: AudioEventClassifier,
@@ -58,21 +58,21 @@ class DetectorPipeline(
         frameDetectorsInternal.add(detector)
     }
 
-    /** Sets the global inclusion/exclusion regions and fans them out to frame detectors. */
-    fun setRegions(
-        regions: List<DetectionRegion>,
-        exclusionRegions: List<DetectionRegion> = emptyList(),
+    /** Sets the global inclusion/exclusion zones and fans them out to frame detectors. */
+    fun setZones(
+        zones: List<DetectionZone>,
+        exclusionZones: List<DetectionZone> = emptyList(),
     ) {
         for (d in frameDetectorsInternal) {
-            d.regions = regions
-            d.exclusionRegions = exclusionRegions
+            d.zones = zones
+            d.exclusionZones = exclusionZones
         }
     }
 
-    /** Sets tripwire regions on all TripwireDetector instances. */
-    fun setTripwireRegions(regions: List<DetectionRegion>) {
+    /** Sets tripwire zones on all TripwireDetector instances. */
+    fun setTripwireZones(zones: List<DetectionZone>) {
         for (d in frameDetectorsInternal.filterIsInstance<TripwireDetector>()) {
-            d.tripwireRegions = regions
+            d.tripwireZones = zones
             d.sourceDetectors = frameDetectorsInternal.filter {
                 it != d && matchesTripwireTarget(it, d.config.tripwireTargets)
             }

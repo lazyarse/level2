@@ -226,13 +226,13 @@ object MonitoringServiceController {
     // Bound Camera handle for zoom (net-new Phase 1.4).
     private var boundCamera: Camera? = null
 
-    /** Parse a JSON array of exclusion regions from the intent extra. */
-    private fun parseExclusionRegions(json: String): List<io.securitycam.level2.detection.DetectionRegion> {
+    /** Parse a JSON array of exclusion zones from the intent extra. */
+    private fun parseExclusionZones(json: String): List<io.securitycam.level2.detection.DetectionZone> {
         return try {
             val arr = org.json.JSONArray(json)
             (0 until arr.length()).map { i ->
                 val obj = arr.getJSONObject(i)
-                io.securitycam.level2.detection.DetectionRegion(
+                io.securitycam.level2.detection.DetectionZone(
                     id = obj.getString("id"),
                     shape = obj.getString("shape"),
                     label = obj.getString("label"),
@@ -289,11 +289,11 @@ object MonitoringServiceController {
         monitoringCameraId = cameraId
         startForeground(service)
         acquireWakeLock(service)
-        val exclusionRegions = parseExclusionRegions(privacyExclusionsJson)
+        val exclusionZones = parseExclusionZones(privacyExclusionsJson)
         VideoClipRecorder.configure(
             service, cameraName, preRollSeconds, postRollSeconds, videoQuality,
             clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
-            privacyMasking, privacyMaskEffect, exclusionRegions,
+            privacyMasking, privacyMaskEffect, exclusionZones,
         )
         if (ContextCompat.checkSelfPermission(service, android.Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED

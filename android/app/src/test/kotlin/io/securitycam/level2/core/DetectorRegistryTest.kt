@@ -1,6 +1,6 @@
 package io.securitycam.level2.core
 
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.HybridDetector

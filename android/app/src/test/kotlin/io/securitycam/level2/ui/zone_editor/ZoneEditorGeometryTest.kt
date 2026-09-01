@@ -1,13 +1,13 @@
-package io.securitycam.level2.ui.regions
+package io.securitycam.level2.ui.zones
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Letterbox geometry for the region editor: FIT_CENTER mapping between screen
+ * Letterbox geometry for the zone editor: FIT_CENTER mapping between screen
  * space and frame-normalized detector coordinates.
  */
-class RegionEditorGeometryTest {
+class ZoneEditorGeometryTest {
 
     @Test
     fun wideCanvasPillarboxesTheFrame() {

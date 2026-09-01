@@ -19,7 +19,7 @@ import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.SchedulePolicy
 import io.securitycam.level2.core.ScreenOrientation
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.storage.AppDatabase
 import io.securitycam.level2.storage.EncryptedSecretStore
 import io.securitycam.level2.storage.FileSnapshotStore
@@ -137,10 +137,10 @@ class MonitorViewModel(
     private val _screenOrientationLabel = MutableStateFlow("")
     val screenOrientationLabel: StateFlow<String> = _screenOrientationLabel.asStateFlow()
 
-    private val _detectionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
-    val detectionRegions: StateFlow<List<DetectionRegion>> = _detectionRegions.asStateFlow()
-    private val _exclusionRegions = MutableStateFlow<List<DetectionRegion>>(emptyList())
-    val exclusionRegions: StateFlow<List<DetectionRegion>> = _exclusionRegions.asStateFlow()
+    private val _detectionZones = MutableStateFlow<List<DetectionZone>>(emptyList())
+    val detectionZones: StateFlow<List<DetectionZone>> = _detectionZones.asStateFlow()
+    private val _exclusionZones = MutableStateFlow<List<DetectionZone>>(emptyList())
+    val exclusionZones: StateFlow<List<DetectionZone>> = _exclusionZones.asStateFlow()
 
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
@@ -181,8 +181,8 @@ class MonitorViewModel(
             _cameraName.value = settings.cameraName
             _cameraId.value = settings.cameraId
             _monitorPreview.value = settings.monitorPreview
-                _detectionRegions.value = settings.detectionRegions
-                _exclusionRegions.value = settings.exclusionRegions
+                _detectionZones.value = settings.detectionZones
+                _exclusionZones.value = settings.exclusionZones
                 updateDisplayLabels(settings.cameraId, settings.screenOrientation)
             updateDisplayLabels(settings.cameraId, settings.screenOrientation)
         } catch (t: Throwable) {
@@ -231,10 +231,10 @@ class MonitorViewModel(
         private fun settingsStoreFor(app: Application): SettingsStore =
             settingsStores.getOrPut(app) { SettingsStore(app, EncryptedSecretStore(app)) }
 
-        /** Serialize exclusion regions to a JSON string for the service intent extra. */
-        fun exclusionsToJson(regions: List<io.securitycam.level2.detection.DetectionRegion>): String {
+        /** Serialize exclusion zones to a JSON string for the service intent extra. */
+        fun exclusionsToJson(zones: List<io.securitycam.level2.detection.DetectionZone>): String {
             val arr = org.json.JSONArray()
-            for (r in regions) {
+            for (r in zones) {
                 val obj = org.json.JSONObject()
                 obj.put("id", r.id)
                 obj.put("shape", r.shape)
@@ -285,8 +285,8 @@ class MonitorViewModel(
                 _cameraName.value = settings.cameraName
                 _cameraId.value = settings.cameraId
                 _monitorPreview.value = settings.monitorPreview
-                _detectionRegions.value = settings.detectionRegions
-                _exclusionRegions.value = settings.exclusionRegions
+                _detectionZones.value = settings.detectionZones
+                _exclusionZones.value = settings.exclusionZones
                 scheduleSettings = settings
                 updateDisplayLabels(settings.cameraId, settings.screenOrientation)
             }
@@ -346,7 +346,7 @@ class MonitorViewModel(
         // Use cached cameraId (or default "0") for synchronous service start;
         // full settings are loaded in the coroutine for runtime creation.
         val clip = scheduleSettings
-        val exclusionsJson = exclusionsToJson(clip?.exclusionRegions ?: emptyList())
+        val exclusionsJson = exclusionsToJson(clip?.exclusionZones ?: emptyList())
         startMonitoring(
             _cameraId.value,
             _monitorPreview.value,
@@ -375,8 +375,8 @@ class MonitorViewModel(
                 }
                 _cameraName.value = settings.cameraName
                 _cameraId.value = settings.cameraId
-                _detectionRegions.value = settings.detectionRegions
-                _exclusionRegions.value = settings.exclusionRegions
+                _detectionZones.value = settings.detectionZones
+                _exclusionZones.value = settings.exclusionZones
             } catch (t: Throwable) {
                 Log.w(TAG, "settings load failed", t)
                 failStart(gen, t)

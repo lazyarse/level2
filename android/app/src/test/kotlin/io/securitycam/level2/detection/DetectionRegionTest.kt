@@ -4,9 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** Port of `test/detection_region_test.dart`. */
-class DetectionRegionTest {
+class DetectionZoneTest {
 
-    private val rect = DetectionRegion(
+    private val rect = DetectionZone(
         id = "r1",
         shape = "rect",
         label = "doorway",
@@ -15,7 +15,7 @@ class DetectionRegionTest {
 
     @Test
     fun rectJsonRoundTrips() {
-        val back = DetectionRegion.fromJson(rect.toJson())
+        val back = DetectionZone.fromJson(rect.toJson())
         assertEquals("r1", back.id)
         assertEquals("rect", back.shape)
         assertEquals("doorway", back.label)
@@ -24,13 +24,13 @@ class DetectionRegionTest {
 
     @Test
     fun polyJsonRoundTrips() {
-        val poly = DetectionRegion(
+        val poly = DetectionZone(
             id = "p1",
             shape = "poly",
             label = "driveway",
             points = listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8),
         )
-        val back = DetectionRegion.fromJson(poly.toJson())
+        val back = DetectionZone.fromJson(poly.toJson())
         assertEquals("poly", back.shape)
         assertEquals("driveway", back.label)
         assertEquals(listOf(0.5, 0.2, 0.8, 0.3, 0.9, 0.6, 0.4, 0.8), back.points)

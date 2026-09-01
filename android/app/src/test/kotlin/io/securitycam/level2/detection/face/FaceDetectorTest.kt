@@ -3,7 +3,7 @@ package io.securitycam.level2.detection.face
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
 import java.time.Instant
@@ -12,7 +12,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Exclusion/inclusion region semantics of the face trigger. */
+/** Exclusion/inclusion zone semantics of the face trigger. */
 class FaceDetectorTest {
 
     private val base: Instant = Instant.parse("2026-01-01T12:00:00Z")
@@ -37,8 +37,8 @@ class FaceDetectorTest {
         engine.faces.add(FaceDetection(0.1, 0.1, 0.4, 0.4, 0.9))
         val d = detector(engine)
         d.init()
-        d.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        d.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         val r = d.analyzeFrameAsync(frame(base))
         assertFalse(r.triggered)
@@ -52,8 +52,8 @@ class FaceDetectorTest {
         engine.faces.add(FaceDetection(0.6, 0.6, 0.9, 0.9, 0.9))
         val d = detector(engine)
         d.init()
-        d.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        d.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         val r = d.analyzeFrameAsync(frame(base))
         assertTrue(r.triggered)
@@ -66,8 +66,8 @@ class FaceDetectorTest {
         engine.faces.add(FaceDetection(0.6, 0.6, 0.9, 0.9, 0.9))
         val d = detector(engine)
         d.init()
-        d.regions = listOf(
-            DetectionRegion("r1", "rect", "focus", listOf(0.0, 0.0, 0.4, 0.4)),
+        d.zones = listOf(
+            DetectionZone("r1", "rect", "focus", listOf(0.0, 0.0, 0.4, 0.4)),
         )
         val r = d.analyzeFrameAsync(frame(base))
         assertFalse(r.triggered)
@@ -81,11 +81,11 @@ class FaceDetectorTest {
         engine.faces.add(FaceDetection(0.2, 0.2, 0.7, 0.7, 0.9))
         val d = detector(engine)
         d.init()
-        d.regions = listOf(
-            DetectionRegion("r1", "rect", "focus", listOf(0.0, 0.0, 0.8, 0.8)),
+        d.zones = listOf(
+            DetectionZone("r1", "rect", "focus", listOf(0.0, 0.0, 0.8, 0.8)),
         )
-        d.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.4, 0.4, 1.0, 1.0)),
+        d.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.4, 0.4, 1.0, 1.0)),
         )
         val r = d.analyzeFrameAsync(frame(base))
         assertFalse(r.triggered)

@@ -1,21 +1,21 @@
 package io.securitycam.level2.detection
 
 /**
- * Region geometry helpers (port of `lib/detection/regions/region_filter.dart`).
+ * Zone geometry helpers (port of `lib/detection/zones/zone_filter.dart`).
  * Coordinates are normalized 0..1 on the analysis frame.
  */
-object RegionFilter {
+object ZoneFilter {
 
-    /** Whether (x, y) is inside [region]. */
-    fun pointInRegion(region: DetectionRegion, x: Double, y: Double): Boolean {
-        if (region.shape == DetectionRegionShape.rect) {
-            val x0 = region.points[0]
-            val y0 = region.points[1]
-            val x1 = region.points[2]
-            val y1 = region.points[3]
+    /** Whether (x, y) is inside [zone]. */
+    fun pointInZone(zone: DetectionZone, x: Double, y: Double): Boolean {
+        if (zone.shape == DetectionZoneShape.rect) {
+            val x0 = zone.points[0]
+            val y0 = zone.points[1]
+            val x1 = zone.points[2]
+            val y1 = zone.points[3]
             return x >= x0 && x <= x1 && y >= y0 && y <= y1
         }
-        return pointInPolygon(x, y, region.points)
+        return pointInPolygon(x, y, zone.points)
     }
 
     /** Ray-casting point-in-polygon over a flattened [x0,y0,x1,y1,...] list. */
@@ -37,17 +37,17 @@ object RegionFilter {
         return inside
     }
 
-    /** True when the box (x, y, w, h) overlaps ANY region. Empty = whole frame. */
+    /** True when the box (x, y, w, h) overlaps ANY zone. Empty = whole frame. */
     fun rectOverlapsAny(
-        regions: List<DetectionRegion>,
+        zones: List<DetectionZone>,
         x: Double,
         y: Double,
         w: Double,
         h: Double,
     ): Boolean {
-        if (regions.isEmpty()) return true
-        for (region in regions) {
-            if (boxOverlapsRegion(region, x, y, w, h)) return true
+        if (zones.isEmpty()) return true
+        for (zone in zones) {
+            if (boxOverlapsZone(zone, x, y, w, h)) return true
         }
         return false
     }
@@ -57,25 +57,25 @@ object RegionFilter {
      * excludes nothing (a box never hits an absent zone).
      */
     fun boxHitsAnyExclusion(
-        exclusions: List<DetectionRegion>,
+        exclusions: List<DetectionZone>,
         x: Double,
         y: Double,
         w: Double,
         h: Double,
     ): Boolean = exclusions.isNotEmpty() && rectOverlapsAny(exclusions, x, y, w, h)
 
-    private fun boxOverlapsRegion(
-        region: DetectionRegion,
+    private fun boxOverlapsZone(
+        zone: DetectionZone,
         x: Double,
         y: Double,
         w: Double,
         h: Double,
     ): Boolean {
-        if (region.shape == DetectionRegionShape.rect) {
-            val x0 = region.points[0]
-            val y0 = region.points[1]
-            val x1 = region.points[2]
-            val y1 = region.points[3]
+        if (zone.shape == DetectionZoneShape.rect) {
+            val x0 = zone.points[0]
+            val y0 = zone.points[1]
+            val x1 = zone.points[2]
+            val y1 = zone.points[3]
             // Inclusive edges: a box merely touching the border counts as overlap.
             return x <= x1 && x + w >= x0 && y <= y1 && y + h >= y0
         }
@@ -86,16 +86,16 @@ object RegionFilter {
             x + w to y + h,
         )
         for ((cx, cy) in corners) {
-            if (pointInPolygon(cx, cy, region.points)) return true
+            if (pointInPolygon(cx, cy, zone.points)) return true
         }
         val boxX0 = x
         val boxY0 = y
         val boxX1 = x + w
         val boxY1 = y + h
         var i = 0
-        while (i < region.points.size) {
-            val vx = region.points[i]
-            val vy = region.points[i + 1]
+        while (i < zone.points.size) {
+            val vx = zone.points[i]
+            val vy = zone.points[i + 1]
             if (vx >= boxX0 && vx <= boxX1 && vy >= boxY0 && vy <= boxY1) return true
             i += 2
         }
@@ -105,13 +105,13 @@ object RegionFilter {
             (boxX1 to boxY1) to (boxX0 to boxY1),
             (boxX0 to boxY1) to (boxX0 to boxY0),
         )
-        var j = region.points.size - 2
+        var j = zone.points.size - 2
         i = 0
-        while (i < region.points.size) {
-            val xi = region.points[i]
-            val yi = region.points[i + 1]
-            val xj = region.points[j]
-            val yj = region.points[j + 1]
+        while (i < zone.points.size) {
+            val xi = zone.points[i]
+            val yi = zone.points[i + 1]
+            val xj = zone.points[j]
+            val yj = zone.points[j + 1]
             for (edge in boxEdges) {
                 if (segmentsIntersect(
                         edge.first.first, edge.first.second,
@@ -156,16 +156,16 @@ object RegionFilter {
     }
 
     /**
-     * Builds a byte mask (1 = inside ANY region) and the count of 1-bits, using
-     * each pixel's center. Empty regions → all ones.
+     * Builds a byte mask (1 = inside ANY zone) and the count of 1-bits, using
+     * each pixel's center. Empty zones → all ones.
      */
     fun pixelMask(
-        regions: List<DetectionRegion>,
+        zones: List<DetectionZone>,
         width: Int,
         height: Int,
     ): Pair<ByteArray, Int> {
         val mask = ByteArray(width * height)
-        if (regions.isEmpty()) {
+        if (zones.isEmpty()) {
             mask.fill(1)
             return mask to mask.size
         }
@@ -175,8 +175,8 @@ object RegionFilter {
                 val nx = (x + 0.5) / width
                 val ny = (y + 0.5) / height
                 var inside = false
-                for (region in regions) {
-                    if (pointInRegion(region, nx, ny)) {
+                for (zone in zones) {
+                    if (pointInZone(zone, nx, ny)) {
                         inside = true
                         break
                     }
@@ -193,11 +193,11 @@ object RegionFilter {
     /**
      * Builds a byte mask honoring exclusion zones: starts from the inclusion mask
      * (all ones when [inclusions] is empty), then clears every pixel whose center
-     * lies inside any region of [exclusions]. Exclusion wins over inclusion.
+     * lies inside any zone of [exclusions]. Exclusion wins over inclusion.
      */
     fun pixelMaskExcluding(
-        inclusions: List<DetectionRegion>,
-        exclusions: List<DetectionRegion>,
+        inclusions: List<DetectionZone>,
+        exclusions: List<DetectionZone>,
         width: Int,
         height: Int,
     ): Pair<ByteArray, Int> {
@@ -211,8 +211,8 @@ object RegionFilter {
                 val nx = (x + 0.5) / width
                 val ny = (y + 0.5) / height
                 var excluded = false
-                for (region in exclusions) {
-                    if (pointInRegion(region, nx, ny)) {
+                for (zone in exclusions) {
+                    if (pointInZone(zone, nx, ny)) {
                         excluded = true
                         break
                     }

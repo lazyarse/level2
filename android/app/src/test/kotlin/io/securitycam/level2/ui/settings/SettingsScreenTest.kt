@@ -281,7 +281,7 @@ class SettingsScreenTest {
         setContent(Harness())
         expandSection("Detectors")
 
-        for (heading in listOf("Camera", "Audio", "Combined", "System")) {
+        for (heading in listOf("Camera", "Audio", "Combined")) {
             compose.onNodeWithTag("detectorGroup_$heading").performScrollTo().assertIsDisplayed()
         }
         // Heartbeat rename + combined pet cards present under their group.

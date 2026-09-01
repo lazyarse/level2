@@ -301,27 +301,27 @@ class SettingsViewModel(
         )
     }
 
-    // ---- Region-editor preview session ----
+    // ---- Zone-editor preview session ----
 
-    /** True when the region editor's live preview owns the camera session. */
-    private var regionPreviewSessionLocal = false
+    /** True when the zone editor's live preview owns the camera session. */
+    private var zonePreviewSessionLocal = false
 
     /**
-     * Arms the live camera image behind the region editor so regions can be
+     * Arms the live camera image behind the zone editor so zones can be
      * drawn against real-world features. Starts a preview-only session only
      * when no session is active; an already-running monitor/preview is left
      * untouched (ownership tracked so close never stops a foreign session).
      */
-    fun beginRegionPreview() {
+    fun beginZonePreview() {
         if (cameraActive()) return
         startCameraSession(_draft.value?.cameraId ?: "0")
-        regionPreviewSessionLocal = true
+        zonePreviewSessionLocal = true
     }
 
-    /** Releases the session only if the region editor started it. */
-    fun endRegionPreview() {
-        if (!regionPreviewSessionLocal) return
-        regionPreviewSessionLocal = false
+    /** Releases the session only if the zone editor started it. */
+    fun endZonePreview() {
+        if (!zonePreviewSessionLocal) return
+        zonePreviewSessionLocal = false
         stopCameraSession()
     }
 

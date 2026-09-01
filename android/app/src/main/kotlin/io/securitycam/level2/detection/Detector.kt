@@ -73,10 +73,10 @@ interface Detector {
     suspend fun dispose()
 }
 
-/** Frame-based detector; [regions]/[exclusionRegions] are set by the pipeline. */
+/** Frame-based detector; [zones]/[exclusionZones] are set by the pipeline. */
 abstract class FrameDetector : Detector {
-    var regions: List<DetectionRegion> = emptyList()
-    var exclusionRegions: List<DetectionRegion> = emptyList()
+    var zones: List<DetectionZone> = emptyList()
+    var exclusionZones: List<DetectionZone> = emptyList()
 
     /** Boxes from the most recent analysis frame, updated by subclasses for sharing. */
     open var latestBoxes: List<PersonBox> = emptyList()

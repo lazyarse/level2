@@ -1,7 +1,7 @@
 package io.securitycam.level2.detection
 
 import io.securitycam.level2.core.TriggerType
-import io.securitycam.level2.detection.RegionFilter.pointInRegion
+import io.securitycam.level2.detection.ZoneFilter.pointInZone
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -17,7 +17,7 @@ import kotlin.math.sqrt
  *    by more than [cellDelta] exceeds [config.threshold]) with low inter-frame
  *    motion (< [motionFloor]) ⇒ the camera was physically moved.
  *
- * Inclusion regions restrict which grid cells participate in the "moved"
+ * Inclusion zones restrict which grid cells participate in the "moved"
  * comparison (empty = whole frame).
  */
 class TamperDetector(
@@ -47,7 +47,7 @@ class TamperDetector(
     private var previousHeight = 0
 
     private var activeCells: BooleanArray? = null
-    private var activeCellRegions: List<DetectionRegion>? = null
+    private var activeCellZones: List<DetectionZone>? = null
     private var activeCellWidth = 0
     private var activeCellHeight = 0
 
@@ -204,19 +204,19 @@ class TamperDetector(
 
     /**
      * Which grid cells count as trigger area: those whose center falls inside
-     * an inclusion region ([regions] empty = all cells).
+     * an inclusion zone ([zones] empty = all cells).
      */
     private fun activeCellMask(width: Int, height: Int): BooleanArray {
         val cached = activeCells
         if (cached != null &&
-            activeCellRegions === regions &&
+            activeCellZones === zones &&
             activeCellWidth == width &&
             activeCellHeight == height
         ) {
             return cached
         }
         val mask = BooleanArray(GRID * GRID)
-        if (regions.isEmpty()) {
+        if (zones.isEmpty()) {
             mask.fill(true)
         } else {
             for (cy in 0 until GRID) {
@@ -224,12 +224,12 @@ class TamperDetector(
                     val nx = ((cx + 0.5) * width / GRID) / width
                     val ny = ((cy + 0.5) * height / GRID) / height
                     mask[cy * GRID + cx] =
-                        regions.any { pointInRegion(it, nx, ny) }
+                        zones.any { pointInZone(it, nx, ny) }
                 }
             }
         }
         activeCells = mask
-        activeCellRegions = regions
+        activeCellZones = zones
         activeCellWidth = width
         activeCellHeight = height
         return mask

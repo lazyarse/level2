@@ -20,8 +20,8 @@ class MotionDetector(
     private var maskCount = 0
     private var maskWidth = 0
     private var maskHeight = 0
-    private var maskRegions: List<DetectionRegion>? = null
-    private var maskExclusions: List<DetectionRegion>? = null
+    private var maskZones: List<DetectionZone>? = null
+    private var maskExclusions: List<DetectionZone>? = null
 
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.motion
@@ -39,8 +39,8 @@ class MotionDetector(
 
     override fun analyzeFrame(frame: AnalysisFrame): DetectionResult {
         if (mask == null ||
-            maskRegions !== regions ||
-            maskExclusions !== exclusionRegions ||
+            maskZones !== zones ||
+            maskExclusions !== exclusionZones ||
             maskWidth != frame.bitmap.width ||
             maskHeight != frame.bitmap.height
         ) {
@@ -59,11 +59,11 @@ class MotionDetector(
 
     private fun rebuildMask(width: Int, height: Int) {
         val (newMask, count) =
-            RegionFilter.pixelMaskExcluding(regions, exclusionRegions, width, height)
+            ZoneFilter.pixelMaskExcluding(zones, exclusionZones, width, height)
         mask = newMask
         maskCount = count
-        maskRegions = regions
-        maskExclusions = exclusionRegions
+        maskZones = zones
+        maskExclusions = exclusionZones
         maskWidth = width
         maskHeight = height
     }

@@ -1,4 +1,4 @@
-package io.securitycam.level2.ui.regions
+package io.securitycam.level2.ui.zones
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -7,7 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -21,14 +21,14 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class RegionEditorScreenTest {
+class ZoneEditorScreenTest {
 
     @get:Rule
     val compose = createComposeRule()
 
-    private var savedInclusions: List<DetectionRegion>? = null
-    private var savedExclusions: List<DetectionRegion>? = null
-    private var savedTripwires: List<DetectionRegion>? = null
+    private var savedInclusions: List<DetectionZone>? = null
+    private var savedExclusions: List<DetectionZone>? = null
+    private var savedTripwires: List<DetectionZone>? = null
 
     @Before
     fun setUp() {
@@ -37,9 +37,9 @@ class RegionEditorScreenTest {
 
     private fun setContent() {
         compose.setContent {
-            RegionEditorScreen(
-                initialRegions = listOf(
-                    DetectionRegion(
+            ZoneEditorScreen(
+                initialZones = listOf(
+                    DetectionZone(
                         id = "r1",
                         shape = "rect",
                         label = "doorway",
@@ -58,18 +58,18 @@ class RegionEditorScreenTest {
     }
 
     @Test
-    fun rendersToolBarAndRegionList() {
+    fun rendersToolBarAndZoneList() {
         setContent()
-        compose.onNodeWithText("Detection regions").assertIsDisplayed()
+        compose.onNodeWithText("Detection zones").assertIsDisplayed()
         compose.onNodeWithText("Rectangle").assertIsDisplayed()
         compose.onNodeWithText("Polygon").assertIsDisplayed()
         compose.onNodeWithText("doorway").assertIsDisplayed()
     }
 
     @Test
-    fun doneSavesTheRegionList() {
+    fun doneSavesTheZoneList() {
         setContent()
-        compose.onNodeWithTag("regionDone").performClick()
+        compose.onNodeWithTag("zoneDone").performClick()
         compose.waitForIdle()
         val out = savedInclusions
         assertNotNull(out)
@@ -79,42 +79,42 @@ class RegionEditorScreenTest {
     }
 
     @Test
-    fun clearAllRemovesRegionsWithConfirm() {
+    fun clearAllRemovesZonesWithConfirm() {
         setContent()
-        compose.onNodeWithTag("regionClear").performClick()
+        compose.onNodeWithTag("zoneClear").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Clear all regions?").assertExists()
-        compose.onNodeWithTag("regionClearConfirm").performClick()
+        compose.onNodeWithText("Clear all zones?").assertExists()
+        compose.onNodeWithTag("zoneClearConfirm").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("doorway").assertDoesNotExist()
         assertNull(savedInclusions)
-        compose.onNodeWithTag("regionDone").performClick()
+        compose.onNodeWithTag("zoneDone").performClick()
         compose.waitForIdle()
-        assertEquals(emptyList<DetectionRegion>(), savedInclusions)
+        assertEquals(emptyList<DetectionZone>(), savedInclusions)
     }
 
     @Test
     fun modeToggleSwitchesListedContentAndSavesBothLists() {
         setContent()
-        // Inclusion list shows the doorway region.
+        // Inclusion list shows the doorway zone.
         compose.onNodeWithText("doorway").assertIsDisplayed()
 
         // Switch to exclusion mode: the inclusion row disappears, exclusion
         // tools are active on an empty list.
-        compose.onNodeWithTag("regionMode_exclusion").performClick()
+        compose.onNodeWithTag("zoneMode_exclusion").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("doorway").assertDoesNotExist()
 
         // Add an exclusion zone via the Add button (default full-frame rect).
-        compose.onNodeWithTag("regionAdd").performClick()
+        compose.onNodeWithTag("zoneAdd").performClick()
         compose.waitForIdle()
 
         // Back to inclusion: doorway is listed again, exclusion zone is not.
-        compose.onNodeWithTag("regionMode_inclusion").performClick()
+        compose.onNodeWithTag("zoneMode_inclusion").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("doorway").assertIsDisplayed()
 
-        compose.onNodeWithTag("regionDone").performClick()
+        compose.onNodeWithTag("zoneDone").performClick()
         compose.waitForIdle()
         assertEquals(1, savedInclusions!!.size)
         assertEquals(1, savedExclusions!!.size)

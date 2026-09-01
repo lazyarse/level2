@@ -82,12 +82,12 @@ class MotionDetectorTest {
     }
 
     @Test
-    fun changeInsideARegionTriggersSameChangeOutsideDoesNot() {
+    fun changeInsideAZoneTriggersSameChangeOutsideDoesNot() {
         val detector = MotionDetector(config())
-        detector.regions = listOf(
-            DetectionRegion("r1", "rect", "doorway", listOf(0.0, 0.0, 0.5, 0.5)),
+        detector.zones = listOf(
+            DetectionZone("r1", "rect", "doorway", listOf(0.0, 0.0, 0.5, 0.5)),
         )
-        // Outside: rect moves only in the bottom-right quadrant (outside region).
+        // Outside: rect moves only in the bottom-right quadrant (outside zone).
         detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16))
         detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16))
         detector.analyzeFrame(frame(2, buildFrameWithRect(16, 16, 140, 10, 10, 8, 8, 30), 16, 16))
@@ -97,7 +97,7 @@ class MotionDetectorTest {
             ).triggered,
         )
 
-        // Inside: rect moves within the top-left quadrant (inside the region).
+        // Inside: rect moves within the top-left quadrant (inside the zone).
         detector.reset()
         detector.analyzeFrame(frame(4, buildFrame(16, 16, 140), 16, 16))
         detector.analyzeFrame(frame(5, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16))
@@ -109,10 +109,10 @@ class MotionDetectorTest {
     }
 
     @Test
-    fun smallRegionDenominatorKeepsThresholdsMeaningful() {
+    fun smallZoneDenominatorKeepsThresholdsMeaningful() {
         val detector = MotionDetector(config(threshold = 0.2, persistence = 2))
-        detector.regions = listOf(
-            DetectionRegion("r1", "rect", "q1", listOf(0.0, 0.0, 0.5, 0.5)),
+        detector.zones = listOf(
+            DetectionZone("r1", "rect", "q1", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16))
         detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 1, 1, 4, 4, 30), 16, 16))
@@ -124,7 +124,7 @@ class MotionDetectorTest {
     }
 
     @Test
-    fun emptyRegionsEqualsLegacyWholeFrameBehavior() {
+    fun emptyZonesEqualsLegacyWholeFrameBehavior() {
         val detector = MotionDetector(config())
         assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
         detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30), 16, 16))
@@ -138,8 +138,8 @@ class MotionDetectorTest {
     @Test
     fun changeInsideExclusionDoesNotTriggerWhenNoInclusions() {
         val detector = MotionDetector(config())
-        detector.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        detector.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
         assertFalse(
@@ -157,8 +157,8 @@ class MotionDetectorTest {
     @Test
     fun changeOutsideExclusionStillTriggers() {
         val detector = MotionDetector(config())
-        detector.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        detector.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
         detector.analyzeFrame(frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16))
@@ -172,8 +172,8 @@ class MotionDetectorTest {
     @Test
     fun swappingExclusionListRebuildsMaskWithoutReset() {
         val detector = MotionDetector(config(threshold = 0.05, persistence = 1))
-        detector.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "all", listOf(0.0, 0.0, 1.0, 1.0)),
+        detector.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "all", listOf(0.0, 0.0, 1.0, 1.0)),
         )
         assertFalse(detector.analyzeFrame(frame(0, buildFrame(16, 16, 140), 16, 16)).triggered)
         assertFalse(
@@ -181,7 +181,7 @@ class MotionDetectorTest {
                 frame(1, buildFrameWithRect(16, 16, 140, 8, 8, 8, 8, 30), 16, 16),
             ).triggered,
         )
-        detector.exclusionRegions = emptyList()
+        detector.exclusionZones = emptyList()
         assertTrue(
             detector.analyzeFrame(
                 frame(2, buildFrameWithRect(16, 16, 140, 10, 10, 8, 8, 30), 16, 16),

@@ -12,13 +12,13 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Unit tests for [SettingsViewModel.beginRegionPreview]/[endRegionPreview]:
- * the region editor's live preview starts a preview-only session only when no
+ * Unit tests for [SettingsViewModel.beginZonePreview]/[endZonePreview]:
+ * the zone editor's live preview starts a preview-only session only when no
  * session is active, and close never stops a session it doesn't own.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class RegionPreviewViewModelTest {
+class ZonePreviewViewModelTest {
 
     private class Session {
         var active: Boolean = false
@@ -55,7 +55,7 @@ class RegionPreviewViewModelTest {
         val session = Session()
         val vm = viewModel(session)
 
-        vm.beginRegionPreview()
+        vm.beginZonePreview()
         pump()
 
         assertEquals(1, session.startCount)
@@ -69,7 +69,7 @@ class RegionPreviewViewModelTest {
         session.active = true
         val vm = viewModel(session)
 
-        vm.beginRegionPreview()
+        vm.beginZonePreview()
         pump()
 
         assertEquals(0, session.startCount)
@@ -80,12 +80,12 @@ class RegionPreviewViewModelTest {
         val session = Session()
         val vm = viewModel(session)
 
-        vm.endRegionPreview()
+        vm.endZonePreview()
         assertEquals(0, session.stopCount)
 
-        vm.beginRegionPreview()
+        vm.beginZonePreview()
         pump()
-        vm.endRegionPreview()
+        vm.endZonePreview()
         pump()
 
         assertEquals(1, session.startCount)
@@ -99,8 +99,8 @@ class RegionPreviewViewModelTest {
         session.active = true
         val vm = viewModel(session)
 
-        vm.beginRegionPreview()
-        vm.endRegionPreview()
+        vm.beginZonePreview()
+        vm.endZonePreview()
         pump()
 
         assertEquals(0, session.stopCount)

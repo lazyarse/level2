@@ -1,4 +1,4 @@
-package io.securitycam.level2.ui.regions
+package io.securitycam.level2.ui.zones
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -56,11 +56,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import io.securitycam.level2.detection.DetectionRegion
-import io.securitycam.level2.detection.DetectionRegionShape
+import io.securitycam.level2.detection.DetectionZone
+import io.securitycam.level2.detection.DetectionZoneShape
 import io.securitycam.level2.ui.monitor.PreviewSurface
 
-private val RegionPalette = listOf(
+private val ZonePalette = listOf(
     Color(0xFF8AB4F8),
     Color(0xFF81C995),
     Color(0xFFFDD663),
@@ -75,52 +75,52 @@ private val ExclusionBase = Color(0xFFEA4335)
 private val TripwireBase = Color(0xFFFF9800)
 
 /** Palette entry for the active editor mode: red in exclusion mode, orange in tripwire mode. */
-private fun regionColor(mode: RegionEditorMode, index: Int): Color =
+private fun zoneColor(mode: ZoneEditorMode, index: Int): Color =
     when (mode) {
-        RegionEditorMode.exclusion -> ExclusionBase
-        RegionEditorMode.tripwire -> TripwireBase
-        else -> RegionPalette[index % RegionPalette.size]
+        ZoneEditorMode.exclusion -> ExclusionBase
+        ZoneEditorMode.tripwire -> TripwireBase
+        else -> ZonePalette[index % ZonePalette.size]
     }
 
 /**
- * Full-screen region editor over the live preview. Port of
- * `lib/ui/region_editor_screen.dart`, extended per the privacy-zones design
+ * Full-screen zone editor over the live preview. Port of
+ * `lib/ui/zone_editor_screen.dart`, extended per the privacy-zones design
  * with an Inclusion/Exclusion mode toggle: both lists are edited in place
  * (exclusions rendered in red) and reported together via [onSave].
  *
  * Geometry: the preview letterboxes (FIT_CENTER) and all screen↔normalized
- * mapping goes through [fitCenterBox], so drawn regions land exactly where
+ * mapping goes through [fitCenterBox], so drawn zones land exactly where
  * they appear on screen AND match detector coordinates (which are normalized
  * to the analysis frame of [frameWidth]×[frameHeight]).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun RegionEditorScreen(
-    initialRegions: List<DetectionRegion>,
-    onSave: (inclusions: List<DetectionRegion>, exclusions: List<DetectionRegion>, tripwires: List<DetectionRegion>) -> Unit,
+fun ZoneEditorScreen(
+    initialZones: List<DetectionZone>,
+    onSave: (inclusions: List<DetectionZone>, exclusions: List<DetectionZone>, tripwires: List<DetectionZone>) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     showPreview: Boolean = true,
-    initialExclusions: List<DetectionRegion> = emptyList(),
-    initialTripwireRegions: List<DetectionRegion> = emptyList(),
+    initialExclusions: List<DetectionZone> = emptyList(),
+    initialTripwireZones: List<DetectionZone> = emptyList(),
     frameWidth: Int = 320,
     frameHeight: Int = 240,
 ) {
-    val vm = remember { RegionEditorViewModel(initialRegions, initialExclusions, initialTripwireRegions) }
+    val vm = remember { ZoneEditorViewModel(initialZones, initialExclusions, initialTripwireZones) }
     var confirmClear by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Detection regions") },
+                title = { Text("Detection zones") },
                 actions = {
                     TextButton(
                         onClick = {
-                            onSave(vm.inclusionRegions, vm.exclusionRegions, vm.tripwireRegions)
+                            onSave(vm.inclusionZones, vm.exclusionZones, vm.tripwireZones)
                             onClose()
                         },
-                        modifier = Modifier.testTag("regionDone"),
+                        modifier = Modifier.testTag("zoneDone"),
                     ) { Text("Done") }
                 },
             )
@@ -133,25 +133,25 @@ fun RegionEditorScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 SegmentedButton(
-                    selected = vm.mode == RegionEditorMode.inclusion,
-                    onClick = { vm.chooseMode(RegionEditorMode.inclusion) },
+                    selected = vm.mode == ZoneEditorMode.inclusion,
+                    onClick = { vm.chooseMode(ZoneEditorMode.inclusion) },
                     shape = SegmentedButtonDefaults.itemShape(0, 3),
-                    modifier = Modifier.testTag("regionMode_inclusion"),
+                    modifier = Modifier.testTag("zoneMode_inclusion"),
                 ) { Text("Inclusion") }
                 SegmentedButton(
-                    selected = vm.mode == RegionEditorMode.exclusion,
-                    onClick = { vm.chooseMode(RegionEditorMode.exclusion) },
+                    selected = vm.mode == ZoneEditorMode.exclusion,
+                    onClick = { vm.chooseMode(ZoneEditorMode.exclusion) },
                     shape = SegmentedButtonDefaults.itemShape(1, 3),
-                    modifier = Modifier.testTag("regionMode_exclusion"),
+                    modifier = Modifier.testTag("zoneMode_exclusion"),
                 ) { Text("Exclusion") }
                 SegmentedButton(
-                    selected = vm.mode == RegionEditorMode.tripwire,
-                    onClick = { vm.chooseMode(RegionEditorMode.tripwire) },
+                    selected = vm.mode == ZoneEditorMode.tripwire,
+                    onClick = { vm.chooseMode(ZoneEditorMode.tripwire) },
                     shape = SegmentedButtonDefaults.itemShape(2, 3),
-                    modifier = Modifier.testTag("regionMode_tripwire"),
+                    modifier = Modifier.testTag("zoneMode_tripwire"),
                 ) { Text("Tripwire") }
             }
-            if (vm.mode == RegionEditorMode.tripwire) {
+            if (vm.mode == ZoneEditorMode.tripwire) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -180,22 +180,22 @@ fun RegionEditorScreen(
                 FlowRow {
                     ToolButton(
                         label = "Rectangle",
-                        active = vm.shape == DetectionRegionShape.rect,
-                        tag = "regionTool_rect",
-                        onClick = { vm.chooseShape(DetectionRegionShape.rect) },
+                        active = vm.shape == DetectionZoneShape.rect,
+                        tag = "zoneTool_rect",
+                        onClick = { vm.chooseShape(DetectionZoneShape.rect) },
                     )
                     Spacer(Modifier.width(8.dp))
                     ToolButton(
                         label = "Polygon",
-                        active = vm.shape == DetectionRegionShape.poly,
-                        tag = "regionTool_poly",
-                        onClick = { vm.chooseShape(DetectionRegionShape.poly) },
+                        active = vm.shape == DetectionZoneShape.poly,
+                        tag = "zoneTool_poly",
+                        onClick = { vm.chooseShape(DetectionZoneShape.poly) },
                     )
                     if (vm.pendingPoly != null) {
                         Spacer(Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = { vm.commitPoly() },
-                            modifier = Modifier.testTag("regionClosePoly"),
+                            modifier = Modifier.testTag("zoneClosePoly"),
                         ) {
                             Icon(Icons.Filled.Check, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
@@ -204,8 +204,8 @@ fun RegionEditorScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                     OutlinedButton(
-                        onClick = { vm.addRegion() },
-                        modifier = Modifier.testTag("regionAdd"),
+                        onClick = { vm.addZone() },
+                        modifier = Modifier.testTag("zoneAdd"),
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
@@ -214,34 +214,34 @@ fun RegionEditorScreen(
                     Spacer(Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = { confirmClear = true },
-                        modifier = Modifier.testTag("regionClear"),
+                        modifier = Modifier.testTag("zoneClear"),
                     ) {
                         Icon(Icons.Filled.DeleteForever, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Clear")
                     }
                 }
-                if (vm.regions.isNotEmpty()) {
+                if (vm.zones.isNotEmpty()) {
                     LazyColumn(Modifier.heightIn(max = 140.dp)) {
-                        itemsIndexed(vm.regions) { i, region ->
+                        itemsIndexed(vm.zones) { i, zone ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { vm.select(i) }
-                                    .testTag("regionRow_$i")
+                                    .testTag("zoneRow_$i")
                                     .padding(vertical = 6.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.CropSquare,
                                     contentDescription = null,
-                                    tint = regionColor(vm.mode, i),
+                                    tint = zoneColor(vm.mode, i),
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Column {
-                                    Text(region.label, style = MaterialTheme.typography.bodyLarge)
+                                    Text(zone.label, style = MaterialTheme.typography.bodyLarge)
                                     Text(
-                                        region.shape,
+                                        zone.shape,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -249,37 +249,37 @@ fun RegionEditorScreen(
                                 Spacer(Modifier.weight(1f))
                                 IconButton(
                                     onClick = { vm.deleteAt(i) },
-                                    modifier = Modifier.testTag("regionDelete_$i"),
+                                    modifier = Modifier.testTag("zoneDelete_$i"),
                                 ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Delete region")
+                                    Icon(Icons.Filled.Close, contentDescription = "Delete zone")
                                 }
                             }
-                            if (i < vm.regions.lastIndex) {
+                            if (i < vm.zones.lastIndex) {
                                 androidx.compose.material3.HorizontalDivider()
                             }
                         }
                     }
                 }
                 val sel = vm.selected
-                if (sel in vm.regions.indices) {
+                if (sel in vm.zones.indices) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 8.dp),
                     ) {
                         OutlinedTextField(
-                            value = vm.regions[sel].label,
+                            value = vm.zones[sel].label,
                             onValueChange = { vm.renameSelected(it) },
-                            label = { Text("Region name") },
+                            label = { Text("Zone name") },
                             singleLine = true,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("regionLabelField"),
+                                .testTag("zoneLabelField"),
                         )
                         IconButton(
                             onClick = { vm.deleteSelected() },
-                            modifier = Modifier.testTag("regionDeleteSelected"),
+                            modifier = Modifier.testTag("zoneDeleteSelected"),
                         ) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete region")
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete zone")
                         }
                     }
                 }
@@ -290,18 +290,18 @@ fun RegionEditorScreen(
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("Clear all regions?") },
+            title = { Text("Clear all zones?") },
             text = {
                 Text(
                     when (vm.mode) {
-                        RegionEditorMode.exclusion ->
+                        ZoneEditorMode.exclusion ->
                             "This removes every exclusion zone. Detection will no " +
                                 "longer ignore those areas."
-                        RegionEditorMode.tripwire ->
-                            "This removes every tripwire region. Person-crossing " +
+                        ZoneEditorMode.tripwire ->
+                            "This removes every tripwire zone. Person-crossing " +
                                 "detection will no longer be active."
                         else ->
-                            "This removes every inclusion region. Detection will apply " +
+                            "This removes every inclusion zone. Detection will apply " +
                                 "to the whole frame."
                     },
                 )
@@ -315,7 +315,7 @@ fun RegionEditorScreen(
                         confirmClear = false
                         vm.clearAll()
                     },
-                    modifier = Modifier.testTag("regionClearConfirm"),
+                    modifier = Modifier.testTag("zoneClearConfirm"),
                 ) { Text("Clear") }
             },
         )
@@ -339,7 +339,7 @@ private fun ToolButton(label: String, active: Boolean, tag: String, onClick: () 
 
 @Composable
 private fun EditorCanvas(
-    vm: RegionEditorViewModel,
+    vm: ZoneEditorViewModel,
     showPreview: Boolean,
     frameWidth: Int,
     frameHeight: Int,
@@ -358,7 +358,7 @@ private fun EditorCanvas(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .testTag("regionCanvas")
+                .testTag("zoneCanvas")
                 .pointerInput(Unit, frameWidth, frameHeight) {
                     val box = fitCenterBox(
                         size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
@@ -388,11 +388,11 @@ private fun EditorCanvas(
                 },
         ) {
             val b = fitCenterBox(size.width, size.height, frameWidth, frameHeight)
-            vm.regions.forEachIndexed { i, r ->
-                val base = regionColor(vm.mode, i)
+            vm.zones.forEachIndexed { i, r ->
+                val base = zoneColor(vm.mode, i)
                 val fill = base.copy(alpha = 0.18f)
                 val isSelected = i == vm.selected
-                if (r.shape == DetectionRegionShape.rect && r.points.size >= 4) {
+                if (r.shape == DetectionZoneShape.rect && r.points.size >= 4) {
                     val rect = Rect(
                         left = normToScreen(r.points[0], b.offsetX, b.width),
                         top = normToScreen(r.points[1], b.offsetY, b.height),

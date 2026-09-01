@@ -1,53 +1,53 @@
-package io.securitycam.level2.ui.regions
+package io.securitycam.level2.ui.zones
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.securitycam.level2.detection.DetectionRegion
-import io.securitycam.level2.detection.DetectionRegionShape
-import io.securitycam.level2.detection.RegionFilter.pointInRegion
+import io.securitycam.level2.detection.DetectionZone
+import io.securitycam.level2.detection.DetectionZoneShape
+import io.securitycam.level2.detection.ZoneFilter.pointInZone
 
 /** Which list the editor tools currently operate on. */
-enum class RegionEditorMode { inclusion, exclusion, tripwire }
+enum class ZoneEditorMode { inclusion, exclusion, tripwire }
 
 /**
- * Interaction logic for the region editor. Port of the state machine in
- * `lib/ui/region_editor_screen.dart`: tap-to-select / poly-vertex placement,
+ * Interaction logic for the zone editor. Port of the state machine in
+ * `lib/ui/zone_editor_screen.dart`: tap-to-select / poly-vertex placement,
  * drag-to-draw new rects, corner-resize and move of existing rects, label
  * editing, delete, clear — extended per the privacy-zones design to edit BOTH
  * the inclusion and exclusion lists through an active-mode toggle. All
  * coordinates are normalized (0..1) analysis-frame space; the composable only
  * converts pointer offsets.
  */
-class RegionEditorViewModel(
-    initialRegions: List<DetectionRegion>,
-    initialExclusions: List<DetectionRegion> = emptyList(),
-    initialTripwireRegions: List<DetectionRegion> = emptyList(),
+class ZoneEditorViewModel(
+    initialZones: List<DetectionZone>,
+    initialExclusions: List<DetectionZone> = emptyList(),
+    initialTripwireZones: List<DetectionZone> = emptyList(),
 ) {
 
-    var inclusionRegions by mutableStateOf(initialRegions)
+    var inclusionZones by mutableStateOf(initialZones)
         private set
-    var exclusionRegions by mutableStateOf(initialExclusions)
+    var exclusionZones by mutableStateOf(initialExclusions)
         private set
-    var tripwireRegions by mutableStateOf(initialTripwireRegions)
+    var tripwireZones by mutableStateOf(initialTripwireZones)
         private set
     var tripwireDirection by mutableStateOf("either")
         private set
-    var mode by mutableStateOf(RegionEditorMode.inclusion)
+    var mode by mutableStateOf(ZoneEditorMode.inclusion)
         private set
 
     /** The list the current [mode] edits; every tool below operates on it. */
-    val regions: List<DetectionRegion>
+    val zones: List<DetectionZone>
         get() = when (mode) {
-            RegionEditorMode.inclusion -> inclusionRegions
-            RegionEditorMode.exclusion -> exclusionRegions
-            RegionEditorMode.tripwire -> tripwireRegions
+            ZoneEditorMode.inclusion -> inclusionZones
+            ZoneEditorMode.exclusion -> exclusionZones
+            ZoneEditorMode.tripwire -> tripwireZones
         }
 
     var selected by mutableIntStateOf(-1)
         private set
-    var shape by mutableStateOf(DetectionRegionShape.rect)
+    var shape by mutableStateOf(DetectionZoneShape.rect)
         private set
     var pendingPoly by mutableStateOf<List<Double>?>(null)
         private set
@@ -60,7 +60,7 @@ class RegionEditorViewModel(
     private var dragResizing = false
     private var dragMoving = false
 
-    fun chooseMode(value: RegionEditorMode) {
+    fun chooseMode(value: ZoneEditorMode) {
         if (mode == value) return
         mode = value
         selected = -1
@@ -72,11 +72,11 @@ class RegionEditorViewModel(
         tripwireDirection = direction
     }
 
-    private fun setActive(value: List<DetectionRegion>) {
+    private fun setActive(value: List<DetectionZone>) {
         when (mode) {
-            RegionEditorMode.inclusion -> inclusionRegions = value
-            RegionEditorMode.exclusion -> exclusionRegions = value
-            RegionEditorMode.tripwire -> tripwireRegions = value
+            ZoneEditorMode.inclusion -> inclusionZones = value
+            ZoneEditorMode.exclusion -> exclusionZones = value
+            ZoneEditorMode.tripwire -> tripwireZones = value
         }
     }
 
@@ -86,42 +86,42 @@ class RegionEditorViewModel(
 
     fun chooseShape(value: String) {
         shape = value
-        if (value == DetectionRegionShape.rect) pendingPoly = null
+        if (value == DetectionZoneShape.rect) pendingPoly = null
     }
 
     /** Label edit; empty input keeps the previous label (Dart parity). */
     fun renameSelected(label: String) {
         val i = selected
-        if (i !in regions.indices) return
-        val r = regions[i]
-        setActive(regions.toMutableList().also {
+        if (i !in zones.indices) return
+        val r = zones[i]
+        setActive(zones.toMutableList().also {
             it[i] = r.copy(label = label.trim().ifEmpty { r.label })
         })
     }
 
     fun onTap(nx: Double, ny: Double) {
-        if (shape == DetectionRegionShape.poly) {
+        if (shape == DetectionZoneShape.poly) {
             // First tap in poly mode STARTS the pending polygon.
             val p = pendingPoly ?: emptyList()
             pendingPoly = p + listOf(nx, ny)
             return
         }
-        select(hitRegion(nx, ny))
+        select(hitZone(nx, ny))
     }
 
     fun onPanStart(nx: Double, ny: Double) {
-        val hit = hitRegion(nx, ny)
+        val hit = hitZone(nx, ny)
         if (hit >= 0) {
             select(hit)
-            val r = regions[hit]
-            if (r.shape == DetectionRegionShape.rect && nearCorner(r, nx, ny)) {
+            val r = zones[hit]
+            if (r.shape == DetectionZoneShape.rect && nearCorner(r, nx, ny)) {
                 dragResizing = true
             } else {
                 dragMoving = true
             }
             // Anchor the first move delta at the grab point.
             dragLast = nx to ny
-        } else if (shape == DetectionRegionShape.rect) {
+        } else if (shape == DetectionZoneShape.rect) {
             // Start a new rectangle at the drag origin.
             selected = -1
             pendingPoly = null
@@ -136,9 +136,9 @@ class RegionEditorViewModel(
         when {
             dragResizing -> {
                 val i = selected
-                if (i in regions.indices) {
-                    val r = regions[i]
-                    setActive(regions.toMutableList().also {
+                if (i in zones.indices) {
+                    val r = zones[i]
+                    setActive(zones.toMutableList().also {
                         it[i] = r.copy(points = listOf(r.points[0], r.points[1], nx.toDouble(), ny.toDouble()))
                     })
                 }
@@ -146,9 +146,9 @@ class RegionEditorViewModel(
             dragMoving -> {
                 val i = selected
                 val last = dragLast
-                if (i in regions.indices && last != null) {
-                    val r = regions[i]
-                    setActive(regions.toMutableList().also {
+                if (i in zones.indices && last != null) {
+                    val r = zones[i]
+                    setActive(zones.toMutableList().also {
                         it[i] = r.copy(points = translate(r.points, nx - last.first, ny - last.second))
                     })
                     dragLast = n
@@ -181,25 +181,25 @@ class RegionEditorViewModel(
             kotlin.math.abs(rect[2] - rect[0]) >= 0.02 &&
             kotlin.math.abs(rect[3] - rect[1]) >= 0.02
         ) {
-            addRegion(DetectionRegionShape.rect, rect)
+            addZone(DetectionZoneShape.rect, rect)
         }
     }
 
-    fun addRegion() {
+    fun addZone() {
         pendingPoly = null
-        addRegion(DetectionRegionShape.rect, listOf(0.2, 0.2, 0.8, 0.8))
+        addZone(DetectionZoneShape.rect, listOf(0.2, 0.2, 0.8, 0.8))
     }
 
     fun commitPoly() {
         val p = pendingPoly
         pendingPoly = null
         if (p == null || p.size < 6) return
-        addRegion(DetectionRegionShape.poly, p)
+        addZone(DetectionZoneShape.poly, p)
     }
 
     fun deleteAt(index: Int) {
-        if (index !in regions.indices) return
-        setActive(regions.toMutableList().also { it.removeAt(index) })
+        if (index !in zones.indices) return
+        setActive(zones.toMutableList().also { it.removeAt(index) })
         when {
             selected == index -> {
                 selected = -1
@@ -210,8 +210,8 @@ class RegionEditorViewModel(
 
     fun deleteSelected() {
         val i = selected
-        if (i !in regions.indices) return
-        setActive(regions.toMutableList().also { it.removeAt(i) })
+        if (i !in zones.indices) return
+        setActive(zones.toMutableList().also { it.removeAt(i) })
         selected = -1
     }
 
@@ -221,25 +221,25 @@ class RegionEditorViewModel(
         pendingPoly = null
     }
 
-    private fun addRegion(shapeValue: String, points: List<Double>) {
+    private fun addZone(shapeValue: String, points: List<Double>) {
         val id = "r${nextId}"
         nextId++
-        val direction = if (mode == RegionEditorMode.tripwire) tripwireDirection else "either"
+        val direction = if (mode == ZoneEditorMode.tripwire) tripwireDirection else "either"
         setActive(
-            regions + DetectionRegion(
+            zones + DetectionZone(
                 id = id,
                 shape = shapeValue,
-                label = "Region $nextId",
+                label = "Zone $nextId",
                 points = points,
                 direction = direction,
             ),
         )
-        select(regions.size - 1)
+        select(zones.size - 1)
     }
 
-    private fun hitRegion(nx: Double, ny: Double): Int {
-        for (i in regions.indices.reversed()) {
-            if (pointInRegion(regions[i], nx, ny)) return i
+    private fun hitZone(nx: Double, ny: Double): Int {
+        for (i in zones.indices.reversed()) {
+            if (pointInZone(zones[i], nx, ny)) return i
         }
         return -1
     }
@@ -255,7 +255,7 @@ class RegionEditorViewModel(
         return out
     }
 
-    private fun nearCorner(r: DetectionRegion, x: Double, y: Double): Boolean {
+    private fun nearCorner(r: DetectionZone, x: Double, y: Double): Boolean {
         val tol = 0.06
         val x0 = r.points[0]
         val y0 = r.points[1]

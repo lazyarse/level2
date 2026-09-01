@@ -4,14 +4,14 @@ import io.securitycam.level2.core.TriggerType
 
 /**
  * Tripwire trigger: fires when a detected object's center crosses a tripwire
- * region boundary. Reads boxes from matching source detectors — zero extra
+ * zone boundary. Reads boxes from matching source detectors — zero extra
  * YOLO inference. Stateful: tracks centers across frames via proximity.
  */
 class TripwireDetector(
     override val config: DetectorConfig,
 ) : FrameDetector() {
 
-    var tripwireRegions: List<DetectionRegion> = emptyList()
+    var tripwireZones: List<DetectionZone> = emptyList()
 
     /** Detectors to read boxes from (set by the pipeline). */
     var sourceDetectors: List<FrameDetector> = emptyList()
@@ -36,7 +36,7 @@ class TripwireDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val allBoxes = sourceDetectors.flatMap { it.latestBoxes }
-        if (allBoxes.isEmpty() || tripwireRegions.isEmpty()) {
+        if (allBoxes.isEmpty() || tripwireZones.isEmpty()) {
             return result(frame.timestamp, 0.0, false)
         }
 
@@ -51,12 +51,12 @@ class TripwireDetector(
         var maxScore = 0.0
         var crossed = false
 
-        for (region in tripwireRegions) {
-            val direction = region.direction
+        for (zone in tripwireZones) {
+            val direction = zone.direction
             for ((trackId, curCenter) in matched) {
                 val prevCenter = previousCenters[trackId] ?: continue
-                val wasInside = RegionFilter.pointInRegion(region, prevCenter.first, prevCenter.second)
-                val isInside = RegionFilter.pointInRegion(region, curCenter.first, curCenter.second)
+                val wasInside = ZoneFilter.pointInZone(zone, prevCenter.first, prevCenter.second)
+                val isInside = ZoneFilter.pointInZone(zone, curCenter.first, curCenter.second)
 
                 if (wasInside == isInside) continue
 

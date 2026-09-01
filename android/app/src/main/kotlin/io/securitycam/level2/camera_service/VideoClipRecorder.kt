@@ -79,7 +79,7 @@ object VideoClipRecorder {
     private var clipTimestampCameraName = false
     private var privacyMasking = false
     private var privacyMaskEffect = "solid"
-    private var exclusionRegions: List<io.securitycam.level2.detection.DetectionRegion> = emptyList()
+    private var exclusionZones: List<io.securitycam.level2.detection.DetectionZone> = emptyList()
 
     @Volatile private var active = false
     @Volatile private var exporting = false
@@ -136,7 +136,7 @@ object VideoClipRecorder {
         clipTimestampCameraName: Boolean = false,
         privacyMasking: Boolean = false,
         privacyMaskEffect: String = "solid",
-        exclusionRegions: List<io.securitycam.level2.detection.DetectionRegion> = emptyList(),
+        exclusionZones: List<io.securitycam.level2.detection.DetectionZone> = emptyList(),
     ) {
         context = ctx.applicationContext
         cameraName = camName
@@ -148,7 +148,7 @@ object VideoClipRecorder {
         this.clipTimestampCameraName = clipTimestampCameraName
         this.privacyMasking = privacyMasking
         this.privacyMaskEffect = privacyMaskEffect
-        this.exclusionRegions = exclusionRegions
+        this.exclusionZones = exclusionZones
         val dir = File(ctx.applicationContext.cacheDir, "video_segments")
         if (!dir.exists()) dir.mkdirs()
         ringDir = dir
@@ -390,7 +390,7 @@ object VideoClipRecorder {
                     // clip — never lose evidence.
                     var storeFile = finalFile
                     val needsStamp = clipTimestamp
-                    val needsMask = privacyMasking && exclusionRegions.isNotEmpty()
+                    val needsMask = privacyMasking && exclusionZones.isNotEmpty()
                     if (needsStamp || needsMask) {
                         val stamped = File(ringDir, "stamped-${System.currentTimeMillis()}.mp4")
                         val appContext = context
@@ -403,7 +403,7 @@ object VideoClipRecorder {
                                 position = clipTimestampPosition,
                                 includeCameraName = clipTimestampCameraName,
                                 cameraName = cameraName,
-                                exclusionRegions = exclusionRegions,
+                                exclusionZones = exclusionZones,
                                 privacyMaskEffect = privacyMaskEffect,
                             )
                         } else {

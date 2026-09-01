@@ -14,14 +14,14 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class PrivacyMaskOverlayTest {
 
-    private val rectRegion = io.securitycam.level2.detection.DetectionRegion(
+    private val rectZone = io.securitycam.level2.detection.DetectionZone(
         id = "r1",
         shape = "rect",
         label = "Door",
         points = listOf(0.25, 0.25, 0.75, 0.75),
     )
 
-    private val polyRegion = io.securitycam.level2.detection.DetectionRegion(
+    private val polyZone = io.securitycam.level2.detection.DetectionZone(
         id = "p1",
         shape = "poly",
         label = "Window",
@@ -31,7 +31,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun solidRect_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -45,7 +45,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun solidPoly_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(polyRegion),
+            exclusionZones = listOf(polyZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -58,7 +58,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun rotation90_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -71,7 +71,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun rotation180_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -83,7 +83,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun rotation270_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -95,7 +95,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun emptyExclusions_producesBitmap() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = emptyList(),
+            exclusionZones = emptyList(),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 100,
             frameHeight = 100,
@@ -107,9 +107,9 @@ class PrivacyMaskOverlayTest {
     }
 
     @Test
-    fun multipleRegions_doesNotThrow() {
+    fun multipleZones_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion, polyRegion),
+            exclusionZones = listOf(rectZone, polyZone),
             effect = PrivacyMaskEffect.solid,
             frameWidth = 200,
             frameHeight = 200,
@@ -121,7 +121,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun pixelateEffect_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.pixelate,
             frameWidth = 200,
             frameHeight = 200,
@@ -133,7 +133,7 @@ class PrivacyMaskOverlayTest {
     @Test
     fun blurEffect_doesNotThrow() {
         val overlay = PrivacyMaskOverlay(
-            exclusionRegions = listOf(rectRegion),
+            exclusionZones = listOf(rectZone),
             effect = PrivacyMaskEffect.blur,
             frameWidth = 200,
             frameHeight = 200,

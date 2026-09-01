@@ -5,7 +5,7 @@ import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.RegionFilter
+import io.securitycam.level2.detection.ZoneFilter
 
 /**
  * Livestock-detection trigger (cow/sheep/horse). Runs on color analysis frames
@@ -50,8 +50,8 @@ class LivestockDetector(
                 val by = p.y1 / color.height
                 val bw = (p.x2 - p.x1) / color.width
                 val bh = (p.y2 - p.y1) / color.height
-                RegionFilter.rectOverlapsAny(regions, bx, by, bw, bh) &&
-                    !RegionFilter.boxHitsAnyExclusion(exclusionRegions, bx, by, bw, bh)
+                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
+                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
             }
         }
         latestBoxes = animals

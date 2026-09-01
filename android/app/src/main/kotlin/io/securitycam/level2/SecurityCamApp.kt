@@ -31,7 +31,7 @@ import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.ui.events.EventsScreen
 import io.securitycam.level2.ui.events.EventsViewModel
 import io.securitycam.level2.ui.monitor.MonitorScreen
-import io.securitycam.level2.ui.regions.RegionEditorScreen
+import io.securitycam.level2.ui.zones.ZoneEditorScreen
 import io.securitycam.level2.ui.settings.FaceEnrollmentScreen
 import io.securitycam.level2.ui.settings.SettingsScreen
 import io.securitycam.level2.ui.settings.SettingsViewModel
@@ -56,7 +56,7 @@ fun SecurityCamApp(
 ) {
     var tab by remember { mutableStateOf(Level2Tab.Monitor) }
     val settingsViewModel: SettingsViewModel = viewModel(factory = settingsFactory)
-    var showRegionEditor by remember { mutableStateOf(false) }
+    var showZoneEditor by remember { mutableStateOf(false) }
     // Full-screen capture page while a face enrollment is in flight; it is
     // dismissed automatically when the enrollment finishes (label → null).
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
@@ -79,7 +79,7 @@ fun SecurityCamApp(
 
     Scaffold(
         bottomBar = {
-            if (!showRegionEditor && !enrollmentActive) {
+            if (!showZoneEditor && !enrollmentActive) {
                 NavigationBar {
                     Level2Tab.entries.forEach { t ->
                         NavigationBarItem(
@@ -105,33 +105,33 @@ fun SecurityCamApp(
                     onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
                     canFlipCamera = enrollmentSessionLocal,
                 )
-            } else if (showRegionEditor) {
-                // Live camera behind the editor so regions land on real
+            } else if (showZoneEditor) {
+                // Live camera behind the editor so zones land on real
                 // features; session ownership is released on any exit path.
                 DisposableEffect(Unit) {
-                    settingsViewModel.beginRegionPreview()
-                    onDispose { settingsViewModel.endRegionPreview() }
+                    settingsViewModel.beginZonePreview()
+                    onDispose { settingsViewModel.endZonePreview() }
                 }
                 // Letterbox mapping needs the analysis-frame aspect so drawn
-                // regions match detector coordinates exactly.
+                // zones match detector coordinates exactly.
                 val analysisDims = io.securitycam.level2.core.AnalysisResolution.size(
                     settingsViewModel.draft.value?.analysisResolution
                         ?: io.securitycam.level2.core.AnalysisResolution.balanced,
                 )
-                RegionEditorScreen(
-                    initialRegions = settingsViewModel.draft.value?.detectionRegions.orEmpty(),
-                    initialExclusions = settingsViewModel.draft.value?.exclusionRegions.orEmpty(),
-                    initialTripwireRegions = settingsViewModel.draft.value?.tripwireRegions.orEmpty(),
-                    onSave = { regions, exclusions, tripwires ->
+                ZoneEditorScreen(
+                    initialZones = settingsViewModel.draft.value?.detectionZones.orEmpty(),
+                    initialExclusions = settingsViewModel.draft.value?.exclusionZones.orEmpty(),
+                    initialTripwireZones = settingsViewModel.draft.value?.tripwireZones.orEmpty(),
+                    onSave = { zones, exclusions, tripwires ->
                         settingsViewModel.update {
                             it.copy(
-                                detectionRegions = regions,
-                                exclusionRegions = exclusions,
-                                tripwireRegions = tripwires,
+                                detectionZones = zones,
+                                exclusionZones = exclusions,
+                                tripwireZones = tripwires,
                             )
                         }
                     },
-                    onClose = { showRegionEditor = false },
+                    onClose = { showZoneEditor = false },
                     frameWidth = analysisDims.first,
                     frameHeight = analysisDims.second,
                 )
@@ -143,7 +143,7 @@ fun SecurityCamApp(
                     )
                     Level2Tab.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,
-                        onOpenRegionEditor = { showRegionEditor = true },
+                        onOpenZoneEditor = { showZoneEditor = true },
                     )
                 }
             }

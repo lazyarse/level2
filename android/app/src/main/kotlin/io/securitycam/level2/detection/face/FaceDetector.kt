@@ -6,13 +6,13 @@ import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.RegionFilter
+import io.securitycam.level2.detection.ZoneFilter
 import io.securitycam.level2.detection.person.AppContextHolder
 
 /**
  * Face-detection trigger. Runs on color analysis frames (motion-gated by the
  * pipeline). Persistence/threshold/cooldown come from [DetectorConfig]; faces
- * are region-filtered via box overlap when regions are set.
+ * are zone-filtered via box overlap when zones are set.
  *
  * Detection is async, so the real work lives in [analyzeFrameAsync];
  * [analyzeFrame] is a no-op non-trigger for the sync path.
@@ -59,7 +59,7 @@ open class FaceDetector(
         return result(frame.timestamp, best.score, false)
     }
 
-    /** Highest-confidence region-filtered face, with its frame; null if none. */
+    /** Highest-confidence zone-filtered face, with its frame; null if none. */
     protected suspend fun topFace(frame: AnalysisFrame): Pair<ColorBitmap, FaceDetection>? {
         val color = frame.color ?: return null
         var faces = engine.detectFaces(color)
@@ -69,8 +69,8 @@ open class FaceDetector(
             val bh = f.y2 - f.y1
             // Keep when it overlaps an inclusion zone (or none exist) and no
             // exclusion zone: exclusion wins.
-            RegionFilter.rectOverlapsAny(regions, f.x1, f.y1, bw, bh) &&
-                !RegionFilter.boxHitsAnyExclusion(exclusionRegions, f.x1, f.y1, bw, bh)
+            ZoneFilter.rectOverlapsAny(zones, f.x1, f.y1, bw, bh) &&
+                !ZoneFilter.boxHitsAnyExclusion(exclusionZones, f.x1, f.y1, bw, bh)
         }
         val best = faces.maxByOrNull { it.score } ?: return null
         return color to best

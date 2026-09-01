@@ -1,6 +1,6 @@
 package io.securitycam.level2.core
 
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
 
@@ -205,11 +205,11 @@ data class AppSettings(
     val screenOrientation: String = ScreenOrientation.portrait,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
     val monitorPreview: Boolean = false,
-    val detectionRegions: List<DetectionRegion> = emptyList(),
-    val exclusionRegions: List<DetectionRegion> = emptyList(),
+    val detectionZones: List<DetectionZone> = emptyList(),
+    val exclusionZones: List<DetectionZone> = emptyList(),
     val scheduleExclusions: List<ScheduleWindow> = emptyList(),
     val knownFaces: List<KnownFace> = emptyList(),
-    val tripwireRegions: List<DetectionRegion> = emptyList(),
+    val tripwireZones: List<DetectionZone> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
 ) {
@@ -231,11 +231,11 @@ data class AppSettings(
         privacyMaskEffect: String? = null,
         analysisResolution: String? = null,
         screenOrientation: String? = null,
-        detectionRegions: List<DetectionRegion>? = null,
-        exclusionRegions: List<DetectionRegion>? = null,
+        detectionZones: List<DetectionZone>? = null,
+        exclusionZones: List<DetectionZone>? = null,
         scheduleExclusions: List<ScheduleWindow>? = null,
         knownFaces: List<KnownFace>? = null,
-        tripwireRegions: List<DetectionRegion>? = null,
+        tripwireZones: List<DetectionZone>? = null,
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
     ): AppSettings = AppSettings(
@@ -257,11 +257,11 @@ data class AppSettings(
         analysisResolution = analysisResolution ?: this.analysisResolution,
         screenOrientation = screenOrientation ?: this.screenOrientation,
         monitorPreview = monitorPreview ?: this.monitorPreview,
-        detectionRegions = detectionRegions ?: this.detectionRegions,
-        exclusionRegions = exclusionRegions ?: this.exclusionRegions,
+        detectionZones = detectionZones ?: this.detectionZones,
+        exclusionZones = exclusionZones ?: this.exclusionZones,
         scheduleExclusions = scheduleExclusions ?: this.scheduleExclusions,
         knownFaces = knownFaces ?: this.knownFaces,
-        tripwireRegions = tripwireRegions ?: this.tripwireRegions,
+        tripwireZones = tripwireZones ?: this.tripwireZones,
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
     )
@@ -286,10 +286,10 @@ data class AppSettings(
         json["analysisResolution"] = analysisResolution
         json["screenOrientation"] = screenOrientation
         json["monitorPreview"] = monitorPreview
-        json["detectionRegions"] = detectionRegions.map { it.toJson() }
-        json["exclusionRegions"] = exclusionRegions.map { it.toJson() }
+        json["detectionZones"] = detectionZones.map { it.toJson() }
+        json["exclusionZones"] = exclusionZones.map { it.toJson() }
         json["knownFaces"] = knownFaces.map { it.toJson() }
-        json["tripwireRegions"] = tripwireRegions.map { it.toJson() }
+        json["tripwireZones"] = tripwireZones.map { it.toJson() }
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
@@ -542,17 +542,17 @@ data class AppSettings(
                     ?: defaults.screenOrientation,
                 monitorPreview = json["monitorPreview"] as? Boolean
                     ?: defaults.monitorPreview,
-                detectionRegions = (json["detectionRegions"] as? List<*>)
-                    ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                detectionZones = (json["detectionZones"] as? List<*>)
+                    ?.map { DetectionZone.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
-                exclusionRegions = (json["exclusionRegions"] as? List<*>)
-                    ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                exclusionZones = (json["exclusionZones"] as? List<*>)
+                    ?.map { DetectionZone.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
                 knownFaces = (json["knownFaces"] as? List<*>)
                     ?.map { KnownFace.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
-                tripwireRegions = (json["tripwireRegions"] as? List<*>)
-                    ?.map { DetectionRegion.fromJson(it as Map<String, Any?>) }
+                tripwireZones = (json["tripwireZones"] as? List<*>)
+                    ?.map { DetectionZone.fromJson(it as Map<String, Any?>) }
                     ?: emptyList(),
                 scheduleExclusions = (json["scheduleExclusions"] as? List<*>)
                     ?.map { ScheduleWindow.fromJson(it as Map<String, Any?>) }

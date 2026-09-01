@@ -3,7 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
-import io.securitycam.level2.detection.DetectionRegion
+import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
 import java.time.Instant
@@ -128,8 +128,8 @@ class BirdDetectorTest {
             engine = engine,
         )
         d.init()
-        d.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        d.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
         assertFalse(r.triggered)
@@ -145,8 +145,8 @@ class BirdDetectorTest {
             engine = engine,
         )
         d.init()
-        d.exclusionRegions = listOf(
-            DetectionRegion("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
+        d.exclusionZones = listOf(
+            DetectionZone("e1", "rect", "private", listOf(0.0, 0.0, 0.5, 0.5)),
         )
         val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
         assertTrue(r.triggered)
@@ -162,8 +162,8 @@ class BirdDetectorTest {
             engine = engine,
         )
         d.init()
-        d.regions = listOf(
-            DetectionRegion("r1", "rect", "focus", listOf(0.0, 0.0, 0.4, 0.4)),
+        d.zones = listOf(
+            DetectionZone("r1", "rect", "focus", listOf(0.0, 0.0, 0.4, 0.4)),
         )
         val r = d.analyzeFrameAsync(frame(base, c = bigColor()))
         assertFalse(r.triggered)
