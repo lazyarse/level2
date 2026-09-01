@@ -163,7 +163,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 )
                 IconButton(onClick = {
                     showRegions = !showRegions
-                    Toast.makeText(context, "Show regions: ${if (showRegions) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Show Regions: ${if (showRegions) "On" else "Off"}", Toast.LENGTH_SHORT).show()
                 }) {
                     Icon(
                         Icons.Filled.Visibility,
@@ -175,7 +175,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 IconButton(
                     onClick = {
                         viewModel.togglePreview()
-                        Toast.makeText(context, "Live feed: ${if (!monitorPreview) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Show On Screen: ${if (!monitorPreview) "On" else "Off"}", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.testTag("previewToggleButton"),
                 ) {
@@ -266,7 +266,7 @@ private fun MonitorStatusBar(
                     .size(10.dp)
                     .clip(CircleShape)
                     .background(
-                        if (previewActive) MaterialTheme.colorScheme.primary
+                        if (monitoring || previewing) Color.Red
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
             )
@@ -276,16 +276,6 @@ private fun MonitorStatusBar(
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.weight(1f))
-            // "Recording" indicator while the pipeline is live.
-            if (monitoring) {
-                Box(
-                    Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(Color.Red),
-                )
-                Spacer(Modifier.width(8.dp))
-            }
             // Triggered detector icons; the face family shares one glyph whose
             // color reflects recognition outcome (green = known, red = other).
             if (activeTriggers.isNotEmpty()) {
@@ -326,17 +316,19 @@ private fun MonitorStatusBar(
                     Text("Stop")
                 }
             } else {
-                Button(
-                    onClick = onStart,
-                    enabled = state != MonitorState.Starting,
-                    modifier = Modifier.testTag("startMonitorButton"),
-                    shape = RoundedCornerShape(2.dp),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                if (!previewing) {
+                    Button(
+                        onClick = onStart,
+                        enabled = state != MonitorState.Starting,
+                        modifier = Modifier.testTag("startMonitorButton"),
+                        shape = RoundedCornerShape(2.dp),
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (state == MonitorState.Error) "Retry" else "Start")
+                    }
                     Spacer(Modifier.width(4.dp))
-                    Text(if (state == MonitorState.Error) "Retry" else "Start")
                 }
-                Spacer(Modifier.width(4.dp))
                 when {
                     state == MonitorState.Idle -> Button(
                         onClick = onStartPreview,
@@ -346,15 +338,14 @@ private fun MonitorStatusBar(
                         Text("Preview")
                     }
 
-                    previewing -> IconButton(
+                    previewing -> Button(
                         onClick = onStopPreview,
                         modifier = Modifier.testTag("stopPreviewButton"),
+                        shape = RoundedCornerShape(2.dp),
                     ) {
-                        Icon(
-                            Icons.Filled.Stop,
-                            contentDescription = "Stop preview",
-                            tint = MaterialTheme.colorScheme.error,
-                        )
+                        Icon(Icons.Filled.Stop, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Stop")
                     }
 
                     // Cancel a slow service start; Error relies on Retry above.

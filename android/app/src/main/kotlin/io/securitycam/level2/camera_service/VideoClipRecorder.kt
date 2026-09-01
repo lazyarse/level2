@@ -186,11 +186,13 @@ object VideoClipRecorder {
     }
 
     fun onMonitoringStarted() {
+        Log.i(TAG, "onMonitoringStarted: active=true ringDir=${ringDir != null} recorder=${recorder != null}")
         active = true
         startRingRecording()
     }
 
     fun onMonitoringStopped() {
+        Log.i(TAG, "onMonitoringStopped: was active=$active exporting=$exporting")
         active = false
         stopRingRecording()
         if (!exporting) {
@@ -307,6 +309,8 @@ object VideoClipRecorder {
     ) {
         val currentRecorder = recorder
         if (!active || exporting || currentRecorder == null || ringDir == null) {
+            Log.w(TAG, "exportClip rejected: active=$active exporting=$exporting " +
+                "recorder=${currentRecorder != null} ringDir=${ringDir != null} triggerAt=$triggerAtMs")
             result(null)
             return
         }
@@ -453,6 +457,7 @@ object VideoClipRecorder {
     }
 
     private fun failExport() {
+        Log.w(TAG, "failExport: cleaning up pre=${preFile?.name} tail=${tailFile?.name} post=${postFile?.name}")
         deleteQuietly(preFile, tailFile, postFile)
         preFile = null
         tailFile = null

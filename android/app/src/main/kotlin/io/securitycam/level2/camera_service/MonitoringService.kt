@@ -3,6 +3,7 @@ package io.securitycam.level2.camera_service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import io.securitycam.level2.R
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -661,7 +662,7 @@ object MonitoringServiceController {
                 if (preview) "Tap to start monitoring"
                 else "Camera analysis is running"
             )
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .build()
