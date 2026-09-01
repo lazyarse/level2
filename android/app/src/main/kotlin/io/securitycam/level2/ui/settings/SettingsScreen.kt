@@ -259,6 +259,11 @@ fun SettingsScreen(
                             onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
                         )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
+                            BodyText(
+                                "Threshold: confidence needed to detect · " +
+                                    "Persistence: consecutive frames before triggering · " +
+                                    "Cooldown: minimum gap between triggers",
+                            )
                             detectorGroup("Camera", current, cameraDetectorOrder) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
@@ -268,8 +273,131 @@ fun SettingsScreen(
                             detectorGroup("Combined", current, combinedPetOrder) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
-                            detectorGroup("System", current, listOf(TriggerType.health)) { type, next ->
-                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                        }
+                        CollapsibleSection(
+                            "Notification Channels",
+                            summary = run {
+                                val nonLog = current.channelConfigs.filter { it.type != "log" }
+                                val active = nonLog.count { it.enabled }
+                                "$active/${nonLog.size} active"
+                            },
+                        ) {
+                            for (config in current.channelConfigs) {
+                                if (config.type != "log") {
+                                    ChannelCard(
+                                        config = config,
+                                        fields = fields,
+                                        onEnabledChange = { enabled ->
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.map {
+                                                        if (it.id == config.id) it.copy(enabled = enabled) else it
+                                                    },
+                                                )
+                                            }
+                                        },
+                                        onSendTest = { merged ->
+                                            viewModel.sendTestFromUi(merged)
+                                        },
+                                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
+                                        factories = viewModel.testFactories,
+                                    )
+                                }
+                            }
+                        }
+                        CollapsibleSection("Video clips", summary = if (current.recordVideo) "on" else "off") {
+                            BodyText(
+                                "Android only: each event captures footage before and after the " +
+                                    "trigger and saves it to your gallery.",
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            SwitchRow(
+                                title = "Record video locally",
+                                subtitle = "Save a clip to your gallery for each event. Off saves storage and battery.",
+                                checked = current.recordVideo,
+                                onCheckedChange = { v -> viewModel.update { it.copy(recordVideo = v) } },
+                            )
+                            DropdownField(
+                                label = "Resolution",
+                                selected = VideoQuality.label(current.videoQuality),
+                                options = VideoQuality.values.map { it to VideoQuality.label(it) },
+                                enabled = current.recordVideo,
+                                testTag = "videoQualityDropdown",
+                                onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
+                            )
+                            Text("Pre-roll: ${current.preRollSeconds}s")
+                            Slider(
+                                value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v ->
+                                    viewModel.update { it.copy(preRollSeconds = v.round()) }
+                                },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                                enabled = current.recordVideo,
+                                modifier = Modifier.testTag("preRollSlider"),
+                            )
+                            Text("Post-roll: ${current.postRollSeconds}s")
+                            Slider(
+                                value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
+                                onValueChange = { v ->
+                                    viewModel.update { it.copy(postRollSeconds = v.round()) }
+                                },
+                                valueRange = 0f..30f,
+                                steps = 29,
+                                enabled = current.recordVideo,
+                                modifier = Modifier.testTag("postRollSlider"),
+                            )
+                            SwitchRow(
+                                title = "Date/time stamp",
+                                subtitle = "Burn the date/time into recorded clips",
+                                checked = current.clipTimestamp,
+                                onCheckedChange = { v ->
+                                    viewModel.update { it.copy(clipTimestamp = v) }
+                                },
+                            )
+                            if (current.clipTimestamp) {
+                                SwitchRow(
+                                    title = "Include camera name",
+                                    subtitle = "Prefix the stamp with the camera name",
+                                    checked = current.clipTimestampCameraName,
+                                    onCheckedChange = { v ->
+                                        viewModel.update {
+                                            it.copy(clipTimestampCameraName = v)
+                                        }
+                                    },
+                                )
+                                DropdownField(
+                                    label = "Stamp position",
+                                    selected = ClipStampPosition.label(current.clipTimestampPosition),
+                                    options = ClipStampPosition.values.map {
+                                        it to ClipStampPosition.label(it)
+                                    },
+                                    testTag = "clipStampPosition",
+                                    onSelect = { p ->
+                                        viewModel.update { it.copy(clipTimestampPosition = p) }
+                                    },
+                                )
+                            }
+                            SwitchRow(
+                                title = "Privacy mask",
+                                subtitle = "Obscure exclusion zones in recorded clips",
+                                checked = current.privacyMasking,
+                                onCheckedChange = { v ->
+                                    viewModel.update { it.copy(privacyMasking = v) }
+                                },
+                            )
+                            if (current.privacyMasking) {
+                                DropdownField(
+                                    label = "Mask effect",
+                                    selected = io.securitycam.level2.core.PrivacyMaskEffect.label(current.privacyMaskEffect),
+                                    options = io.securitycam.level2.core.PrivacyMaskEffect.values.map {
+                                        it to io.securitycam.level2.core.PrivacyMaskEffect.label(it)
+                                    },
+                                    testTag = "privacyMaskEffect",
+                                    onSelect = { e ->
+                                        viewModel.update { it.copy(privacyMaskEffect = e) }
+                                    },
+                                )
                             }
                         }
                         CollapsibleSection("Regions", summary = regionsSummary(current)) {
@@ -399,179 +527,6 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(8.dp))
                                     Text("Add face")
                                 }
-                            }
-                        }
-                        CollapsibleSection(
-                            "Notification Channels",
-                            summary = run {
-                                val nonLog = current.channelConfigs.filter { it.type != "log" }
-                                val active = nonLog.count { it.enabled }
-                                "$active/${nonLog.size} active"
-                            },
-                        ) {
-                            for (config in current.channelConfigs) {
-                                if (config.type != "log") {
-                                    ChannelCard(
-                                        config = config,
-                                        fields = fields,
-                                        onEnabledChange = { enabled ->
-                                            viewModel.update { settings ->
-                                                settings.copy(
-                                                    channelConfigs = settings.channelConfigs.map {
-                                                        if (it.id == config.id) it.copy(enabled = enabled) else it
-                                                    },
-                                                )
-                                            }
-                                        },
-                                        onSendTest = { merged ->
-                                            viewModel.sendTestFromUi(merged)
-                                        },
-                                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
-                                        factories = viewModel.testFactories,
-                                    )
-                                }
-                            }
-                        }
-                        CollapsibleSection("Schedule", summary = "${current.scheduleExclusions.size} windows") {
-                            BodyText("Define the time slots that video monitoring should happen.")
-                            Spacer(Modifier.height(8.dp))
-                            for (window in current.scheduleExclusions) {
-                                ScheduleWindowCard(
-                                    window = window,
-                                    onChanged = { next ->
-                                        viewModel.update { s ->
-                                            s.copy(
-                                                scheduleExclusions = s.scheduleExclusions.map {
-                                                    if (it.id == window.id) next else it
-                                                },
-                                            )
-                                        }
-                                    },
-                                    onDelete = {
-                                        viewModel.update { s ->
-                                            s.copy(
-                                                scheduleExclusions =
-                                                    s.scheduleExclusions.filterNot { it.id == window.id },
-                                            )
-                                        }
-                                    },
-                                )
-                            }
-                            Button(
-                                onClick = {
-                                    viewModel.update { s ->
-                                        s.copy(
-                                            scheduleExclusions = s.scheduleExclusions + ScheduleWindow(
-                                                id = java.util.UUID.randomUUID().toString(),
-                                                days = 0b1111111,
-                                                startHour = 22,
-                                                startMinute = 0,
-                                                endHour = 6,
-                                                endMinute = 0,
-                                            ),
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.testTag("scheduleAddWindow"),
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Add window")
-                            }
-                        }
-                        CollapsibleSection("Video clips", summary = if (current.recordVideo) "on" else "off") {
-                            BodyText(
-                                "Android only: each event captures footage before and after the " +
-                                    "trigger and saves it to your gallery.",
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            SwitchRow(
-                                title = "Record video locally",
-                                subtitle = "Save a clip to your gallery for each event. Off saves storage and battery.",
-                                checked = current.recordVideo,
-                                onCheckedChange = { v -> viewModel.update { it.copy(recordVideo = v) } },
-                            )
-                            DropdownField(
-                                label = "Resolution",
-                                selected = VideoQuality.label(current.videoQuality),
-                                options = VideoQuality.values.map { it to VideoQuality.label(it) },
-                                enabled = current.recordVideo,
-                                testTag = "videoQualityDropdown",
-                                onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
-                            )
-                            Text("Pre-roll: ${current.preRollSeconds}s")
-                            Slider(
-                                value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v ->
-                                    viewModel.update { it.copy(preRollSeconds = v.round()) }
-                                },
-                                valueRange = 0f..30f,
-                                steps = 29,
-                                enabled = current.recordVideo,
-                                modifier = Modifier.testTag("preRollSlider"),
-                            )
-                            Text("Post-roll: ${current.postRollSeconds}s")
-                            Slider(
-                                value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v ->
-                                    viewModel.update { it.copy(postRollSeconds = v.round()) }
-                                },
-                                valueRange = 0f..30f,
-                                steps = 29,
-                                enabled = current.recordVideo,
-                                modifier = Modifier.testTag("postRollSlider"),
-                            )
-                            SwitchRow(
-                                title = "Date/time stamp",
-                                subtitle = "Burn the date/time into recorded clips",
-                                checked = current.clipTimestamp,
-                                onCheckedChange = { v ->
-                                    viewModel.update { it.copy(clipTimestamp = v) }
-                                },
-                            )
-                            if (current.clipTimestamp) {
-                                SwitchRow(
-                                    title = "Include camera name",
-                                    subtitle = "Prefix the stamp with the camera name",
-                                    checked = current.clipTimestampCameraName,
-                                    onCheckedChange = { v ->
-                                        viewModel.update {
-                                            it.copy(clipTimestampCameraName = v)
-                                        }
-                                    },
-                                )
-                                DropdownField(
-                                    label = "Stamp position",
-                                    selected = ClipStampPosition.label(current.clipTimestampPosition),
-                                    options = ClipStampPosition.values.map {
-                                        it to ClipStampPosition.label(it)
-                                    },
-                                    testTag = "clipStampPosition",
-                                    onSelect = { p ->
-                                        viewModel.update { it.copy(clipTimestampPosition = p) }
-                                    },
-                                )
-                            }
-                            SwitchRow(
-                                title = "Privacy mask",
-                                subtitle = "Obscure exclusion zones in recorded clips",
-                                checked = current.privacyMasking,
-                                onCheckedChange = { v ->
-                                    viewModel.update { it.copy(privacyMasking = v) }
-                                },
-                            )
-                            if (current.privacyMasking) {
-                                DropdownField(
-                                    label = "Mask effect",
-                                    selected = io.securitycam.level2.core.PrivacyMaskEffect.label(current.privacyMaskEffect),
-                                    options = io.securitycam.level2.core.PrivacyMaskEffect.values.map {
-                                        it to io.securitycam.level2.core.PrivacyMaskEffect.label(it)
-                                    },
-                                    testTag = "privacyMaskEffect",
-                                    onSelect = { e ->
-                                        viewModel.update { it.copy(privacyMaskEffect = e) }
-                                    },
-                                )
                             }
                         }
                         CollapsibleSection(
@@ -745,6 +700,53 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        CollapsibleSection("Schedule", summary = "${current.scheduleExclusions.size} windows") {
+                            BodyText("Define the time slots that video monitoring should happen.")
+                            Spacer(Modifier.height(8.dp))
+                            for (window in current.scheduleExclusions) {
+                                ScheduleWindowCard(
+                                    window = window,
+                                    onChanged = { next ->
+                                        viewModel.update { s ->
+                                            s.copy(
+                                                scheduleExclusions = s.scheduleExclusions.map {
+                                                    if (it.id == window.id) next else it
+                                                },
+                                            )
+                                        }
+                                    },
+                                    onDelete = {
+                                        viewModel.update { s ->
+                                            s.copy(
+                                                scheduleExclusions =
+                                                    s.scheduleExclusions.filterNot { it.id == window.id },
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.update { s ->
+                                        s.copy(
+                                            scheduleExclusions = s.scheduleExclusions + ScheduleWindow(
+                                                id = java.util.UUID.randomUUID().toString(),
+                                                days = 0b1111111,
+                                                startHour = 22,
+                                                startMinute = 0,
+                                                endHour = 6,
+                                                endMinute = 0,
+                                            ),
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.testTag("scheduleAddWindow"),
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add window")
+                            }
+                        }
                         CollapsibleSection("Cloud backup", summary = cloudBackupSummary(current.cloudBackup)) {
                             Card(modifier = Modifier.padding(vertical = 4.dp)) {
                                 SwitchRow(
@@ -898,6 +900,11 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Advanced") {
+                            Text("System", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                            detectorGroup("System", current, listOf(TriggerType.health)) { type, next ->
+                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                            }
+                            Spacer(Modifier.height(8.dp))
                             BodyText(
                                 "When multiple triggers fire within this window, they are " +
                                     "grouped into a single notification to reduce noise.",
@@ -1423,7 +1430,7 @@ private fun DetectorCard(
                             onCheckedChange = null,
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(id)
+                        Text(channelTitle(id))
                     }
                 }
             }

@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +64,7 @@ import io.securitycam.level2.storage.RecordedEventRow
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 private const val GRID_COLUMNS = 3
 
@@ -379,8 +384,13 @@ private fun EventRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "$timeText · $typeLabel · confidence: ${confidenceLabel(event.score)}",
+                "$timeText · $typeLabel",
                 style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                "Confidence: ${confidenceLabel(event.score)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 buildString {
@@ -421,6 +431,10 @@ private fun TimelineDay(
     var selectedId by remember { mutableStateOf<Long?>(null) }
     val selectedRow = rows.find { it.id == selectedId }
 
+    // Zoom state
+    var scale by remember { mutableFloatStateOf(1f) }
+    var panOffset by remember { mutableFloatStateOf(0f) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -430,74 +444,118 @@ private fun TimelineDay(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(72.dp),
         ) {
             val barWidth = maxWidth
 
-            // Horizontal axis line
-            Canvas(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .align(Alignment.CenterStart),
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 12f)
+                            val barWidthPx = barWidth.value
+                            val maxPan = barWidthPx * (1f - 1f / scale)
+                            panOffset = (panOffset + pan.x).coerceIn(-maxPan, maxPan)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = {
+                            scale = 1f
+                            panOffset = 0f
+                        })
+                    },
             ) {
-                drawLine(
-                    color = Color.Gray,
-                    start = Offset(0f, size.height / 2),
-                    end = Offset(size.width, size.height / 2),
-                    strokeWidth = 2.dp.toPx(),
-                )
-            }
+                val barWidthPx = barWidth.value
+                val visibleHours = 24f / scale
+                val panHours = panOffset / barWidthPx * 24f
+                val startHour = ((12f - visibleHours / 2f) - panHours)
+                    .coerceIn(0f, 24f - visibleHours)
+                val endHour = startHour + visibleHours
 
-            // Hour ticks and labels
-            listOf(0, 6, 12, 18, 24).forEach { hour ->
-                val xDp = barWidth * (hour / 24f)
+                fun hourToX(hour: Float) = barWidth * ((hour - startHour) / visibleHours)
+
+                // Horizontal axis line
+                val lineY = 16.dp
                 Canvas(
                     modifier = Modifier
-                        .width(1.dp)
-                        .height(10.dp)
-                        .offset(x = xDp)
-                        .align(Alignment.CenterStart),
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .offset(y = lineY),
                 ) {
                     drawLine(
                         color = Color.Gray,
-                        start = Offset(size.width / 2, 0f),
-                        end = Offset(size.width / 2, size.height),
-                        strokeWidth = 1.dp.toPx(),
+                        start = Offset(0f, size.height / 2),
+                        end = Offset(size.width, size.height / 2),
+                        strokeWidth = 2.dp.toPx(),
                     )
                 }
-                Text(
-                    text = "%02d:00".format(hour.coerceAtMost(23)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .width(36.dp)
-                        .offset(x = xDp - 18.dp)
-                        .align(Alignment.CenterStart),
-                )
-            }
 
-            // Event dots
-            rows.forEach { row ->
-                val xFraction = fractionOfDay(row.timestamp).coerceIn(0f, 1f)
-                val dotColor = triggerColor(
-                    row.triggerTypes.firstOrNull() ?: row.triggerType,
-                )
-                val isSelected = selectedId == row.id
-                val dotSize = if (isSelected) 14.dp else 10.dp
-                Box(
-                    modifier = Modifier
-                        .size(dotSize)
-                        .offset(
-                            x = barWidth * xFraction - dotSize / 2,
-                            y = 28.dp - dotSize / 2,
+                // Dynamic tick spacing based on zoom level
+                val tickInterval = when {
+                    visibleHours <= 2f -> 0.5f
+                    visibleHours <= 4f -> 1f
+                    visibleHours <= 8f -> 2f
+                    else -> 6f
+                }
+                val showMinutes = visibleHours <= 4f
+
+                // Hour ticks and labels
+                var tickHour = (startHour / tickInterval).toInt() * tickInterval
+                while (tickHour <= endHour) {
+                    if (tickHour >= 0f && tickHour <= 24f) {
+                        val xDp = hourToX(tickHour)
+                        Canvas(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(10.dp)
+                                .offset(x = xDp, y = lineY + 3.dp),
+                        ) {
+                            drawLine(
+                                color = Color.Gray,
+                                start = Offset(size.width / 2, 0f),
+                                end = Offset(size.width / 2, size.height),
+                                strokeWidth = 1.dp.toPx(),
+                            )
+                        }
+                        val label = if (showMinutes) {
+                            "%02d:%02d".format(tickHour.toInt(), ((tickHour % 1) * 60).toInt())
+                        } else {
+                            "%02d:00".format(tickHour.toInt().coerceAtMost(23))
+                        }
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .width(36.dp)
+                                .offset(x = xDp - 18.dp, y = lineY + 14.dp),
                         )
-                        .background(dotColor, shape = CircleShape)
-                        .clickable {
-                            selectedId = if (selectedId == row.id) null else row.id
-                        },
-                )
+                    }
+                    tickHour += tickInterval
+                }
+
+                // Event dots
+                rows.forEach { row ->
+                    val eventHour = fractionOfDay(row.timestamp) * 24f
+                    if (eventHour < startHour || eventHour > endHour) return@forEach
+                    val xDp = hourToX(eventHour)
+                    val dotColor = triggerColor(
+                        row.triggerTypes.firstOrNull() ?: row.triggerType,
+                    )
+                    val isSelected = selectedId == row.id
+                    val dotSize = if (isSelected) 14.dp else 10.dp
+                    Box(
+                        modifier = Modifier
+                            .size(dotSize)
+                            .offset(x = xDp - dotSize / 2, y = lineY - dotSize / 2 + 1.dp)
+                            .background(dotColor, shape = CircleShape)
+                            .clickable {
+                                selectedId = if (selectedId == row.id) null else row.id
+                            },
+                    )
+                }
             }
         }
 
