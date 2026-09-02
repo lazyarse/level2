@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
@@ -309,7 +308,6 @@ private fun MonitorStatusBar(
                 Button(
                     onClick = onStop,
                     modifier = Modifier.testTag("stopMonitorButton"),
-                    shape = RoundedCornerShape(2.dp),
                 ) {
                     Icon(Icons.Filled.Stop, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
@@ -321,7 +319,6 @@ private fun MonitorStatusBar(
                         onClick = onStart,
                         enabled = state != MonitorState.Starting,
                         modifier = Modifier.testTag("startMonitorButton"),
-                        shape = RoundedCornerShape(2.dp),
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
@@ -333,7 +330,6 @@ private fun MonitorStatusBar(
                     state == MonitorState.Idle -> Button(
                         onClick = onStartPreview,
                         modifier = Modifier.testTag("previewCameraButton"),
-                        shape = RoundedCornerShape(2.dp),
                     ) {
                         Text("Preview")
                     }
@@ -341,7 +337,6 @@ private fun MonitorStatusBar(
                     previewing -> Button(
                         onClick = onStopPreview,
                         modifier = Modifier.testTag("stopPreviewButton"),
-                        shape = RoundedCornerShape(2.dp),
                     ) {
                         Icon(Icons.Filled.Stop, contentDescription = null)
                         Spacer(Modifier.width(4.dp))

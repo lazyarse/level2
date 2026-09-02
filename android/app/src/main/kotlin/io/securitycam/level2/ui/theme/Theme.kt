@@ -22,6 +22,7 @@ private val AppShapes = Shapes(
     medium = RoundedCornerShape(4.dp),
     large = RoundedCornerShape(6.dp),
     extraSmall = RoundedCornerShape(2.dp),
+    extraLarge = RoundedCornerShape(6.dp),
 )
 
 @Composable

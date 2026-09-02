@@ -932,6 +932,7 @@ fun SettingsScreen(
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
                             )
                         }
+                        HorizontalDivider()
                         CollapsibleSection("About Level 2") {
                             BodyText(
                                 "I think everyone has the right to feel secure regardless of income, so " +
@@ -988,7 +989,6 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                         .testTag("saveSettings"),
-                    shape = RoundedCornerShape(2.dp),
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

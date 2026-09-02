@@ -162,6 +162,14 @@ emulator -avd pixel_34_aosp -no-snapshot -no-window -camera-back webcam1 ...
 - `screencap` captures the live preview when the pipeline is active (the preview
   area is not black).
 
+## UI style guide
+
+- **Buttons**: All buttons (`Button`, `FilledTonalButton`, `OutlinedButton`, `TextButton`)
+  use the "squircle" shape — `full = RoundedCornerShape(6.dp)` in `AppShapes`.
+  Never use pill-shaped buttons (Material 3 default `full` is 20 dp).
+  Never add per-button `shape` overrides — the theme handles it.
+- **IconButtons** are fine as-is (they're square by nature).
+
 ## Screenshots & gallery
 
 - `tool/take_app_screenshots.sh` captures app screenshots into `docs/images/` and
