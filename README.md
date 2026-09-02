@@ -1,23 +1,12 @@
 # Security Cam (level2)
 
-A native Android app (Kotlin + Jetpack Compose, package `io.securitycam.level2`) that turns
-a phone into a "security camera": it monitors the camera (and microphone) for motion /
-sound / face / person events and alerts the user through pluggable channels (Telegram,
-email, Pushover, webhook). Each channel has its own user-defined settings, and each detector
+We believe everyone is entitled to feel safe. This is a free security camera application with advanced features to help you set up your unused phones as webcams and use its on-board processor to detect features like people, pets, loud noises, and also recognise known faces and more.
+
+A native Android security-cam app (Kotlin + Jetpack Compose, package `io.securitycam.level2`) that turns a phone into a "security camera": it monitors the camera and microphone for motion events and alerts the user through pluggable notification channels (Telegram, email, Pushover, webhook). Each channel has its own user-defined settings, and each detector
 type can be individually enabled, tuned, and routed to specific channels. Recording runs in
 a foreground service so monitoring survives screen-off.
 
-**Design/plan:** `docs/plans/` — start at `2026-08-17-security-cam-app-design.md`; the
-Flutter→native migration is documented in `2026-08-20-native-kotlin-migration-plan.md`
-(the Flutter tree was removed after the Phase 7 cutover).
-
-## Layout
-
-- `android/` — Gradle project: app module with Compose UI, CameraX capture, MediaPipe face
-  detection, YOLO person detection, YAMNet audio classification, Room event log.
-- `tool/run_android_integration_tests.sh <serial> <fqcn|all>` — emulator instrumentation
-  runner (permissions via `pm grant`, `[itest]` marker coordination for the screen-off test).
-- `docs/plans/2026-08-20-native-kotlin-parity-matrix.md` — Dart-test → Kotlin-test mapping.
+Each release includes an apk for installation on your device.
 
 ## Getting started
 
