@@ -4,6 +4,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.audio.AudioEventScores
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
 import java.time.Instant
@@ -22,11 +23,11 @@ class PetHybridDetectorTest {
 
     private val start: Instant = Instant.parse("2026-01-01T12:00:00Z")
 
-    private class FixedEngine(private val boxes: List<PersonBox>) : DogEngine, CatEngine {
+    private class FixedEngine(private val boxes: List<DetectedBox>) : DogEngine, CatEngine {
         override suspend fun init() {}
         override suspend fun dispose() {}
-        override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> = boxes
-        override suspend fun detectCats(frame: ColorBitmap): List<PersonBox> = boxes
+        override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = boxes
+        override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> = boxes
     }
 
     private fun scores(vararg pairs: Pair<String, Double>): AudioEventScores =
@@ -41,7 +42,7 @@ class PetHybridDetectorTest {
         color = ColorBitmap(100, 100, ByteArray(100 * 100 * 3)),
     )
 
-    private val visibleBox = listOf(PersonBox(0.0, 0.0, 50.0, 50.0, 0.9))
+    private val visibleBox = listOf(DetectedBox(0.0, 0.0, 50.0, 50.0, 0.9))
 
     @Test
     fun dogFiresOnSightWithSeenDetail() = runBlocking {
@@ -98,11 +99,11 @@ class PetHybridDetectorTest {
 
     @Test
     fun modalitiesPersistIndependently() = runBlocking {
-        var dogs: List<PersonBox> = emptyList()
+        var dogs: List<DetectedBox> = emptyList()
         val engine = object : DogEngine {
             override suspend fun init() {}
             override suspend fun dispose() {}
-            override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> = dogs
+            override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = dogs
         }
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.5, persistenceFrames = 2),
@@ -132,11 +133,11 @@ class PetHybridDetectorTest {
 
     @Test
     fun catSightAndSoundAreSeparateCounters() = runBlocking {
-        var cats: List<PersonBox> = emptyList()
+        var cats: List<DetectedBox> = emptyList()
         val engine = object : CatEngine {
             override suspend fun init() {}
             override suspend fun dispose() {}
-            override suspend fun detectCats(frame: ColorBitmap): List<PersonBox> = cats
+            override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> = cats
         }
         val d = CatDetector(
             DetectorConfig(type = TriggerType.cat, threshold = 0.5, persistenceFrames = 2),

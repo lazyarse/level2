@@ -2,24 +2,25 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /** Abstraction over an on-device vehicle detector (mirrors [DogEngine]). */
 interface VehicleEngine {
     suspend fun init()
 
     /** Returns detected vehicles in [frame]'s color bitmap. Empty list = none. */
-    suspend fun detectVehicles(frame: ColorBitmap): List<PersonBox>
+    suspend fun detectVehicles(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [vehicles] was pre-loaded with. */
 class MockVehicleEngine : VehicleEngine {
-    val vehicles = mutableListOf<PersonBox>()
+    val vehicles = mutableListOf<DetectedBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectVehicles(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectVehicles(frame: ColorBitmap): List<DetectedBox> =
         vehicles.toList()
 
     override suspend fun dispose() {}
@@ -44,7 +45,7 @@ class YoloVehicleEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectVehicles(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectVehicles(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

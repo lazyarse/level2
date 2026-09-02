@@ -1,5 +1,6 @@
 package io.securitycam.level2.detection.person
 
+import io.securitycam.level2.detection.DetectedBox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -131,9 +132,9 @@ class YoloPostprocessTest {
         assertTrue(b.y2 <= 240)
     }
 
-    private val a = PersonBox(10.0, 10.0, 100.0, 100.0, 0.9)
-    private val b = PersonBox(12.0, 12.0, 98.0, 98.0, 0.5)
-    private val c = PersonBox(300.0, 300.0, 400.0, 400.0, 0.7)
+    private val a = DetectedBox(10.0, 10.0, 100.0, 100.0, 0.9)
+    private val b = DetectedBox(12.0, 12.0, 98.0, 98.0, 0.5)
+    private val c = DetectedBox(300.0, 300.0, 400.0, 400.0, 0.7)
 
     @Test
     fun keepsOnlyTheHigherScoringOfTwoOverlappingBoxes() {

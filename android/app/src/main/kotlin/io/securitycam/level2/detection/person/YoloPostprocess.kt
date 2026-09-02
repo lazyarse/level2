@@ -1,5 +1,6 @@
 package io.securitycam.level2.detection.person
 
+import io.securitycam.level2.detection.DetectedBox
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -56,11 +57,11 @@ fun decodeYoloClasses(
     maxDetections: Int,
     frameWidth: Int,
     frameHeight: Int,
-): List<PersonBox> {
+): List<DetectedBox> {
     val anchors = 8400
     val boxRows = 4
     val info = letterboxInfo(frameWidth, frameHeight)
-    val candidates = mutableListOf<PersonBox>()
+    val candidates = mutableListOf<DetectedBox>()
     for (cls in classIndices) {
         val classRow = boxRows + cls
         for (i in 0 until anchors) {
@@ -75,7 +76,7 @@ fun decodeYoloClasses(
             val x2m = (cx + w / 2) * 640
             val y2m = (cy + h / 2) * 640
             candidates.add(
-                PersonBox(
+                DetectedBox(
                     clamp((x1m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
                     clamp((y1m - info.padY) / info.gain, 0.0, frameHeight.toDouble()),
                     clamp((x2m - info.padX) / info.gain, 0.0, frameWidth.toDouble()),
@@ -100,7 +101,7 @@ fun decodeYolo26(
     maxDetections: Int,
     frameWidth: Int,
     frameHeight: Int,
-): List<PersonBox> = decodeYoloClasses(
+): List<DetectedBox> = decodeYoloClasses(
     output,
     classIndices = listOf(YoloClasses.PERSON),
     conf = conf,
@@ -114,8 +115,8 @@ fun decodeYolo26(
  * Non-max suppression over score-descending [boxes]; keeps at most
  * [maxDetections] boxes that don't overlap a kept box beyond [iou].
  */
-fun nms(boxes: List<PersonBox>, iou: Double, maxDetections: Int): List<PersonBox> {
-    val kept = mutableListOf<PersonBox>()
+fun nms(boxes: List<DetectedBox>, iou: Double, maxDetections: Int): List<DetectedBox> {
+    val kept = mutableListOf<DetectedBox>()
     for (b in boxes) {
         var overlap = false
         for (k in kept) {
@@ -133,7 +134,7 @@ fun nms(boxes: List<PersonBox>, iou: Double, maxDetections: Int): List<PersonBox
 }
 
 /** Intersection-over-union of two boxes. */
-fun iouOf(a: PersonBox, b: PersonBox): Double {
+fun iouOf(a: DetectedBox, b: DetectedBox): Double {
     val ix = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
     val iy = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
     val inter = ix * iy

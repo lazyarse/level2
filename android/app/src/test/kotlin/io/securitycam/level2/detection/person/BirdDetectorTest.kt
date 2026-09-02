@@ -3,6 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
@@ -33,7 +34,7 @@ class BirdDetectorTest {
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.birds.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 1),
             engine = engine,
@@ -47,7 +48,7 @@ class BirdDetectorTest {
     @Test
     fun birdAboveThresholdTriggersAfterPersistence() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.birds.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -63,7 +64,7 @@ class BirdDetectorTest {
     @Test
     fun birdBelowThresholdDoesNotTrigger() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        engine.birds.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -90,8 +91,8 @@ class BirdDetectorTest {
     @Test
     fun resultCarriesMaxBirdScore() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.birds.add(PersonBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        engine.birds.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.birds.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 1),
             engine = engine,
@@ -106,7 +107,7 @@ class BirdDetectorTest {
     @Test
     fun resetClearsPersistence() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.birds.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 2),
             engine = engine,
@@ -122,7 +123,7 @@ class BirdDetectorTest {
     @Test
     fun birdInsideExclusionZoneIsDropped() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.birds.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 1),
             engine = engine,
@@ -139,7 +140,7 @@ class BirdDetectorTest {
     @Test
     fun birdOutsideExclusionTriggers() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.birds.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 1),
             engine = engine,
@@ -156,7 +157,7 @@ class BirdDetectorTest {
     @Test
     fun birdOutsideInclusionsIsDropped() = runBlocking {
         val engine = MockBirdEngine()
-        engine.birds.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.birds.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = BirdDetector(
             DetectorConfig(type = TriggerType.bird, persistenceFrames = 1),
             engine = engine,

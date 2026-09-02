@@ -3,6 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
@@ -33,7 +34,7 @@ class LivestockDetectorTest {
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -47,7 +48,7 @@ class LivestockDetectorTest {
     @Test
     fun livestockAboveThresholdTriggersAfterPersistence() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -63,7 +64,7 @@ class LivestockDetectorTest {
     @Test
     fun livestockBelowThresholdDoesNotTrigger() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -90,8 +91,8 @@ class LivestockDetectorTest {
     @Test
     fun resultCarriesMaxLivestockScore() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.animals.add(PersonBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.animals.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -106,7 +107,7 @@ class LivestockDetectorTest {
     @Test
     fun resetClearsPersistence() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 2),
             engine = engine,
@@ -122,7 +123,7 @@ class LivestockDetectorTest {
     @Test
     fun livestockInsideExclusionZoneIsDropped() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.animals.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -139,7 +140,7 @@ class LivestockDetectorTest {
     @Test
     fun livestockOutsideExclusionTriggers() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.animals.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -156,7 +157,7 @@ class LivestockDetectorTest {
     @Test
     fun livestockOutsideInclusionsIsDropped() = runBlocking {
         val engine = MockLivestockEngine()
-        engine.animals.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.animals.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,

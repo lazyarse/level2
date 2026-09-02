@@ -2,24 +2,25 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /** Abstraction over an on-device dog detector (mirrors [PersonEngine]). */
 interface DogEngine {
     suspend fun init()
 
     /** Returns detected dogs in [frame]'s color bitmap. Empty list = no dogs. */
-    suspend fun detectDogs(frame: ColorBitmap): List<PersonBox>
+    suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [dogs] was pre-loaded with. */
 class MockDogEngine : DogEngine {
-    val dogs = mutableListOf<PersonBox>()
+    val dogs = mutableListOf<DetectedBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> =
         dogs.toList()
 
     override suspend fun dispose() {}
@@ -44,7 +45,7 @@ class YoloDogEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectDogs(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

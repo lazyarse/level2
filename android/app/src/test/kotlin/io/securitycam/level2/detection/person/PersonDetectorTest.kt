@@ -3,6 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
@@ -35,7 +36,7 @@ class PersonDetectorTest {
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -49,7 +50,7 @@ class PersonDetectorTest {
     @Test
     fun personAboveThresholdTriggersAfterPersistence() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -65,7 +66,7 @@ class PersonDetectorTest {
     @Test
     fun personBelowThresholdDoesNotTrigger() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -92,8 +93,8 @@ class PersonDetectorTest {
     @Test
     fun resultCarriesMaxPersonScore() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.persons.add(PersonBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.persons.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -108,7 +109,7 @@ class PersonDetectorTest {
     @Test
     fun resetClearsPersistence() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 2),
             engine = engine,
@@ -125,7 +126,7 @@ class PersonDetectorTest {
     fun personInsideExclusionZoneIsDropped() = runBlocking {
         val engine = MockPersonEngine()
         // Engine boxes are pixel coords on a 100x100 frame: (10..40)^2 -> 0.1..0.4 normalized.
-        engine.persons.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.persons.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -143,7 +144,7 @@ class PersonDetectorTest {
     fun personOutsideExclusionTriggers() = runBlocking {
         val engine = MockPersonEngine()
         // Pixels (60..90)^2 -> 0.6..0.9 normalized, clear of the 0..0.5 exclusion.
-        engine.persons.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.persons.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -160,7 +161,7 @@ class PersonDetectorTest {
     @Test
     fun personOutsideInclusionsIsDropped() = runBlocking {
         val engine = MockPersonEngine()
-        engine.persons.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.persons.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,

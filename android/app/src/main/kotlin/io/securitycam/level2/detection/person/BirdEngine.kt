@@ -2,24 +2,25 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /** Abstraction over an on-device bird detector (mirrors [DogEngine]). */
 interface BirdEngine {
     suspend fun init()
 
     /** Returns detected birds in [frame]'s color bitmap. Empty list = none. */
-    suspend fun detectBirds(frame: ColorBitmap): List<PersonBox>
+    suspend fun detectBirds(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [birds] was pre-loaded with. */
 class MockBirdEngine : BirdEngine {
-    val birds = mutableListOf<PersonBox>()
+    val birds = mutableListOf<DetectedBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectBirds(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectBirds(frame: ColorBitmap): List<DetectedBox> =
         birds.toList()
 
     override suspend fun dispose() {}
@@ -44,7 +45,7 @@ class YoloBirdEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectBirds(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectBirds(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

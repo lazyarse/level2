@@ -2,24 +2,25 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /** Abstraction over an on-device cat detector (mirrors [DogEngine]). */
 interface CatEngine {
     suspend fun init()
 
     /** Returns detected cats in [frame]'s color bitmap. Empty list = no cats. */
-    suspend fun detectCats(frame: ColorBitmap): List<PersonBox>
+    suspend fun detectCats(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [cats] was pre-loaded with. */
 class MockCatEngine : CatEngine {
-    val cats = mutableListOf<PersonBox>()
+    val cats = mutableListOf<DetectedBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectCats(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> =
         cats.toList()
 
     override suspend fun dispose() {}
@@ -44,7 +45,7 @@ class YoloCatEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectCats(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

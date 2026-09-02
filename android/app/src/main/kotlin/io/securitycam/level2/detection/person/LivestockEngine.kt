@@ -2,24 +2,25 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /** Abstraction over an on-device livestock detector (mirrors [DogEngine]). */
 interface LivestockEngine {
     suspend fun init()
 
     /** Returns detected livestock in [frame]'s color bitmap. Empty list = none. */
-    suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox>
+    suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
 /** Test/dry-run engine: returns whatever [animals] was pre-loaded with. */
 class MockLivestockEngine : LivestockEngine {
-    val animals = mutableListOf<PersonBox>()
+    val animals = mutableListOf<DetectedBox>()
 
     override suspend fun init() {}
 
-    override suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox> =
+    override suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox> =
         animals.toList()
 
     override suspend fun dispose() {}
@@ -44,7 +45,7 @@ class YoloLivestockEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectLivestock(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

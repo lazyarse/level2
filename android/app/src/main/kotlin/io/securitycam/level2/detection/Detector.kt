@@ -1,7 +1,7 @@
 package io.securitycam.level2.detection
 
 import io.securitycam.level2.detection.audio.AudioEventScores
-import io.securitycam.level2.detection.person.PersonBox
+import io.securitycam.level2.detection.DetectedBox
 import java.time.Duration
 
 /**
@@ -79,7 +79,7 @@ abstract class FrameDetector : Detector {
     var exclusionZones: List<DetectionZone> = emptyList()
 
     /** Boxes from the most recent analysis frame, updated by subclasses for sharing. */
-    open var latestBoxes: List<PersonBox> = emptyList()
+    open var latestBoxes: List<DetectedBox> = emptyList()
 
     abstract fun analyzeFrame(frame: AnalysisFrame): DetectionResult
 

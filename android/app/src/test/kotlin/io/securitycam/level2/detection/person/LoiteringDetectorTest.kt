@@ -3,6 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
 import java.time.Instant
@@ -24,8 +25,8 @@ class LoiteringDetectorTest {
         var score = 0.9
         override suspend fun init() {}
         override suspend fun dispose() {}
-        override suspend fun detectPersons(frame: ColorBitmap): List<PersonBox> =
-            if (present) listOf(PersonBox(0.0, 0.0, 50.0, 50.0, score)) else emptyList()
+        override suspend fun detectPersons(frame: ColorBitmap): List<DetectedBox> =
+            if (present) listOf(DetectedBox(0.0, 0.0, 50.0, 50.0, score)) else emptyList()
     }
 
     private fun config(dwellSeconds: Int = 10) = DetectorConfig(

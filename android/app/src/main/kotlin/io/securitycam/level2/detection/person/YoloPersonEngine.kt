@@ -2,6 +2,7 @@ package io.securitycam.level2.detection.person
 
 import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 
 /**
  * YOLO26n (`yolo26n_w8a32.tflite`) via the shared [YoloModelSingleton]
@@ -23,7 +24,7 @@ class YoloPersonEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectPersons(frame: ColorBitmap): List<PersonBox> {
+    override suspend fun detectPersons(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
         val inputs = compiled.createInputBuffers()

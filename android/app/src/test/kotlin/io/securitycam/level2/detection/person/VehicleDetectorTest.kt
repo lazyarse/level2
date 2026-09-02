@@ -3,6 +3,7 @@ package io.securitycam.level2.detection.person
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.GrayscaleBitmap
@@ -33,7 +34,7 @@ class VehicleDetectorTest {
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.vehicles.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 1),
             engine = engine,
@@ -47,7 +48,7 @@ class VehicleDetectorTest {
     @Test
     fun vehicleAboveThresholdTriggersAfterPersistence() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.vehicles.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -63,7 +64,7 @@ class VehicleDetectorTest {
     @Test
     fun vehicleBelowThresholdDoesNotTrigger() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        engine.vehicles.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -90,8 +91,8 @@ class VehicleDetectorTest {
     @Test
     fun resultCarriesMaxVehicleScore() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.vehicles.add(PersonBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        engine.vehicles.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.vehicles.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 1),
             engine = engine,
@@ -106,7 +107,7 @@ class VehicleDetectorTest {
     @Test
     fun resetClearsPersistence() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        engine.vehicles.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 2),
             engine = engine,
@@ -122,7 +123,7 @@ class VehicleDetectorTest {
     @Test
     fun vehicleInsideExclusionZoneIsDropped() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.vehicles.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 1),
             engine = engine,
@@ -139,7 +140,7 @@ class VehicleDetectorTest {
     @Test
     fun vehicleOutsideExclusionTriggers() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.vehicles.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 1),
             engine = engine,
@@ -156,7 +157,7 @@ class VehicleDetectorTest {
     @Test
     fun vehicleOutsideInclusionsIsDropped() = runBlocking {
         val engine = MockVehicleEngine()
-        engine.vehicles.add(PersonBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.vehicles.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = VehicleDetector(
             DetectorConfig(type = TriggerType.vehicle, persistenceFrames = 1),
             engine = engine,
