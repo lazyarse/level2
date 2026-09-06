@@ -91,6 +91,10 @@ class DetectorPipelineTest {
             classifier = MockAudioEventClassifier(),
             configs = listOf(
                 DetectorConfig(
+                    type = TriggerType.motion, enabled = true, threshold = 0.01,
+                    persistenceFrames = 1,
+                ),
+                DetectorConfig(
                     type = TriggerType.face,
                     enabled = true,
                     threshold = 0.5,
@@ -102,10 +106,19 @@ class DetectorPipelineTest {
         val events = mutableListOf<TriggerEvent>()
         val collector = scope().launch { pipeline.triggers.collect { events.add(it) } }
         yield()
+        // Prime the motion detector, then fire motion so the gated face stub runs.
         pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
         yield()
-        assertEquals(1, events.size)
-        assertEquals(TriggerType.faceKnown, events.first().detectorId)
+        pipeline.processFrame(
+            AnalysisFrame(
+                base.plusSeconds(1),
+                GrayscaleBitmap(16, 16, buildFrameWithRect(16, 16, 140, 2, 2, 4, 4, 30)),
+            ),
+        )
+        yield()
+        assertEquals(2, events.size)
+        val faceEvent = events.first { it.triggerType == TriggerType.faceKnown }
+        assertEquals(TriggerType.faceKnown, faceEvent.detectorId)
         collector.cancel()
     }
 
@@ -202,8 +215,10 @@ class DetectorPipelineTest {
     @Test
     fun gatedDetectorsRunOnlyWhenMotionFires() = runBlocking {
         val scope = scope()
+        // Note: motionGated=false here is deliberate — gating is a fixed
+        // pipeline rule now, so the legacy flag must not exempt anyone.
         val stub = GatedStubDetector(
-            DetectorConfig(type = "gated", enabled = true, motionGated = true, persistenceFrames = 1),
+            DetectorConfig(type = "gated", enabled = true, motionGated = false, persistenceFrames = 1),
         )
         val pipeline = DetectorPipeline(
             classifier = MockAudioEventClassifier(),
@@ -248,6 +263,63 @@ class DetectorPipelineTest {
     }
 
     @Test
+    fun tamperRunsOnEveryFrameWithoutMotion() = runBlocking {
+        val scope = scope()
+        val stub = GatedStubDetector(
+            DetectorConfig(type = TriggerType.tamper, enabled = true, persistenceFrames = 1),
+            triggerType = TriggerType.tamper,
+        )
+        val pipeline = DetectorPipeline(
+            classifier = MockAudioEventClassifier(),
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.motion, enabled = true, threshold = 0.01,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.init()
+        pipeline.debugAddFrameDetector(stub) // injected before subscribing
+        val events = mutableListOf<TriggerEvent>()
+        val collector = scope.launch { pipeline.triggers.collect { events.add(it) } }
+        yield()
+
+        // Static frame: motion does not fire, but tamper's sync path must
+        // still run (it needs to see still frames to spot moved/covered).
+        pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
+        assertEquals(1, stub.syncCalls)
+        assertEquals(0, stub.asyncCalls)
+        assertEquals(0, events.size)
+        collector.cancel()
+        pipeline.dispose()
+    }
+
+    @Test
+    fun audioDetectorsAreNeverMotionGated() = runBlocking {
+        val scope = scope()
+        val pipeline = DetectorPipeline(
+            classifier = MockAudioEventClassifier(),
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.babyCry, enabled = true, threshold = 0.5,
+                    persistenceFrames = 1, motionGated = true,
+                ),
+            ),
+        )
+        pipeline.init()
+        val events = mutableListOf<TriggerEvent>()
+        val collector = scope.launch { pipeline.triggers.collect { events.add(it) } }
+        yield()
+        // No frames processed at all — sound alone must trigger even with
+        // the legacy motionGated flag set.
+        pipeline.processAudio(babyCryWindow(base))
+        assertEquals(1, events.size)
+        assertEquals(TriggerType.babyCry, events.single().triggerType)
+        collector.cancel()
+        pipeline.dispose()
+    }
+
+    @Test
     fun setZonesFansOutToFrameDetectors() = runBlocking {
         val pipeline = DetectorPipeline(
             classifier = MockAudioEventClassifier(),
@@ -272,14 +344,15 @@ class DetectorPipelineTest {
     }
 }
 
-/** Gated stub detector: counts how often its async path is invoked. */
+/** Gated stub detector: counts how often its sync/async paths are invoked. */
 class GatedStubDetector(
     override val config: DetectorConfig,
+    override val triggerType: String = "gated",
 ) : FrameDetector() {
+    var syncCalls = 0
     var asyncCalls = 0
 
     override val id: String get() = "gated-stub"
-    override val triggerType: String get() = "gated"
 
     override suspend fun init() {}
 
@@ -287,8 +360,10 @@ class GatedStubDetector(
 
     override suspend fun dispose() {}
 
-    override fun analyzeFrame(frame: AnalysisFrame): DetectionResult =
-        DetectionResult(frame.timestamp, triggerType, 0.0, false)
+    override fun analyzeFrame(frame: AnalysisFrame): DetectionResult {
+        syncCalls++
+        return DetectionResult(frame.timestamp, triggerType, 0.0, false)
+    }
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         asyncCalls++

@@ -105,10 +105,25 @@ class DetectorPipeline(
         for (d in audioDetectorsInternal) d.reset()
     }
 
+    /**
+     * Motion gating is a fixed architectural rule, not a per-detector option:
+     * every frame detector except motion itself (the gate source) and tamper
+     * runs only on frames where motion fired, so expensive ML inference stays
+     * asleep in quiet scenes. Tamper is exempt by necessity — it learns a
+     * multi-frame baseline and its "moved"/"covered" paths specifically need
+     * to run on still frames. Audio paths ([processAudio]) intentionally never
+     * gate: sound is the complementary modality for what vision misses
+     * (off-camera or static-scene events). [DetectorConfig.motionGated] is
+     * legacy JSON ballast and is ignored here.
+     */
+    private fun isMotionGated(detector: FrameDetector): Boolean =
+        detector.triggerType != TriggerType.motion &&
+            detector.triggerType != TriggerType.tamper
+
     suspend fun processFrame(frame: io.securitycam.level2.detection.AnalysisFrame) {
         var motionFired = false
         for (d in frameDetectorsInternal) {
-            if (d.config.motionGated) continue
+            if (isMotionGated(d)) continue
             val result = d.analyzeFrame(frame)
             if (result.triggered) {
                 if (d.triggerType == TriggerType.motion) motionFired = true
@@ -117,12 +132,17 @@ class DetectorPipeline(
         }
         if (!motionFired) return
         for (d in frameDetectorsInternal) {
-            if (!d.config.motionGated) continue
+            if (!isMotionGated(d)) continue
             val result = d.analyzeFrameAsync(frame)
             if (result.triggered) maybeEmit(d, result)
         }
     }
 
+    /**
+     * Audio windows are never motion-gated (see [isMotionGated]): standalone
+     * audio detectors plus the score half of hybrid (combined pet) detectors
+     * run on every window — the frame half runs gated in processFrame.
+     */
     suspend fun processAudio(window: AudioWindow) {
         val scores = classifier.classify(window)
         // Standalone audio detectors plus the score half of hybrid (combined

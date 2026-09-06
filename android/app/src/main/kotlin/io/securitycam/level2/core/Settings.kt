@@ -304,28 +304,31 @@ data class AppSettings(
                     type = TriggerType.motion,
                     threshold = 0.03,
                     persistenceFrames = 2,
-                    routeToChannelIds = listOf("telegram"),
+                    // Motion is the gate source for every vision detector and
+                    // cannot be disabled (see fromJson force-on below).
+                    enabled = true,
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.babyCry to DetectorConfig(
                     type = TriggerType.babyCry,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.glassBreak to DetectorConfig(
                     type = TriggerType.glassBreak,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.loudNoise to DetectorConfig(
                     type = TriggerType.loudNoise,
                     threshold = 0.5,
                     persistenceFrames = 1,
                     enabled = false,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.face to DetectorConfig(
                     type = TriggerType.face,
@@ -333,7 +336,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.person to DetectorConfig(
                     type = TriggerType.person,
@@ -341,7 +344,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.tamper to DetectorConfig(
                     type = TriggerType.tamper,
@@ -349,13 +352,13 @@ data class AppSettings(
                     persistenceFrames = 3,
                     cooldown = Duration.ofSeconds(5),
                     enabled = false,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.health to DetectorConfig(
                     type = TriggerType.health,
                     enabled = true,
                     cooldown = Duration.ofSeconds(5),
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.dog to DetectorConfig(
                     type = TriggerType.dog,
@@ -363,7 +366,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.cat to DetectorConfig(
                     type = TriggerType.cat,
@@ -371,7 +374,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.vehicle to DetectorConfig(
                     type = TriggerType.vehicle,
@@ -379,7 +382,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.bird to DetectorConfig(
                     type = TriggerType.bird,
@@ -387,7 +390,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.livestock to DetectorConfig(
                     type = TriggerType.livestock,
@@ -395,7 +398,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.loitering to DetectorConfig(
                     type = TriggerType.loitering,
@@ -404,7 +407,7 @@ data class AppSettings(
                     enabled = false,
                     motionGated = true,
                     dwellSeconds = 10,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
                 TriggerType.tripwire to DetectorConfig(
                     type = TriggerType.tripwire,
@@ -412,7 +415,7 @@ data class AppSettings(
                     persistenceFrames = 2,
                     enabled = false,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
+                    routeToChannelIds = emptyList(),
                 ),
             ),
             channelConfigs = listOf(
@@ -474,7 +477,7 @@ data class AppSettings(
                 persistenceFrames = 2,
                 enabled = false,
                 motionGated = true,
-                routeToChannelIds = listOf("telegram"),
+                routeToChannelIds = emptyList(),
             )
 
         fun fromJson(json: Map<String, Any?>): AppSettings {
@@ -490,7 +493,11 @@ data class AppSettings(
             val storedDetectors = detectors ?: emptyMap()
             val mergedDetectors = LinkedHashMap<String, DetectorConfig>()
             for ((type, def) in defaults.detectorConfigs) {
-                mergedDetectors[type] = storedDetectors[type] ?: def
+                val cfg = storedDetectors[type] ?: def
+                // Motion gates every vision detector: a stored disabled flag
+                // (from before the switch was removed) must not silently
+                // starve all gated detectors.
+                mergedDetectors[type] = if (type == TriggerType.motion) cfg.copy(enabled = true) else cfg
             }
             for ((type, cfg) in storedDetectors) {
                 if (!mergedDetectors.containsKey(type)) mergedDetectors[type] = cfg

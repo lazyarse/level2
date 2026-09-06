@@ -15,6 +15,12 @@ data class DetectorConfig(
     val persistenceFrames: Int = 2,
     val cooldown: Duration = Duration.ofSeconds(5),
     val routeToChannelIds: List<String> = emptyList(),
+    /**
+     * Legacy JSON ballast: motion gating is now a fixed pipeline rule
+     * (everything except motion/tamper is gated, audio never is), so this
+     * flag is ignored at runtime. Kept in serialization so old stored blobs
+     * still parse.
+     */
     val motionGated: Boolean = false,
     /** Loitering only: seconds of continuous presence before firing. */
     val dwellSeconds: Int = 10,

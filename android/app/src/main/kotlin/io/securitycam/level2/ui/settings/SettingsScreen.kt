@@ -954,7 +954,7 @@ fun SettingsScreen(
                         HorizontalDivider()
                         CollapsibleSection("About Level 2") {
                             BodyText(
-                                "I think everyone has the right to feel secure regardless of income, so " +
+                                "Everyone has the right to feel secure regardless of income, so " +
                                     "\"Level 2\" was born. A free, privacy-first security cam application " +
                                     "with advanced features such as person detection, face recognition, " +
                                     "dog/cat detection (including their noises) and much more. If anything " +
@@ -1327,7 +1327,17 @@ private fun DetectorCard(
                 Text(detectorLabel(config.type))
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
-                Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
+                if (config.type == TriggerType.motion) {
+                    // Motion is the gate source for every vision detector and
+                    // cannot be disabled.
+                    Text(
+                        "Always on",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
+                }
             }
             if (expanded) {
                 DetectorType.fromKey(config.type)?.hint?.let { hint ->
@@ -1338,12 +1348,12 @@ private fun DetectorCard(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                if (config.type !in setOf(TriggerType.motion, TriggerType.health)) {
-                    SwitchRow(
-                        title = "Motion-gated",
-                        subtitle = "Only check for this after motion is detected (saves battery).",
-                        checked = config.motionGated,
-                        onCheckedChange = { v -> onChanged(config.copy(motionGated = v)) },
+                motionGateNote(config.type)?.let { note ->
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
                 val hybrid = config.type in combinedPetOrder
@@ -1379,7 +1389,7 @@ private fun DetectorCard(
                 }
                 if (config.type != TriggerType.health) {
                     StepperRow(
-                        label = "Persistence: ${config.persistenceFrames}",
+                        label = "Persistence: ${config.persistenceFrames} frames",
                         canDecrement = config.persistenceFrames > 1,
                         canIncrement = true,
                         onDecrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames - 1)) },
@@ -1468,6 +1478,21 @@ private fun DetectorCard(
 
 private fun detectorLabel(type: String): String =
     DetectorType.fromKey(type)?.label ?: type
+
+/**
+ * Fixed motion-gating behavior per detector (the pipeline rule, not a user
+ * option): vision detectors sleep until motion fires, tamper must see every
+ * frame, and sound is never gated on vision.
+ */
+private fun motionGateNote(type: String): String? = when (type) {
+    TriggerType.motion, TriggerType.health -> null
+    TriggerType.tamper -> "Runs on every frame — tamper needs to see still frames too."
+    TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise ->
+        "Always listening — sound is never gated on motion."
+    TriggerType.dog, TriggerType.cat ->
+        "Sight runs after motion is detected (saves battery); sound is always listening."
+    else -> "Runs after motion is detected (saves battery)."
+}
 
 @Composable
 private fun ChannelCard(

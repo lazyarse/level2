@@ -27,8 +27,25 @@ class SettingsTest {
                 ),
             ),
         )
-        assertTrue(settings.detectorConfigs[TriggerType.motion]!!.routeToChannelIds.contains("telegram"))
+        assertTrue(settings.detectorConfigs[TriggerType.motion]!!.routeToChannelIds.isEmpty())
+        assertTrue(settings.detectorConfigs[TriggerType.motion]!!.enabled)
         assertTrue(settings.channelConfigs.any { it.id == "log" })
+    }
+
+    @Test
+    fun storedDisabledMotionIsReEnabledOnParse() {
+        // Motion gates every vision detector: a stored disabled flag (from
+        // before the switch was removed) must not starve them.
+        val disabled = AppSettings.defaults().copyWith(
+            detectorConfigs = AppSettings.defaults().detectorConfigs + (
+                TriggerType.motion to DetectorConfig(
+                    type = TriggerType.motion,
+                    enabled = false,
+                )
+            ),
+        )
+        val restored = AppSettings.fromJson(disabled.toJson())
+        assertTrue(restored.detectorConfigs[TriggerType.motion]!!.enabled)
     }
 
     @Test
