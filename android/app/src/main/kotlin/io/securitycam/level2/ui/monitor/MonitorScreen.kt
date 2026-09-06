@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -174,7 +173,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 IconButton(
                     onClick = {
                         viewModel.togglePreview()
-                        Toast.makeText(context, "Show On Screen: ${if (!monitorPreview) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Display feed: ${if (!monitorPreview) "On" else "Off"}", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.testTag("previewToggleButton"),
                 ) {
@@ -320,8 +319,6 @@ private fun MonitorStatusBar(
                         enabled = state != MonitorState.Starting,
                         modifier = Modifier.testTag("startMonitorButton"),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
                         Text(if (state == MonitorState.Error) "Retry" else "Start")
                     }
                     Spacer(Modifier.width(4.dp))

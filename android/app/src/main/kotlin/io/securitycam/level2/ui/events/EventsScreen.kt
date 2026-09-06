@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
@@ -92,6 +93,33 @@ private fun triggerColor(type: String): Color = when (type) {
         Color(0xFF42A5F5)
     TriggerType.vehicle -> Color(0xFF7E57C2)
     else -> Color(0xFF2196F3)
+}
+
+/** Effective trigger list: all merged types, or the legacy single type. */
+private fun effectiveTriggerTypes(triggerType: String, triggerTypes: List<String>): List<String> =
+    if (triggerTypes.isEmpty()) listOf(triggerType) else triggerTypes
+
+/** Detector icons for an event, shared by list rows, timeline cards and gallery tiles. */
+@Composable
+private fun DetectorIconsRow(
+    types: List<String>,
+    tagPrefix: String,
+    eventId: Long,
+    iconSize: Dp = 16.dp,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.testTag("${tagPrefix}_$eventId"),
+    ) {
+        types.forEach { type ->
+            Icon(
+                eventIconFor(type),
+                contentDescription = type,
+                modifier = Modifier.size(iconSize).testTag("${tagPrefix}_${eventId}_$type"),
+            )
+        }
+    }
 }
 
 /**
@@ -343,7 +371,10 @@ private fun DayHeader(date: LocalDate, count: Int) {
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("dayHeader_$date"),
     ) {
-        Text("$label ($count)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            if (count == 1) "$label ($count event)" else "$label ($count events)",
+            style = MaterialTheme.typography.titleSmall,
+        )
     }
 }
 
@@ -366,6 +397,7 @@ private fun EventRow(
             event.triggerType == TriggerType.faceKnown
     }
     val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
+    val detectorTypes = effectiveTriggerTypes(event.triggerType, event.triggerTypes)
     val local = event.timestamp.atZone(ZoneId.systemDefault())
     val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
 
@@ -397,27 +429,35 @@ private fun EventRow(
                 "$timeText · $typeLabel",
                 style = MaterialTheme.typography.bodyLarge,
             )
+            DetectorIconsRow(
+                types = detectorTypes,
+                tagPrefix = "eventDetectors",
+                eventId = event.id,
+            )
             Text(
                 "Confidence: ${confidenceLabel(event.score)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                buildString {
-                    if (faceName != null) {
-                        append("Recognised: ")
-                        append(faceName)
+            val subline = buildString {
+                if (faceName != null) {
+                    append("Recognised: ")
+                    append(faceName)
+                }
+                if (statuses.isNotEmpty()) {
+                    if (isNotEmpty()) {
                         append(" — ")
                     }
-                    append(event.cameraName)
-                    if (statuses.isNotEmpty()) {
-                        append(" — ")
-                        append(statuses)
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                    append(statuses)
+                }
+            }
+            if (subline.isNotEmpty()) {
+                Text(
+                    subline,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (event.videoName != null && showPlayButton) {
             IconButton(
@@ -595,6 +635,7 @@ private fun TimelineDetailCard(
         event.triggerTypes.joinToString(" + ") { triggerLabel(it) }
     }
     val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
+    val detectorTypes = effectiveTriggerTypes(event.triggerType, event.triggerTypes)
     val faceName = event.detail?.takeIf {
         event.triggerTypes.contains(TriggerType.faceKnown) ||
             event.triggerType == TriggerType.faceKnown
@@ -633,22 +674,30 @@ private fun TimelineDetailCard(
                 "$timeText · $typeLabel",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Text(
-                buildString {
-                    if (faceName != null) {
-                        append("Recognised: ")
-                        append(faceName)
-                        append(" — ")
-                    }
-                    append(event.cameraName)
-                    if (statuses.isNotEmpty()) {
-                        append(" — ")
-                        append(statuses)
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            DetectorIconsRow(
+                types = detectorTypes,
+                tagPrefix = "timelineDetectors",
+                eventId = event.id,
             )
+            val subline = buildString {
+                if (faceName != null) {
+                    append("Recognised: ")
+                    append(faceName)
+                }
+                if (statuses.isNotEmpty()) {
+                    if (isNotEmpty()) {
+                        append(" — ")
+                    }
+                    append(statuses)
+                }
+            }
+            if (subline.isNotEmpty()) {
+                Text(
+                    subline,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (event.videoName != null && showPlayButton) {
             IconButton(onClick = { onPlay(event.videoName) }) {
@@ -668,6 +717,7 @@ private fun GalleryTile(
     modifier: Modifier = Modifier,
 ) {
     val typeLabel = triggerLabel(row.triggerType)
+    val detectorTypes = effectiveTriggerTypes(row.triggerType, row.triggerTypes)
     val local = row.timestamp.atZone(ZoneId.systemDefault())
     val timeText = "%02d:%02d".format(local.hour, local.minute)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -703,10 +753,11 @@ private fun GalleryTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(
-                eventIconFor(row.triggerType),
-                contentDescription = null,
-                modifier = Modifier.size(12.dp),
+            DetectorIconsRow(
+                types = detectorTypes,
+                tagPrefix = "galleryDetectors",
+                eventId = row.id,
+                iconSize = 12.dp,
             )
             Spacer(Modifier.width(4.dp))
             Text(
