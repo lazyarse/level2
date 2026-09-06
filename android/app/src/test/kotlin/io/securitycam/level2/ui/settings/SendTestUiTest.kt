@@ -92,7 +92,7 @@ class SendTestUiTest {
         val vm = viewModel(factories = emptyMap())
         setContent(vm)
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         expandChannel("telegram")
         compose.onNodeWithTag("sendTest_telegram").assertExists()
         compose.onNodeWithTag("sendTest_telegram").assertIsNotEnabled()
@@ -127,7 +127,7 @@ class SendTestUiTest {
         dispatcher.scheduler.advanceUntilIdle()
         compose.waitForIdle()
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         expandChannel("telegram")
         compose.onNodeWithTag("sendTest_telegram").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("sendTest_telegram").performClick()

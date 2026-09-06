@@ -37,6 +37,11 @@ suite under `android/app/src/androidTest/`, driven by
     timeout.
 - Parse unit failures from `android/app/build/test-results/testDebugUnitTest/TEST-*.xml`
   (python ElementTree) instead of scrolling Gradle output.
+- Robolectric dialog assertions must poll first: a freshly-opened `Dialog` window lags
+  a frame behind, so `assertIsDisplayed` right after the click flakes. Use the
+  `confirmClearDialog` helper pattern in `SettingsScreenTest` (`waitUntil` present →
+  assert displayed → click) for any new dialog test, and keep one dialog flow per
+  test — back-to-back dialogs in a single composition flake.
 
 ## Dev/test target preference
 

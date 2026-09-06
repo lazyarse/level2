@@ -180,6 +180,7 @@ fun SettingsScreen(
 
     val current = draft
     var pendingClear by remember { mutableStateOf<ClearRequest?>(null) }
+    var clearDurationHours by rememberSaveable { mutableStateOf(24) }
     var showAddFaceDialog by remember { mutableStateOf(false) }
     var faceEnrollName by remember { mutableStateOf("") }
     val enrolling by viewModel.enrollingLabel.collectAsState()
@@ -887,10 +888,28 @@ fun SettingsScreen(
                                 steps = 29,
                                 modifier = Modifier.testTag("retentionSlider"),
                             )
-                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = false) }) {
+                            val clearOptions = buildList {
+                                add(24 to "24 hours")
+                                add(48 to "48 hours")
+                                if (current.retentionDays > 0) {
+                                    val days = current.retentionDays
+                                    val dayLabel = if (days == 1) "1 day" else "$days days"
+                                    add(days * 24 to "$dayLabel (retention)")
+                                }
+                            }
+                            DropdownField(
+                                label = "Clear events older than",
+                                selected = clearOptions.first { it.first == clearDurationHours }.second,
+                                options = clearOptions.map { it.second to it.second },
+                                testTag = "clearEventsOlderThan",
+                                onSelect = { label ->
+                                    clearDurationHours = clearOptions.first { it.second == label }.first
+                                },
+                            )
+                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = false, hours = clearDurationHours) }) {
                                 Icon(Icons.Filled.DeleteSweep, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Clear events older than 24h")
+                                Text("Clear events")
                             }
                             Spacer(Modifier.height(8.dp))
                             FilledTonalButton(onClick = { pendingClear = ClearRequest(all = true) }) {
@@ -1006,13 +1025,18 @@ fun SettingsScreen(
                         if (all) {
                             "Delete ALL recorded events and their snapshots and videos?"
                         } else {
-                            "Delete events older than 24h and their snapshots and videos?"
+                            val label = if (request.hours >= 24 && request.hours % 24 == 0) {
+                                "${request.hours / 24}d"
+                            } else {
+                                "${request.hours}h"
+                            }
+                            "Delete events older than $label and their snapshots and videos?"
                         },
                     )
                 },
                 confirmButton = {
                     Button(onClick = {
-                        viewModel.clearEvents(if (all) null else Duration.ofHours(24))
+                        viewModel.clearEvents(if (all) null else Duration.ofHours(request.hours.toLong()))
                         pendingClear = null
                     }) { Text("Clear") }
                 },
@@ -1112,7 +1136,7 @@ fun SettingsScreen(
 }
 
 /** Which clear-events confirmation the dialog is showing. */
-private data class ClearRequest(val all: Boolean)
+private data class ClearRequest(val all: Boolean, val hours: Int = 24)
 
 /** Builds channel configs from field state at save time (Dart `_save`). */
 internal fun buildChannelConfigs(

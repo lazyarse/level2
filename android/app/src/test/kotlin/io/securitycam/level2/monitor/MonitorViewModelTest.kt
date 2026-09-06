@@ -8,6 +8,7 @@ import io.securitycam.level2.core.ScheduleWindow
 import io.securitycam.level2.detection.DetectionZone
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -169,21 +170,22 @@ class MonitorViewModelTest {
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
         )
-        assertTrue(vm.monitorPreview.value)
+        // Preview ships off (battery saver); the persisted default agrees.
+        assertFalse(vm.monitorPreview.value)
 
         vm.togglePreview()
-        assertTrue(!vm.monitorPreview.value)
+        assertTrue(vm.monitorPreview.value)
         // Not monitoring yet → no rebind, but choice is persisted.
         assertTrue(rebinds.isEmpty())
-        assertEquals(false, saved.single().monitorPreview)
+        assertEquals(true, saved.single().monitorPreview)
 
         vm.start()
         vm.togglePreview()
         // Monitoring → rebind fired with the new value; persisted again.
-        assertEquals(listOf(true), rebinds)
-        assertTrue(vm.monitorPreview.value)
+        assertEquals(listOf(false), rebinds)
+        assertFalse(vm.monitorPreview.value)
         assertEquals(2, saved.size)
-        assertEquals(true, saved.last().monitorPreview)
+        assertEquals(false, saved.last().monitorPreview)
     }
 
     @Test

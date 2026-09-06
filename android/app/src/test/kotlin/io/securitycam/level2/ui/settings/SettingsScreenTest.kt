@@ -64,6 +64,19 @@ class SettingsScreenTest {
         compose.waitForIdle()
     }
 
+    /**
+     * Waits for a confirm dialog (dialog windows lag a frame behind in
+     * Robolectric — never assert on one straight after the click), asserts
+     * its text, and confirms it.
+     */
+    private fun confirmClearDialog(dialogText: String) {
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText(dialogText).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(dialogText).assertIsDisplayed()
+        compose.onNodeWithText("Clear").performClick()
+    }
+
     @Test
     fun sectionsCollapsedByDefaultHideNestedFields() {
         setContent(Harness())
@@ -76,7 +89,7 @@ class SettingsScreenTest {
             assertEquals(0, it.size)
         }
         // Section headers themselves exist.
-        compose.onNodeWithTag(sectionTag("Channels")).assertExists()
+        compose.onNodeWithTag(sectionTag("Notification Channels")).assertExists()
         compose.onNodeWithTag(sectionTag("Detectors")).assertExists()
         compose.onNodeWithTag(sectionTag("Video clips")).assertExists()
     }
@@ -85,7 +98,7 @@ class SettingsScreenTest {
     fun expandingSectionRevealsChannelCardsAndExpandingCardRevealsFields() {
         setContent(Harness())
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         // Channel cards now visible (header rows).
         compose.onNodeWithTag("channelHeader_telegram").assertExists()
 
@@ -103,7 +116,7 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         expandChannel("telegram")
         expandChannel("email")
         expandChannel("discord")
@@ -133,7 +146,7 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         expandChannel("email")
         expandChannel("discord")
 
@@ -177,7 +190,7 @@ class SettingsScreenTest {
         val harness = Harness()
         setContent(harness)
 
-        expandSection("Channels")
+        expandSection("Notification Channels")
         expandChannel("pushover")
 
         compose.onNodeWithTag(fieldTag("App token")).performScrollTo()
@@ -284,10 +297,76 @@ class SettingsScreenTest {
         for (heading in listOf("Camera", "Audio", "Combined")) {
             compose.onNodeWithTag("detectorGroup_$heading").performScrollTo().assertIsDisplayed()
         }
-        // Heartbeat rename + combined pet cards present under their group.
-        compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
-        compose.onNodeWithTag("detectorHeader_health").performScrollTo().assertIsDisplayed()
+        // Combined pet cards present under their group.
         compose.onNodeWithTag("detectorHeader_dog").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("detectorHeader_cat").performScrollTo().assertIsDisplayed()
+        // Heartbeat lives under Advanced now, not Detectors.
+        compose.onAllNodesWithTag("detectorHeader_health").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        expandSection("Advanced")
+        compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
+        compose.onNodeWithTag("detectorHeader_health").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun clearEventsDefaultsTo24HoursWithDayLabel() {
+        val harness = Harness()
+        setContent(harness)
+        expandSection("Events")
+
+        compose.onNodeWithTag("clearEventsOlderThan").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Clear events").performScrollTo().performClick()
+        confirmClearDialog("Delete events older than 1d and their snapshots and videos?")
+        compose.waitUntil(5000) { harness.cleared.isNotEmpty() }
+
+        assertEquals(listOf(Duration.ofHours(24)), harness.cleared)
+    }
+
+    @Test
+    fun clearEventsDurationDropdownSelects48Hours() {
+        val harness = Harness()
+        setContent(harness)
+        expandSection("Events")
+
+        compose.onNodeWithTag("clearEventsOlderThan").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("48 hours").performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Clear events").performScrollTo().performClick()
+        confirmClearDialog("Delete events older than 2d and their snapshots and videos?")
+        compose.waitUntil(5000) { harness.cleared.isNotEmpty() }
+
+        assertEquals(listOf(Duration.ofHours(48)), harness.cleared)
+    }
+
+    @Test
+    fun clearEventsRetentionOptionClears168Hours() {
+        val harness = Harness()
+        setContent(harness)
+        expandSection("Events")
+
+        compose.onNodeWithTag("clearEventsOlderThan").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("7 days (retention)").performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Clear events").performScrollTo().performClick()
+        confirmClearDialog("Delete events older than 7d and their snapshots and videos?")
+        compose.waitUntil(5000) { harness.cleared.isNotEmpty() }
+        assertEquals(listOf(Duration.ofHours(168)), harness.cleared)
+    }
+
+    @Test
+    fun clearAllEventsClearsEverything() {
+        val harness = Harness()
+        setContent(harness)
+        expandSection("Events")
+
+        compose.onNodeWithText("Clear all events").performScrollTo().performClick()
+        confirmClearDialog("Delete ALL recorded events and their snapshots and videos?")
+        compose.waitUntil(5000) { harness.cleared.isNotEmpty() }
+        assertEquals(listOf(null), harness.cleared)
     }
 }
