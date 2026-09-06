@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
 import io.securitycam.level2.ui.monitor.PreviewSurface
+import io.securitycam.level2.ui.theme.AppButtonShape
 
 private val ZonePalette = listOf(
     Color(0xFF8AB4F8),
@@ -121,6 +122,7 @@ fun ZoneEditorScreen(
                             onClose()
                         },
                         modifier = Modifier.testTag("zoneDone"),
+                        shape = AppButtonShape,
                     ) { Text("Done") }
                 },
             )
@@ -163,6 +165,7 @@ fun ZoneEditorScreen(
                     listOf("in" to "Entry", "out" to "Exit", "either" to "Either").forEach { (value, label) ->
                         OutlinedButton(
                             onClick = { vm.chooseTripwireDirection(value) },
+                            shape = AppButtonShape,
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = if (vm.tripwireDirection == value) {
                                     MaterialTheme.colorScheme.primaryContainer
@@ -196,6 +199,7 @@ fun ZoneEditorScreen(
                         OutlinedButton(
                             onClick = { vm.commitPoly() },
                             modifier = Modifier.testTag("zoneClosePoly"),
+                            shape = AppButtonShape,
                         ) {
                             Icon(Icons.Filled.Check, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
@@ -206,6 +210,7 @@ fun ZoneEditorScreen(
                     OutlinedButton(
                         onClick = { vm.addZone() },
                         modifier = Modifier.testTag("zoneAdd"),
+                        shape = AppButtonShape,
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
@@ -215,6 +220,7 @@ fun ZoneEditorScreen(
                     OutlinedButton(
                         onClick = { confirmClear = true },
                         modifier = Modifier.testTag("zoneClear"),
+                        shape = AppButtonShape,
                     ) {
                         Icon(Icons.Filled.DeleteForever, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
@@ -307,7 +313,10 @@ fun ZoneEditorScreen(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { confirmClear = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = { confirmClear = false },
+                    shape = AppButtonShape,
+                ) { Text("Cancel") }
             },
             confirmButton = {
                 TextButton(
@@ -316,6 +325,7 @@ fun ZoneEditorScreen(
                         vm.clearAll()
                     },
                     modifier = Modifier.testTag("zoneClearConfirm"),
+                    shape = AppButtonShape,
                 ) { Text("Clear") }
             },
         )
@@ -326,6 +336,7 @@ fun ZoneEditorScreen(
 private fun ToolButton(label: String, active: Boolean, tag: String, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
+        shape = AppButtonShape,
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = if (active) {
                 MaterialTheme.colorScheme.primaryContainer

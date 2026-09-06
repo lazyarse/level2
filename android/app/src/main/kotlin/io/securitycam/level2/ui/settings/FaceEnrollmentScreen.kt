@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.ui.monitor.PreviewSurface
+import io.securitycam.level2.ui.theme.AppButtonShape
 
 /**
  * Full-screen live capture page for face enrollment: a large camera viewfinder
@@ -54,6 +55,7 @@ fun FaceEnrollmentScreen(
                         modifier = Modifier
                             .padding(end = 12.dp)
                             .testTag("cancelEnrollmentButton"),
+                        shape = AppButtonShape,
                     ) { Text("Cancel") }
                 },
             )

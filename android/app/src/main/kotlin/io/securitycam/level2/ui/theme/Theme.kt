@@ -22,10 +22,16 @@ private val AppShapes = Shapes(
     medium = RoundedCornerShape(4.dp),
     large = RoundedCornerShape(6.dp),
     extraSmall = RoundedCornerShape(2.dp),
-    // Buttons (Button/FilledTonalButton/OutlinedButton/TextButton) use the
-    // extraLarge shape slot: keep it square (2.dp), never pill-shaped.
     extraLarge = RoundedCornerShape(2.dp),
 )
+
+/**
+ * Square shape for every button. Material 3 1.3.x resolves button shapes
+ * from a hardcoded CircleShape token (see ButtonDefaults.shape), so the
+ * theme slots cannot change them — pass `shape = AppButtonShape`
+ * explicitly on every Button/FilledTonalButton/OutlinedButton/TextButton.
+ */
+val AppButtonShape = RoundedCornerShape(2.dp)
 
 @Composable
 fun SecurityCamTheme(content: @Composable () -> Unit) {

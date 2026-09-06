@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.securitycam.level2.core.DetectorType
 import io.securitycam.level2.core.Snapshot
+import io.securitycam.level2.ui.theme.AppButtonShape
 
 /** Icon for a trigger type, shared by the events/history surfaces and monitor status. */
 fun eventIconFor(type: String): ImageVector =
@@ -234,6 +235,7 @@ internal fun ZoomableSnapshotDialog(
             TextButton(
                 onClick = onClose,
                 modifier = Modifier.testTag(closeTag),
+                shape = AppButtonShape,
             ) { Text("Close") }
         }
     }

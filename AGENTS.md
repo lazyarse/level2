@@ -170,10 +170,12 @@ emulator -avd pixel_34_aosp -no-snapshot -no-window -camera-back webcam1 ...
 ## UI style guide
 
 - **Buttons**: All buttons (`Button`, `FilledTonalButton`, `OutlinedButton`, `TextButton`)
-  are square — `extraLarge = RoundedCornerShape(2.dp)` in `AppShapes`
-  (Material 3 buttons use the `extraLarge` shape slot).
-  Never use pill-shaped or squircle buttons (Material 3 default `extraLarge` is 28 dp).
-  Never add per-button `shape` overrides — the theme handles it.
+  are square — pass `shape = AppButtonShape` (defined in `ui/theme/Theme.kt`)
+  explicitly on every button. The theme slots cannot do it: Material 3 1.3.x
+  resolves button shapes from a hardcoded `CircleShape` token
+  (`ButtonDefaults.shape`, verified by disassembling `material3-1.3.1`), so a
+  `Shapes` override has no effect and per-button `shape` is mandatory.
+  Never use pill-shaped buttons.
 - **IconButtons** are fine as-is (they're square by nature).
 
 ## Screenshots & gallery

@@ -54,6 +54,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.monitor.MonitorState
 import io.securitycam.level2.monitor.MonitorViewModel
 import io.securitycam.level2.ui.events.eventIconFor
+import io.securitycam.level2.ui.theme.AppButtonShape
 
 @Composable
 fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewModel.Factory)) {
@@ -307,6 +308,7 @@ private fun MonitorStatusBar(
                 Button(
                     onClick = onStop,
                     modifier = Modifier.testTag("stopMonitorButton"),
+                    shape = AppButtonShape,
                 ) {
                     Icon(Icons.Filled.Stop, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
@@ -318,6 +320,7 @@ private fun MonitorStatusBar(
                         onClick = onStart,
                         enabled = state != MonitorState.Starting,
                         modifier = Modifier.testTag("startMonitorButton"),
+                        shape = AppButtonShape,
                     ) {
                         Text(if (state == MonitorState.Error) "Retry" else "Start")
                     }
@@ -327,6 +330,7 @@ private fun MonitorStatusBar(
                     state == MonitorState.Idle -> Button(
                         onClick = onStartPreview,
                         modifier = Modifier.testTag("previewCameraButton"),
+                        shape = AppButtonShape,
                     ) {
                         Text("Preview")
                     }
@@ -334,6 +338,7 @@ private fun MonitorStatusBar(
                     previewing -> Button(
                         onClick = onStopPreview,
                         modifier = Modifier.testTag("stopPreviewButton"),
+                        shape = AppButtonShape,
                     ) {
                         Icon(Icons.Filled.Stop, contentDescription = null)
                         Spacer(Modifier.width(4.dp))

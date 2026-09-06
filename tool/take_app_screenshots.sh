@@ -233,6 +233,10 @@ launch_diagnostics() {
 dump_ui() {
   local i
   for i in 1 2 3 4 5; do
+    # Drop the previous dump first: a failed dump leaves the old file behind
+    # and `cat` would hand back stale content that passes the checks below.
+    adb shell rm -f /sdcard/uidump.xml >/dev/null 2>&1
+    rm -f "$XML"
     adb shell uiautomator dump /sdcard/uidump.xml >/dev/null 2>&1
     adb shell cat /sdcard/uidump.xml >"$XML" 2>/dev/null
     [ -s "$XML" ] && grep -q '</hierarchy>' "$XML" && return 0
@@ -401,12 +405,12 @@ echo "computed NAV_TOP=$NAV_TOP W=$W"
 
 SECTIONS=(
   "Detectors|detectors"
-  "Regions|regions"
-  "Face Recognition|face_recognition"
-  "Channels|channels"
-  "Schedule|schedule"
+  "Notification Channels|channels"
   "Video clips|video_clips"
+  "Zones|regions"
+  "Face Recognition|face_recognition"
   "Live View|live_view"
+  "Schedule|schedule"
   "Cloud backup|cloud_backup"
   "Events|events"
   "Advanced|advanced"

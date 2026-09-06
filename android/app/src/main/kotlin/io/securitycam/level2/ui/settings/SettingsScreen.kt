@@ -107,6 +107,7 @@ import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.core.VideoQuality
 import io.securitycam.level2.core.DetectorType
 import io.securitycam.level2.core.TriggerType
+import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
 import kotlinx.coroutines.flow.filterNotNull
@@ -523,6 +524,7 @@ fun SettingsScreen(
                                     onClick = { showAddFaceDialog = true },
                                     enabled = !isEnrolling,
                                     modifier = Modifier.testTag("addFaceButton"),
+                                    shape = AppButtonShape,
                                 ) {
                                     Icon(Icons.Filled.Add, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
@@ -742,6 +744,7 @@ fun SettingsScreen(
                                     }
                                 },
                                 modifier = Modifier.testTag("scheduleAddWindow"),
+                                shape = AppButtonShape,
                             ) {
                                 Icon(Icons.Filled.Add, contentDescription = null)
                                 Spacer(Modifier.width(4.dp))
@@ -870,7 +873,10 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(backupSnapshots = v)) }
                                     },
                                 )
-                                FilledTonalButton(onClick = { viewModel.validateCloudBackup() }) {
+                                FilledTonalButton(
+                                    onClick = { viewModel.validateCloudBackup() },
+                                    shape = AppButtonShape,
+                                ) {
                                     Text("Test connection")
                                 }
                             }
@@ -906,13 +912,19 @@ fun SettingsScreen(
                                     clearDurationHours = clearOptions.first { it.second == label }.first
                                 },
                             )
-                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = false, hours = clearDurationHours) }) {
+                            FilledTonalButton(
+                                onClick = { pendingClear = ClearRequest(all = false, hours = clearDurationHours) },
+                                shape = AppButtonShape,
+                            ) {
                                 Icon(Icons.Filled.DeleteSweep, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
                                 Text("Clear events")
                             }
                             Spacer(Modifier.height(8.dp))
-                            FilledTonalButton(onClick = { pendingClear = ClearRequest(all = true) }) {
+                            FilledTonalButton(
+                                onClick = { pendingClear = ClearRequest(all = true) },
+                                shape = AppButtonShape,
+                            ) {
                                 Icon(Icons.Filled.DeleteForever, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
                                 Text("Clear all events")
@@ -1008,6 +1020,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                         .testTag("saveSettings"),
+                    shape = AppButtonShape,
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -1035,13 +1048,19 @@ fun SettingsScreen(
                     )
                 },
                 confirmButton = {
-                    Button(onClick = {
-                        viewModel.clearEvents(if (all) null else Duration.ofHours(request.hours.toLong()))
-                        pendingClear = null
-                    }) { Text("Clear") }
+                    Button(
+                        onClick = {
+                            viewModel.clearEvents(if (all) null else Duration.ofHours(request.hours.toLong()))
+                            pendingClear = null
+                        },
+                        shape = AppButtonShape,
+                    ) { Text("Clear") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { pendingClear = null }) { Text("Cancel") }
+                    TextButton(
+                        onClick = { pendingClear = null },
+                        shape = AppButtonShape,
+                    ) { Text("Cancel") }
                 },
             )
         }
@@ -1063,10 +1082,14 @@ fun SettingsScreen(
                             pendingDeleteFace = null
                         },
                         modifier = Modifier.testTag("confirmDeleteFace"),
+                        shape = AppButtonShape,
                     ) { Text("Remove") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { pendingDeleteFace = null }) { Text("Cancel") }
+                    TextButton(
+                        onClick = { pendingDeleteFace = null },
+                        shape = AppButtonShape,
+                    ) { Text("Cancel") }
                 },
             )
         }
@@ -1116,10 +1139,14 @@ fun SettingsScreen(
                             }
                         },
                         enabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
+                        shape = AppButtonShape,
                     ) { Text("Enrol") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAddFaceDialog = false; faceEnrollName = "" }) {
+                    TextButton(
+                        onClick = { showAddFaceDialog = false; faceEnrollName = "" },
+                        shape = AppButtonShape,
+                    ) {
                         Text("Cancel")
                     }
                 },
@@ -1641,6 +1668,7 @@ private fun ChannelBody(
                 },
                 enabled = draftValid && !inFlight,
                 modifier = Modifier.testTag("sendTest_${config.id}"),
+                shape = AppButtonShape,
             ) {
                 Text(if (inFlight) "Sending…" else "Send test")
             }
