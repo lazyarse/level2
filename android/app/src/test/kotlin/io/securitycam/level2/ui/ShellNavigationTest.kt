@@ -115,7 +115,9 @@ class ShellNavigationTest {
         compose.waitForIdle()
         assertEquals(1, instances.size)
         assertEquals(1, loads)
-        compose.onAllNodesWithText("· Motion", substring = true)
+        compose.onAllNodesWithText("Motion", substring = false)
+            .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+        compose.onAllNodesWithText("Confidence: High", substring = true)
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
 
         compose.onNodeWithText("Monitor").performClick()
@@ -125,7 +127,9 @@ class ShellNavigationTest {
 
         assertEquals("view-model must survive tab switches", 1, instances.size)
         assertEquals("initial load must not re-run on return", 1, loads)
-        compose.onAllNodesWithText("· Motion", substring = true)
+        compose.onAllNodesWithText("Motion", substring = false)
+            .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+        compose.onAllNodesWithText("Confidence: High", substring = true)
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
     }
 }

@@ -425,15 +425,24 @@ private fun EventRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                "$timeText · $typeLabel",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            DetectorIconsRow(
-                types = detectorTypes,
-                tagPrefix = "eventDetectors",
-                eventId = event.id,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    timeText,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                DetectorIconsRow(
+                    types = detectorTypes,
+                    tagPrefix = "eventDetectors",
+                    eventId = event.id,
+                )
+                Text(
+                    typeLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
             Text(
                 "Confidence: ${confidenceLabel(event.score)}",
                 style = MaterialTheme.typography.bodySmall,
@@ -670,15 +679,24 @@ private fun TimelineDetailCard(
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                "$timeText · $typeLabel",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            DetectorIconsRow(
-                types = detectorTypes,
-                tagPrefix = "timelineDetectors",
-                eventId = event.id,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    timeText,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                DetectorIconsRow(
+                    types = detectorTypes,
+                    tagPrefix = "timelineDetectors",
+                    eventId = event.id,
+                )
+                Text(
+                    typeLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             val subline = buildString {
                 if (faceName != null) {
                     append("Recognised: ")

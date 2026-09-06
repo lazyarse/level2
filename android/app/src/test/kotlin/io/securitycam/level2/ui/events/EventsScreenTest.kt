@@ -108,6 +108,9 @@ class EventsScreenTest {
         compose.onNodeWithTag("dayHeader_2026-01-03").assertExists()
         compose.onNodeWithTag("eventRow_2").assertExists()
         compose.onNodeWithTag("eventRow_3").assertExists()
+        // Detector icons render inline on the first line of each list row.
+        compose.onNodeWithTag("eventDetectors_2").assertExists()
+        compose.onNodeWithTag("eventDetectors_2_motion").assertExists()
         // No header for the empty gap day.
         compose.onAllNodesWithTag("dayHeader_2026-01-04").fetchSemanticsNodes().let {
             assertEquals(0, it.size)

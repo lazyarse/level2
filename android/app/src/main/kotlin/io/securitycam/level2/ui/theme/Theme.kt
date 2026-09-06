@@ -22,7 +22,9 @@ private val AppShapes = Shapes(
     medium = RoundedCornerShape(4.dp),
     large = RoundedCornerShape(6.dp),
     extraSmall = RoundedCornerShape(2.dp),
-    extraLarge = RoundedCornerShape(6.dp),
+    // Buttons (Button/FilledTonalButton/OutlinedButton/TextButton) use the
+    // extraLarge shape slot: keep it square (2.dp), never pill-shaped.
+    extraLarge = RoundedCornerShape(2.dp),
 )
 
 @Composable
