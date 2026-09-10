@@ -2,6 +2,12 @@ package io.securitycam.level2.channels
 
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
+import io.securitycam.level2.core.Snapshot
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.util.Log
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -10,6 +16,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Base64
 import javax.net.SocketFactory
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocketFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,10 +61,38 @@ data class MailMessage(
     val to: String,
     val subject: String,
     val text: String,
+    /** Attached snapshot (full camera JPEG); null sends a text-only message. */
+    val attachment: Snapshot? = null,
 )
 
 fun interface MailSender {
     suspend fun send(message: MailMessage)
+}
+
+/**
+ * Sample JPEG attached to email test sends so the attachment path is
+ * exercisable without waiting for a live detection. Rendered in code
+ * (no bundled asset): small labelled frame, ~10KB.
+ */
+internal fun sampleTestSnapshot(): Snapshot {
+    val width = 320
+    val height = 240
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    try {
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.DKGRAY)
+        val paint = Paint().apply {
+            color = Color.WHITE
+            textSize = 28f
+            isAntiAlias = true
+        }
+        canvas.drawText("Security Cam test", 24f, height / 2f, paint)
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        return Snapshot(out.toByteArray(), "image/jpeg", "test-snapshot.jpg")
+    } finally {
+        bitmap.recycle()
+    }
 }
 
 /**
@@ -69,23 +104,47 @@ class EmailChannel(
     override val enabled: Boolean = true,
     override val settings: EmailChannelSettings,
     private val sender: MailSender? = null,
+    /** Builds the attachment for test sends; injectable so JVM tests avoid Bitmap. */
+    private val testSnapshot: () -> Snapshot = ::sampleTestSnapshot,
 ) : io.securitycam.level2.core.Channel {
 
     override val type: String get() = "email"
 
+    /** Live transport, reused so the last preview URL survives the send. */
+    private val liveSender: RawSmtpSender by lazy { RawSmtpSender(settings) }
+
+    /**
+     * Preview URL for the last message sent through the live transport
+     * (Ethereal.email returns one via the DATA-acceptance reply; real
+     * providers don't, so this is null outside sandbox testing).
+     */
+    val lastPreviewUrl: String?
+        get() = liveSender.lastPreviewUrl
+
     override suspend fun send(message: AlertMessage) {
-        (sender ?: RawSmtpSender(settings)).send(
-            MailMessage(from = settings.from, to = settings.to, subject = message.text, text = message.text),
+        val active = sender ?: liveSender
+        active.send(
+            MailMessage(
+                from = settings.from,
+                to = settings.to,
+                subject = message.text,
+                text = message.text,
+                attachment = message.snapshot,
+            ),
         )
+        (active as? RawSmtpSender)?.lastPreviewUrl?.let {
+            Log.d("EmailChannel", "Preview URL: $it")
+        }
     }
 
     override suspend fun sendTest() {
-        (sender ?: RawSmtpSender(settings)).send(
+        (sender ?: liveSender).send(
             MailMessage(
                 from = settings.from,
                 to = settings.to,
                 subject = "Security Cam: test alert",
                 text = "Security Cam: test alert",
+                attachment = testSnapshot(),
             ),
         )
     }
@@ -94,6 +153,15 @@ class EmailChannel(
         if (settings.host.isEmpty()) return "SMTP host is required"
         if (settings.username.isEmpty() || settings.password.isEmpty()) {
             return "Username and password are required"
+        }
+        // 587/465 have exactly one correct mode each; anything else fails at
+        // the TLS handshake with a cryptic SSL error, so block it up-front.
+        // Custom ports stay unrestricted (e.g. Mailtrap 2525, Mailpit 1025).
+        if (settings.port == 587 && settings.useTls) {
+            return "Port 587 uses STARTTLS — turn Implicit TLS off"
+        }
+        if (settings.port == 465 && !settings.useTls) {
+            return "Port 465 uses implicit TLS — turn Implicit TLS on"
         }
         if (!EMAIL_REGEX.matches(settings.from)) return "From address is invalid"
         if (!EMAIL_REGEX.matches(settings.to)) return "To address is invalid"
@@ -115,41 +183,134 @@ class RawSmtpSender(
     private val socketFactory: SocketFactory? = null,
 ) : MailSender {
 
-    override suspend fun send(message: MailMessage): Unit = withContext(Dispatchers.IO) {
-        var conn = Connection(settings.host, settings.port, settings.useTls, socketFactory)
-        try {
-            conn.readReply(220..229, "greeting")
-            conn.cmd("EHLO level2", 250..259)
-            if (!settings.useTls) {
-                conn.cmd("STARTTLS", 220..229)
-                conn.upgradeToTls(settings.host)
-                conn.cmd("EHLO level2", 250..259)
+    /** Preview URL for the last message sent through this instance, if any. */
+    var lastPreviewUrl: String? = null
+        private set
+
+    companion object {
+        /** Base for sandbox preview links (Ethereal.email message pages). */
+        const val PREVIEW_BASE_URL = "https://ethereal.email/message/"
+
+        private val MSGID_REGEX = Regex("""MSGID=([^\s\]]+)""")
+
+        /**
+         * Extracts the sandbox preview URL from the server's DATA-acceptance
+         * reply (Ethereal answers `250 Ok: queued as [STATUS=SUCCESS
+         * MSGID=<id>]`); null when the reply carries no message id.
+         */
+        fun previewUrlFromDataReply(reply: String): String? {
+            val id = MSGID_REGEX.find(reply)?.groupValues?.get(1) ?: return null
+            return PREVIEW_BASE_URL + id
+        }
+
+        /**
+         * Actionable replacement for a raw TLS handshake failure (used when
+         * the toggle/port pairing slips past validation, e.g. custom ports).
+         */
+        fun tlsFailureHint(settings: EmailChannelSettings): String =
+            if (settings.useTls) {
+                "TLS handshake failed — ${settings.host}:${settings.port} did not speak TLS; " +
+                    "for port 587 turn Implicit TLS off (STARTTLS), for 465 keep it on"
+            } else {
+                "STARTTLS failed on ${settings.host}:${settings.port}; " +
+                    "for port 465 turn Implicit TLS on, for 587 keep it off"
             }
-            conn.cmd("AUTH LOGIN", 330..339)
-            conn.cmd(Base64.getEncoder().encodeToString(settings.username.toByteArray()), 330..339)
-            conn.cmd(Base64.getEncoder().encodeToString(settings.password.toByteArray()), 230..239)
-            conn.cmd("MAIL FROM:<${settings.from}>", 250..259)
-            conn.cmd("RCPT TO:<${settings.to}>", 250..259)
-            conn.cmd("DATA", 350..359)
-            conn.writeData(renderMessage(message))
-            conn.cmd("QUIT", 220..259)
-        } finally {
-            conn.close()
+
+        /**
+         * Actionable replacement for a raw SMTP failure reply. A 535 during
+         * AUTH means the server rejected the credentials (wrong or expired —
+         * sandbox accounts are short-lived); anything else keeps the generic
+         * step + code text. Never includes command text: AUTH lines carry
+         * base64 credentials.
+         */
+        fun smtpErrorHint(step: String, code: Int): String =
+            if (code == 535 && step.startsWith("AUTH")) {
+                "Authentication failed (535) during $step — check the SMTP username and password " +
+                    "(sandbox accounts expire; create a fresh one if needed)"
+            } else {
+                "SMTP $step failed ($code)"
+            }
+    }
+
+    override suspend fun send(message: MailMessage): Unit = withContext(Dispatchers.IO) {
+        lastPreviewUrl = null
+        try {
+            val conn = Connection(settings.host, settings.port, settings.useTls, socketFactory)
+            try {
+                conn.readReply(220..229, "greeting")
+                conn.cmd("EHLO level2", 250..259)
+                if (!settings.useTls) {
+                    conn.cmd("STARTTLS", 220..229)
+                    conn.upgradeToTls(settings.host)
+                    conn.cmd("EHLO level2", 250..259)
+                }
+                conn.cmd("AUTH LOGIN", 330..339)
+                conn.cmd(
+                    Base64.getEncoder().encodeToString(settings.username.toByteArray()),
+                    330..339,
+                    step = "AUTH username",
+                )
+                conn.cmd(
+                    Base64.getEncoder().encodeToString(settings.password.toByteArray()),
+                    230..239,
+                    step = "AUTH password",
+                )
+                conn.cmd("MAIL FROM:<${settings.from}>", 250..259)
+                conn.cmd("RCPT TO:<${settings.to}>", 250..259)
+                conn.cmd("DATA", 350..359)
+                val dataReply = conn.writeData(renderMessage(message))
+                lastPreviewUrl = previewUrlFromDataReply(dataReply)
+                conn.cmd("QUIT", 220..259)
+            } finally {
+                conn.close()
+            }
+        } catch (e: SSLException) {
+            // Wrong mode for the port (e.g. implicit TLS against a STARTTLS
+            // port): the raw error ("Unable to parse TLS packet header")
+            // names nothing actionable, so say what to flip instead.
+            throw IllegalStateException(tlsFailureHint(settings), e)
         }
     }
 
-    private fun renderMessage(m: MailMessage): String {
+    /**
+     * Renders the DATA content. The closing dot MUST be followed by CRLF
+     * (`<CR><LF>.<CR><LF>` ends DATA) — without it the server keeps waiting
+     * and the read times out.
+     */
+    internal fun renderMessage(m: MailMessage): String {
         val subject = if (m.subject.all { it.code in 32..126 }) m.subject
         else "=?utf-8?B?" + Base64.getEncoder().encodeToString(m.subject.toByteArray()) + "?="
-        return buildString {
+        val topHeaders = buildString {
             append("From: <").append(m.from).append(">\r\n")
             append("To: <").append(m.to).append(">\r\n")
             append("Subject: ").append(subject).append("\r\n")
             append("MIME-Version: 1.0\r\n")
-            append("Content-Type: text/plain; charset=utf-8\r\n")
-            append("\r\n")
-            append(m.text)
-        }.lineSequence().joinToString("\r\n") { line -> if (line.startsWith(".")) ".$line" else line } + "\r\n."
+        }
+        val body = if (m.attachment == null) {
+            topHeaders + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + m.text
+        } else {
+            renderMultipart(topHeaders, m.text, m.attachment)
+        }
+        return body.lineSequence().joinToString("\r\n") { line -> if (line.startsWith(".")) ".$line" else line } + "\r\n.\r\n"
+    }
+
+    private fun renderMultipart(topHeaders: String, text: String, attachment: Snapshot): String {
+        // Filenames derive from user-controlled camera names: keep header
+        // metacharacters out of the quoted-string.
+        val safeName = attachment.name.replace(Regex("[\\r\\n\"]"), "")
+        val boundary = "level2-" + java.util.UUID.randomUUID()
+        val encoded = Base64.getMimeEncoder().encodeToString(attachment.bytes)
+        return topHeaders +
+            "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n" +
+            "--$boundary\r\n" +
+            "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
+            text + "\r\n" +
+            "--$boundary\r\n" +
+            "Content-Type: ${attachment.mimeType}; name=\"$safeName\"\r\n" +
+            "Content-Transfer-Encoding: base64\r\n" +
+            "Content-Disposition: attachment; filename=\"$safeName\"\r\n\r\n" +
+            encoded + "\r\n" +
+            "--$boundary--"
     }
 
     private class Connection(
@@ -191,21 +352,23 @@ class RawSmtpSender(
             }
             val code = lines.last().take(3).toIntOrNull()
                 ?: error("SMTP malformed reply during $step: ${lines.last()}")
-            check(code in expected) { "SMTP $step failed ($code)" }
+            // Codes only, never content: keeps AUTH material out of logcat.
+            Log.d("EmailChannel", "SMTP $step -> $code")
+            check(code in expected) { smtpErrorHint(step, code) }
             return lines.joinToString("\n")
         }
 
-        fun cmd(command: String, expected: IntRange): String {
+        fun cmd(command: String, expected: IntRange, step: String? = null): String {
             writer.write(command)
             writer.write("\r\n")
             writer.flush()
-            return readReply(expected, command.takeWhile { it != ' ' })
+            return readReply(expected, step ?: command.takeWhile { it != ' ' })
         }
 
-        fun writeData(data: String) {
+        fun writeData(data: String): String {
             writer.write(data)
             writer.flush()
-            readReply(250..259, "DATA acceptance")
+            return readReply(250..259, "DATA acceptance")
         }
 
         fun close() {

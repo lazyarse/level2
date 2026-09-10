@@ -18,10 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -165,7 +165,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     Toast.makeText(context, "Show Zones: ${if (showZones) "On" else "Off"}", Toast.LENGTH_SHORT).show()
                 }) {
                     Icon(
-                        Icons.Filled.Visibility,
+                        Icons.Filled.Layers,
                         contentDescription = "Toggle detection zones",
                         tint = if (showZones) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -179,7 +179,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     modifier = Modifier.testTag("previewToggleButton"),
                 ) {
                     Icon(
-                        if (monitorPreview) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                        if (monitorPreview) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                         contentDescription = "Toggle camera preview",
                         tint = if (monitorPreview) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,

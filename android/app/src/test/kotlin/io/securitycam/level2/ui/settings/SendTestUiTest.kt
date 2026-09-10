@@ -142,4 +142,16 @@ class SendTestUiTest {
         }
         compose.onNodeWithText("Send test: delivered").assertIsDisplayed()
     }
+
+    @Test
+    fun invalidDraftShowsTheReasonUnderTheButton() {
+        // No telegram factory → merged draft cannot validate → reason shown.
+        val vm = viewModel(factories = emptyMap())
+        setContent(vm)
+
+        expandSection("Notification Channels")
+        expandChannel("telegram")
+        compose.onNodeWithTag("sendTestError_telegram").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Unknown channel type telegram").assertIsDisplayed()
+    }
 }

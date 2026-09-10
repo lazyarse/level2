@@ -99,4 +99,28 @@ class SendTestViewModelTest {
         val vm = viewModel(factories = emptyMap())
         assertEquals("failed: unknown channel type log", vm.sendTest(ChannelConfig(id = "c", type = "log")))
     }
+
+    @Test
+    fun emailTestWithInjectedSenderDeliversWithoutPreviewUrl() = runBlocking {
+        val vm = viewModel(
+            factories = mapOf(
+                "email" to { _: ChannelConfig ->
+                    io.securitycam.level2.channels.EmailChannel(
+                        id = "email",
+                        settings = io.securitycam.level2.channels.EmailChannelSettings(
+                            host = "smtp.example.com",
+                            username = "alice",
+                            password = "secret",
+                            from = "alice@example.com",
+                            to = "bob@example.com",
+                        ),
+                        sender = io.securitycam.level2.channels.MailSender { },
+                    )
+                },
+            ),
+        )
+
+        assertEquals("delivered", vm.sendTest(ChannelConfig(id = "email", type = "email")))
+        assertEquals(null, vm.lastTestPreview.value)
+    }
 }

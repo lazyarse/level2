@@ -160,13 +160,20 @@ class EventPipeline(
         } else {
             types.joinToString(" + ") { triggerLabel(it) }
         }
-        val time = DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
+        val time = ALERT_TIME_FORMAT.format(
             batch.timestamp.atZone(ZoneId.systemDefault()),
         )
         return "$label detected in $cameraName at $time"
     }
 
     companion object {
+        /**
+         * Alert timestamp: `2026-09-10 21:30:00+01:00` — space instead of
+         * the ISO `T`, no fractional seconds, UTC offset kept.
+         */
+        val ALERT_TIME_FORMAT: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssxxx")
+
         val defaultBackoffDelays = listOf(
             Duration.ofSeconds(1),
             Duration.ofSeconds(2),

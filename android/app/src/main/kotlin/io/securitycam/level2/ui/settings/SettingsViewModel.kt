@@ -87,6 +87,17 @@ class SettingsViewModel(
     private val _sendingTestId = MutableStateFlow<String?>(null)
     val sendingTestId: StateFlow<String?> = _sendingTestId.asStateFlow()
 
+    /**
+     * Sandbox preview link from the last email test send, if the server gave
+     * one (Ethereal.email does; real providers don't). Shown in the channel
+     * card so the tester can open the caught message; cleared on the next
+     * test send.
+     */
+    data class TestPreview(val channelId: String, val url: String)
+
+    private val _lastTestPreview = MutableStateFlow<TestPreview?>(null)
+    val lastTestPreview: StateFlow<TestPreview?> = _lastTestPreview.asStateFlow()
+
     /** Enrollment progress: the label being enrolled, or null when idle. */
     private val _enrollingLabel = MutableStateFlow<String?>(null)
     val enrollingLabel: StateFlow<String?> = _enrollingLabel.asStateFlow()
@@ -173,6 +184,9 @@ class SettingsViewModel(
         if (invalid != null) return "invalid: $invalid"
         return try {
             channel.sendTest()
+            (channel as? io.securitycam.level2.channels.EmailChannel)?.lastPreviewUrl?.let {
+                _lastTestPreview.value = TestPreview(channelId = config.id, url = it)
+            }
             "delivered"
         } catch (t: Throwable) {
             "failed: ${t.message ?: t.javaClass.simpleName}"
@@ -183,6 +197,7 @@ class SettingsViewModel(
     fun sendTestFromUi(config: io.securitycam.level2.core.ChannelConfig) {
         if (_sendingTestId.value != null) return
         _sendingTestId.value = config.id
+        _lastTestPreview.value = null
         viewModelScope.launch {
             _message.value = "Send test: ${sendTest(config)}"
             _sendingTestId.value = null

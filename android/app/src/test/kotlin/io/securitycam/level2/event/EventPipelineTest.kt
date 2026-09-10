@@ -195,6 +195,23 @@ class EventPipelineTest {
     }
 
     @Test
+    fun alertTimestampHasSpaceSeparatorAndNoFraction() = runBlocking {
+        val builder = PipelineBuilder()
+        val log = FakeChannel("log", "log")
+        builder.channels = mapOf("log" to logConfig())
+        builder.detectors = mapOf("motion" to config("motion", routes = listOf("log")))
+        builder.factories = mapOf("log" to { _: ChannelConfig -> log })
+        builder.build().handleBatch(batch(listOf(trigger(TriggerType.motion, "motion"))))
+
+        val text = log.sent.single().text
+        assertTrue(
+            "unexpected timestamp format: $text",
+            Regex("""Motion detected in Hallway at \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}""")
+                .matches(text),
+        )
+    }
+
+    @Test
     fun mergesTriggersRoutesOnceRecordsMergedEntryAndSavesSnapshot() = runBlocking {
         val builder = PipelineBuilder()
         val tg = FakeChannel("telegram", "telegram")

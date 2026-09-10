@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -15,6 +16,7 @@ import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.ChannelConfig
 import java.time.Duration
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
@@ -109,6 +111,29 @@ class SettingsScreenTest {
         compose.onAllNodesWithTag(fieldTag("SMTP host")).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
+    }
+
+    @Test
+    fun secretFieldVisibilityToggleRevealsPassword() {
+        setContent(Harness())
+
+        expandSection("Notification Channels")
+        expandChannel("email")
+        compose.onNodeWithTag(fieldTag("Password / app password")).performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithContentDescription("Show Password / app password").performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Hide Password / app password").assertIsDisplayed()
+    }
+
+    @Test
+    fun emailPasswordIsTrimmedWhenBuildingConfigs() {
+        val merged = buildChannelConfigs(
+            listOf(ChannelConfig(id = "email", type = "email")),
+            mapOf("email.password" to "  s3cret  "),
+        ).single()
+        assertEquals("s3cret", EmailChannelSettings.fromJson(merged.settingsJson).password)
     }
 
     @Test

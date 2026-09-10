@@ -26,11 +26,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Face
@@ -81,11 +86,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
@@ -284,6 +293,7 @@ fun SettingsScreen(
                                 "$active/${nonLog.size} active"
                             },
                         ) {
+                            val testPreview by viewModel.lastTestPreview.collectAsState()
                             for (config in current.channelConfigs) {
                                 if (config.type != "log") {
                                     ChannelCard(
@@ -303,6 +313,7 @@ fun SettingsScreen(
                                         },
                                         inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
                                         factories = viewModel.testFactories,
+                                        testPreviewUrl = testPreview?.takeIf { it.channelId == config.id }?.url,
                                     )
                                 }
                             }
@@ -1184,7 +1195,9 @@ internal fun buildChannelConfigs(
                 host = f("host").trim(),
                 port = f("port").trim().toIntOrNull() ?: 587,
                 username = f("username").trim(),
-                password = f("password"),
+                // Trimmed: copy-paste habitually trails whitespace, which the
+                // server rejects with a 535; no real password needs it.
+                password = f("password").trim(),
                 from = f("from").trim(),
                 to = f("to").trim(),
                 useTls = f("tls") == "1",
@@ -1529,6 +1542,7 @@ private fun ChannelCard(
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
     inFlight: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
+    testPreviewUrl: String? = null,
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_${config.id}")
@@ -1567,6 +1581,7 @@ private fun ChannelCard(
                     onSendTest = onSendTest,
                     inFlight = inFlight,
                     factories = factories,
+                    testPreviewUrl = testPreviewUrl,
                 )
             }
         }
@@ -1581,6 +1596,7 @@ private fun ChannelBody(
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
     inFlight: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
+    testPreviewUrl: String? = null,
 ) {
     // Keys are already fully qualified as "<channelId>.<field>".
     val setField: SetField = { key, value -> fields[key] = value }
@@ -1593,15 +1609,15 @@ private fun ChannelBody(
                 }
 
                 "email" -> {
-                    Field("SMTP host", fields, "${config.id}.host", setField)
+                    Field("SMTP host", fields, "${config.id}.host", setField, KeyboardType.Email)
                     NumberField("Port (587 or 465)", fields, "${config.id}.port", setField)
-                    Field("Username", fields, "${config.id}.username", setField)
+                    Field("Username", fields, "${config.id}.username", setField, KeyboardType.Email)
                     SecretField("Password / app password", fields, "${config.id}.password", setField)
-                    Field("From address", fields, "${config.id}.from", setField)
-                    Field("To address", fields, "${config.id}.to", setField)
+                    Field("From address", fields, "${config.id}.from", setField, KeyboardType.Email)
+                    Field("To address", fields, "${config.id}.to", setField, KeyboardType.Email)
                     SwitchRow(
                         title = "Implicit TLS (SSL, port 465)",
-                        subtitle = "",
+                        subtitle = "Off for port 587 (STARTTLS — Ethereal, Gmail) · on for 465",
                         checked = fields["${config.id}.tls"] == "1",
                         onCheckedChange = { v -> setField("${config.id}.tls", if (v) "1" else "") },
                     )
@@ -1657,11 +1673,13 @@ private fun ChannelBody(
                     )
                 }
             }
-            val draftValid = remember(config.id, config.type, fields.toMap()) {
+            val draftError: String? = remember(config.id, config.type, fields.toMap()) {
                 val merged = buildChannelConfigs(listOf(config), fields).first()
                 val channel = factories[merged.type]?.invoke(merged)
-                channel != null && channel.validate() == null
+                if (channel == null) "Unknown channel type ${merged.type}"
+                else channel.validate() ?: emailPortError(config.id, fields)
             }
+            val draftValid = draftError == null
             OutlinedButton(
                 onClick = {
                     onSendTest(buildChannelConfigs(listOf(config), fields).first())
@@ -1672,10 +1690,69 @@ private fun ChannelBody(
             ) {
                 Text(if (inFlight) "Sending…" else "Send test")
             }
+            if (draftError != null) {
+                Text(
+                    text = draftError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("sendTestError_${config.id}"),
+                )
+            }
+            if (config.type == "email" && testPreviewUrl != null) {
+                TestPreviewRow(url = testPreviewUrl, channelId = config.id)
+            }
     }
 }
 
 private typealias SetField = (String, String) -> Unit
+
+/**
+ * Port check the channel validators don't see: [buildChannelConfigs] silently
+ * falls back to 587 on garbage input, so flag it here instead. Null (or
+ * blank, which also means 587) is fine.
+ */
+internal fun emailPortError(channelId: String, fields: Map<String, String>): String? {
+    val raw = fields["$channelId.port"]?.trim().orEmpty()
+    if (raw.isEmpty()) return null
+    val port = raw.toIntOrNull()
+    return if (port == null || port !in 1..65535) "Port must be a number from 1 to 65535" else null
+}
+
+/**
+ * Sandbox preview link from the last email test send (Ethereal.email caught
+ * message). Selectable + copyable so the tester can open it in a browser and
+ * verify the message manually; sandbox links expire after a few hours.
+ */
+@Composable
+private fun TestPreviewRow(url: String, channelId: String) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Sandbox preview (expires in a few hours)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SelectionContainer(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("testPreviewUrl_$channelId"),
+                )
+            }
+            IconButton(onClick = { clipboard.setText(AnnotatedString(url)) }) {
+                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy preview link")
+            }
+            IconButton(onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }) {
+                Icon(Icons.Filled.OpenInBrowser, contentDescription = "Open preview link")
+            }
+        }
+    }
+}
 
 @Composable
 private fun Field(
@@ -1683,12 +1760,17 @@ private fun Field(
     fields: Map<String, String>,
     key: String,
     setField: SetField,
+    keyboardType: KeyboardType = KeyboardType.Text,
 ) {
     OutlinedTextField(
         value = fields[key] ?: "",
         onValueChange = { setField(key, it) },
         label = { Text(label) },
         singleLine = true,
+        // Identifiers, never prose: autocorrect/autocaps would corrupt
+        // hostnames, usernames and addresses (e.g. capitalising an SMTP
+        // username → 535 auth rejection).
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, autoCorrect = false),
         modifier = Modifier.fillMaxWidth().testTag(fieldTag(label)),
     )
 }
@@ -1717,12 +1799,22 @@ private fun SecretField(
     key: String,
     setField: SetField,
 ) {
+    var visible by rememberSaveable(key) { mutableStateOf(false) }
     OutlinedTextField(
         value = fields[key] ?: "",
         onValueChange = { setField(key, it) },
         label = { Text(label) },
         singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        trailingIcon = {
+            IconButton(onClick = { visible = !visible }) {
+                Icon(
+                    if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (visible) "Hide $label" else "Show $label",
+                )
+            }
+        },
         modifier = Modifier.fillMaxWidth().testTag(fieldTag(label)),
     )
 }

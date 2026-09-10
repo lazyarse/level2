@@ -73,6 +73,9 @@ class SettingsStore(
         if (cb.password.isNotEmpty()) {
             secrets.write(cloudBackupSecretKey(), cb.password)
         }
+        for (c in settings.channelConfigs) {
+            persistChannelSecrets(c)
+        }
         val sanitized = settings.copyWith(
             channelConfigs = settings.channelConfigs.map { c ->
                 c.copyWith(settingsJson = stripSecrets(c))
@@ -165,8 +168,28 @@ class SettingsStore(
         return settings
     }
 
-    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {
-        val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
+    /**
+     * Writes a channel's non-empty secret fields into the secret store (the
+     * counterpart to [stripSecrets]: without this, saving drops secrets —
+     * they end up neither in the blob nor in encrypted storage). Empty
+     * values leave the stored secret untouched so a blank draft field can't
+     * wipe a previously saved secret.
+     */
+    private suspend fun persistChannelSecrets(config: ChannelConfig) {
+        val typed = try {
+            ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
+        } catch (_: Exception) {
+            return
+        }
+        for (field in typed.secretFields) {
+            val value = config.settingsJson[field]
+            if (value is String && value.isNotEmpty()) {
+                secrets.write(secretKey(config.id, field), value)
+            }
+        }
+    }
+
+    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {        val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
         if (typed.secretFields.isEmpty()) {
             config.settingsJson
         } else {

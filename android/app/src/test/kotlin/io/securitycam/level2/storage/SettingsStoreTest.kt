@@ -51,6 +51,49 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun saveWritesChannelSecretsToTheSecretStore() = runBlocking {
+        val s = store()
+        s.save(withTelegram("123:ABC", "42"))
+
+        assertEquals("123:ABC", secrets.all["channel.telegram.botToken"])
+    }
+
+    @Test
+    fun emailPasswordRoundTripsViaTheSecretStore() = runBlocking {
+        val s = store()
+        s.save(
+            AppSettings.defaults().copyWith(
+                channelConfigs = listOf(
+                    ChannelConfig(
+                        id = "email",
+                        type = "email",
+                        settingsJson = mapOf(
+                            "host" to "smtp.ethereal.email",
+                            "port" to 587,
+                            "username" to "user@ethereal.email",
+                            "password" to "s3cret-app-pass",
+                            "from" to "user@ethereal.email",
+                            "to" to "me@example.com",
+                            "useTls" to false,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val raw = s.rawJson()
+        assertTrue(raw != null)
+        assertFalse(raw!!.contains("s3cret-app-pass"))
+        assertTrue(raw.contains("smtp.ethereal.email"))
+
+        val loaded = s.load()
+        val email = loaded.channelConfigs.first { c -> c.id == "email" }
+        assertEquals("s3cret-app-pass", email.settingsJson["password"])
+        assertEquals("smtp.ethereal.email", email.settingsJson["host"])
+        assertEquals("me@example.com", email.settingsJson["to"])
+    }
+
+    @Test
     fun loadInjectsTheTokenFromTheSecretStoreIntoSettings() = runBlocking {
         val s = store()
         secrets.write("channel.telegram.botToken", "123:ABC")
