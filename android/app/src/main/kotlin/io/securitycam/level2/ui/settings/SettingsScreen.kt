@@ -37,9 +37,16 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationImportant
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Webhook
 import androidx.compose.material.icons.filled.CropFree
-import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.RemoveCircleOutline
@@ -294,11 +301,21 @@ fun SettingsScreen(
                             },
                         ) {
                             val testPreview by viewModel.lastTestPreview.collectAsState()
-                            for (config in current.channelConfigs) {
+                            if (current.channelConfigs.none { it.type != "log" }) {
+                                BodyText("No notification channels yet — add one below.")
+                            }
+                            // Email first: it's the primary alert channel. Stable sort
+                            // keeps the stored relative order of everything else,
+                            // regardless of the persisted blob order.
+                            val orderedChannels = current.channelConfigs.sortedBy { config ->
+                                if (config.type == "email") 0 else 1
+                            }
+                            for (config in orderedChannels) {
                                 if (config.type != "log") {
                                     ChannelCard(
                                         config = config,
                                         fields = fields,
+                                        siblings = current.channelConfigs,
                                         onEnabledChange = { enabled ->
                                             viewModel.update { settings ->
                                                 settings.copy(
@@ -308,8 +325,30 @@ fun SettingsScreen(
                                                 )
                                             }
                                         },
+                                        onLabelChange = { label ->
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.map {
+                                                        if (it.id == config.id) it.copy(label = label) else it
+                                                    },
+                                                )
+                                            }
+                                        },
                                         onSendTest = { merged ->
                                             viewModel.sendTestFromUi(merged)
+                                        },
+                                        onDelete = {
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.filterNot {
+                                                        it.id == config.id
+                                                    },
+                                                    detectorConfigs = pruneChannelFromDetectors(
+                                                        settings.detectorConfigs,
+                                                        config.id,
+                                                    ),
+                                                )
+                                            }
                                         },
                                         inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
                                         factories = viewModel.testFactories,
@@ -317,6 +356,29 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                            DropdownField(
+                                label = "Add Notification Channel",
+                                selected = "",
+                                options = multiAccountTypes.sorted()
+                                    .map { it to "${channelTitle(it)} account" },
+                                testTag = "addChannel",
+                                onSelect = { type ->
+                                    viewModel.update { settings ->
+                                        val id = nextFreeChannelId(
+                                            type,
+                                            settings.channelConfigs.map { it.id }.toSet(),
+                                        )
+                                        settings.copy(
+                                            channelConfigs = settings.channelConfigs +
+                                                io.securitycam.level2.core.ChannelConfig(
+                                                    id = id,
+                                                    type = type,
+                                                    enabled = false,
+                                                ),
+                                        )
+                                    }
+                                },
+                            )
                         }
                         CollapsibleSection("Video clips", summary = if (current.recordVideo) "on" else "off") {
                             BodyText(
@@ -1538,14 +1600,19 @@ private fun motionGateNote(type: String): String? = when (type) {
 private fun ChannelCard(
     config: io.securitycam.level2.core.ChannelConfig,
     fields: MutableMap<String, String>,
+    siblings: List<io.securitycam.level2.core.ChannelConfig>,
     onEnabledChange: (Boolean) -> Unit,
+    onLabelChange: (String) -> Unit,
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
+    onDelete: () -> Unit,
     inFlight: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
     testPreviewUrl: String? = null,
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_${config.id}")
+    val name = channelDisplayName(config, siblings)
     Card(
         modifier = Modifier
             .padding(vertical = 4.dp)
@@ -1570,14 +1637,31 @@ private fun ChannelCard(
                     contentDescription = if (expanded) "collapse_${config.id}" else "expand_${config.id}",
                     modifier = Modifier.graphicsLayer { rotationZ = chevron },
                 )
-                Text(channelTitle(config.type), modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
+                Icon(
+                    channelIcon(config.type),
+                    contentDescription = name,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(name, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                if (config.type in multiAccountTypes) {
+                    IconButton(onClick = { confirmDelete = true }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Delete $name",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
             }
             if (expanded) {
                 ChannelBody(
                     config = config,
                     fields = fields,
+                    onLabelChange = onLabelChange,
                     onSendTest = onSendTest,
                     inFlight = inFlight,
                     factories = factories,
@@ -1586,6 +1670,29 @@ private fun ChannelCard(
             }
         }
     }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete $name?") },
+            text = { Text("Remove this ${channelTitle(config.type)} account? Its detector routes will be cleared.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete()
+                        confirmDelete = false
+                    },
+                    shape = AppButtonShape,
+                    modifier = Modifier.testTag("confirmDeleteChannel_${config.id}"),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmDelete = false },
+                    shape = AppButtonShape,
+                ) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 /** Expanded channel card contents: type-specific fields plus the test sender. */
@@ -1593,6 +1700,7 @@ private fun ChannelCard(
 private fun ChannelBody(
     config: io.securitycam.level2.core.ChannelConfig,
     fields: MutableMap<String, String>,
+    onLabelChange: (String) -> Unit,
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
     inFlight: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
@@ -1602,6 +1710,15 @@ private fun ChannelBody(
     val setField: SetField = { key, value -> fields[key] = value }
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (config.type in multiAccountTypes) {
+            OutlinedTextField(
+                value = config.label,
+                onValueChange = onLabelChange,
+                label = { Text("Account name (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("channelLabel_${config.id}"),
+            )
+        }
         when (config.type) {
                 "telegram" -> {
                     SecretField("Bot token", fields, "${config.id}.token", setField)
@@ -1975,10 +2092,65 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
     }
 }
 
+/** Channel types that support multiple accounts (add/delete in Settings). */
+private val multiAccountTypes = setOf("email", "telegram", "pushover", "webhook")
+
+/** Type glyph for channel cards (mirrors the DetectorCard title-icon pattern). */
+internal fun channelIcon(type: String): androidx.compose.ui.graphics.vector.ImageVector =
+    when (type) {
+        "email" -> Icons.Filled.Email
+        "telegram" -> Icons.Filled.Send
+        "webhook" -> Icons.Filled.Webhook
+        "pushover" -> Icons.Filled.Notifications
+        "siren" -> Icons.Filled.Campaign
+        "log" -> Icons.Filled.Terminal
+        else -> Icons.Filled.NotificationImportant
+    }
+
 /** Channel header display name: raw type ids rendered Title Case. */
-private fun channelTitle(type: String): String = type.split('_', ' ')
+private fun channelTitle(type: String): String = type.split('_', ' ', '-')
     .filter { it.isNotEmpty() }
     .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
+/**
+ * Account display name: the custom label when set, else the type title with
+ * a same-type index suffix past the first ("Email", "Email 2", …).
+ */
+internal fun channelDisplayName(
+    config: io.securitycam.level2.core.ChannelConfig,
+    siblings: List<io.securitycam.level2.core.ChannelConfig>,
+): String {
+    if (config.label.isNotBlank()) return config.label
+    val index = siblings.filter { it.type == config.type }
+        .sortedBy { it.id }
+        .indexOfFirst { it.id == config.id }
+    val base = channelTitle(config.type)
+    return if (index <= 0) base else "$base ${index + 1}"
+}
+
+/** Next free account id for [type]: bare `<type>`, else `<type>-2`, `-3`, … */
+internal fun nextFreeChannelId(
+    type: String,
+    existingIds: Set<String>,
+): String {
+    if (type !in existingIds) return type
+    var n = 2
+    while ("$type-$n" in existingIds) n++
+    return "$type-$n"
+}
+
+/** Drops [channelId] from every detector's channel routes (account deletion). */
+internal fun pruneChannelFromDetectors(
+    detectors: Map<String, io.securitycam.level2.detection.DetectorConfig>,
+    channelId: String,
+): Map<String, io.securitycam.level2.detection.DetectorConfig> =
+    detectors.mapValues { (_, config) ->
+        if (channelId in config.routeToChannelIds) {
+            config.copy(routeToChannelIds = config.routeToChannelIds - channelId)
+        } else {
+            config
+        }
+    }
 
 /** Zones section summary: inclusion/exclusion counts. */
 private fun zonesSummary(settings: AppSettings): String {

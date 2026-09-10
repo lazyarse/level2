@@ -8,6 +8,7 @@ import io.securitycam.level2.core.LiveViewSettings
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,6 +128,32 @@ class SettingsStoreTest {
         assertEquals("legacy:token", secrets.all["channel.telegram.botToken"])
         val raw = s.rawJson()
         assertFalse(raw.orEmpty().contains("legacy:token"))
+    }
+
+    @Test
+    fun saveDeletesSecretsOfRemovedChannels() = runBlocking {
+        val s = store()
+        secrets.write("channel.email.password", "old-pass")
+        secrets.write("channel.telegram.botToken", "keep-me")
+        s.seedRaw(
+            AppSettings.defaults().copyWith(
+                channelConfigs = listOf(
+                    ChannelConfig(id = "email", type = "email", settingsJson = mapOf("host" to "h")),
+                    ChannelConfig(id = "telegram", type = "telegram", settingsJson = mapOf("chatId" to "1")),
+                ),
+            ),
+        )
+
+        s.save(
+            AppSettings.defaults().copyWith(
+                channelConfigs = listOf(
+                    ChannelConfig(id = "telegram", type = "telegram", settingsJson = mapOf("chatId" to "1")),
+                ),
+            ),
+        )
+
+        assertNull(secrets.all["channel.email.password"])
+        assertEquals("keep-me", secrets.all["channel.telegram.botToken"])
     }
 
     @Test

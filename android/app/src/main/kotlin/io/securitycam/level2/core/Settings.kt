@@ -420,15 +420,6 @@ data class AppSettings(
             ),
             channelConfigs = listOf(
                 ChannelConfig(id = "log", type = "log", enabled = true),
-                ChannelConfig(id = "telegram", type = "telegram", enabled = false),
-                ChannelConfig(id = "email", type = "email", enabled = false),
-                ChannelConfig(
-                    id = "discord",
-                    type = "webhook",
-                    settingsJson = mapOf("preset" to "discord"),
-                    enabled = false,
-                ),
-                ChannelConfig(id = "pushover", type = "pushover", enabled = false),
             ),
         )
 

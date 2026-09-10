@@ -206,7 +206,7 @@ class SettingsTest {
     }
 
     @Test
-    fun legacyJsonWithOnlyLogChannelMergesInDefaultChannels() {
+    fun legacyJsonWithOnlyLogChannelStaysLogOnly() {
         val restored = AppSettings.fromJson(
             jsonOf(
                 "channelConfigs" to listOf(
@@ -215,25 +215,18 @@ class SettingsTest {
             ),
         )
         assertEquals(
-            listOf("log", "telegram", "email", "discord", "pushover"),
+            listOf("log"),
             restored.channelConfigs.map { it.id },
         )
         assertTrue(restored.channelConfigs.first { it.id == "log" }.enabled)
-        for (c in restored.channelConfigs.filter { it.id != "log" }) {
-            assertFalse("merged channels default to disabled", c.enabled)
-        }
     }
 
     @Test
-    fun defaultsRetypeTheDiscordChannelToADisabledWebhookPreset() {
-        val defaults = AppSettings.defaults()
-        val discord = defaults.channelConfigs.first { it.id == "discord" }
-        assertEquals("webhook", discord.type)
-        assertEquals("discord", discord.settingsJson["preset"])
-        assertFalse(discord.enabled)
-        val pushover = defaults.channelConfigs.first { it.id == "pushover" }
-        assertEquals("pushover", pushover.type)
-        assertFalse(pushover.enabled)
+    fun defaultsShipOnlyTheLogChannel() {
+        assertEquals(
+            listOf("log"),
+            AppSettings.defaults().channelConfigs.map { it.id },
+        )
     }
 
     @Test
@@ -312,8 +305,7 @@ class SettingsTest {
         val email = restored.channelConfigs.first { it.id == "email" }
         assertTrue(email.enabled)
         assertEquals("smtp.example.com", email.settingsJson["host"])
-        assertTrue(restored.channelConfigs.map { it.id }.containsAll(listOf("log", "telegram", "email", "discord", "pushover")))
-        assertEquals(5, restored.channelConfigs.size)
+        assertEquals(listOf("log", "email"), restored.channelConfigs.map { it.id })
     }
 
     @Test

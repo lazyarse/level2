@@ -73,6 +73,7 @@ class SettingsStore(
         if (cb.password.isNotEmpty()) {
             secrets.write(cloudBackupSecretKey(), cb.password)
         }
+        pruneRemovedChannelSecrets(settings)
         for (c in settings.channelConfigs) {
             persistChannelSecrets(c)
         }
@@ -185,6 +186,34 @@ class SettingsStore(
             val value = config.settingsJson[field]
             if (value is String && value.isNotEmpty()) {
                 secrets.write(secretKey(config.id, field), value)
+            }
+        }
+    }
+
+    /**
+     * Deletes secrets belonging to channel accounts that no longer exist in
+     * [next] (deleted via Settings). Runs at save time — rather than at
+     * delete-tap time — so backing out without saving can't strand a stored
+     * config without its secret. Deleting unknown keys is a no-op, so the
+     * union over all known secret fields is safe.
+     */
+    private suspend fun pruneRemovedChannelSecrets(next: AppSettings) {
+        val raw = dataStore.data.first()[KEY] ?: return
+        val prev = try {
+            tryParse(raw)
+        } catch (_: Exception) {
+            return
+        }
+        val removed = prev.channelConfigs.map { it.id }.toSet() -
+            next.channelConfigs.map { it.id }.toSet()
+        if (removed.isEmpty()) return
+        val secretFields = ChannelRegistry.factories.keys.flatMapTo(mutableSetOf()) { type ->
+            runCatching { ChannelRegistry.buildChannelSettings(type, emptyMap()) }
+                .getOrNull()?.secretFields ?: emptyList()
+        }
+        for (id in removed) {
+            for (field in secretFields) {
+                secrets.delete(secretKey(id, field))
             }
         }
     }

@@ -17,15 +17,19 @@ data class ChannelConfig(
     val type: String,
     val enabled: Boolean = true,
     val settingsJson: Map<String, Any?> = emptyMap(),
+    /** User-facing account name; blank falls back to a derived "Type N" name. */
+    val label: String = "",
 ) {
     fun copyWith(
         enabled: Boolean? = null,
         settingsJson: Map<String, Any?>? = null,
+        label: String? = null,
     ): ChannelConfig = ChannelConfig(
         id = id,
         type = type,
         enabled = enabled ?: this.enabled,
         settingsJson = settingsJson ?: this.settingsJson,
+        label = label ?: this.label,
     )
 
     fun toJson(): Map<String, Any?> = mapOf(
@@ -33,6 +37,7 @@ data class ChannelConfig(
         "type" to type,
         "enabled" to enabled,
         "settings" to settingsJson,
+        "label" to label,
     )
 
     companion object {
@@ -43,6 +48,7 @@ data class ChannelConfig(
             settingsJson = (json["settings"] as? Map<*, *>)
                 ?.entries
                 ?.associate { it.key as String to it.value } ?: emptyMap(),
+            label = json["label"] as? String ?: "",
         )
     }
 }

@@ -54,13 +54,24 @@ class SendTestUiTest {
     }
 
     /** LogChannel validates trivially and never touches the network. */
-    private fun viewModel(factories: Map<String, ChannelFactory>): SettingsViewModel =
+    private fun viewModel(
+        factories: Map<String, ChannelFactory>,
+        channels: List<ChannelConfig>? = null,
+    ): SettingsViewModel =
         SettingsViewModel(
-            settingsLoader = { AppSettings.defaults() },
+            settingsLoader = {
+                val base = AppSettings.defaults()
+                if (channels == null) base else base.copyWith(channelConfigs = channels)
+            },
             settingsSaver = {},
             eventsClearer = {},
             channelFactories = factories,
         )
+
+    private fun telegramChannels(): List<ChannelConfig> = listOf(
+        ChannelConfig(id = "log", type = "log", enabled = true),
+        ChannelConfig(id = "telegram", type = "telegram", enabled = false),
+    )
 
     private fun setContent(vm: SettingsViewModel) {
         compose.setContent { SettingsScreen(viewModel = vm) }
@@ -89,7 +100,7 @@ class SendTestUiTest {
     @Test
     fun invalidDraftDisablesTheButton() {
         // No telegram factory → merged draft cannot validate → disabled.
-        val vm = viewModel(factories = emptyMap())
+        val vm = viewModel(factories = emptyMap(), channels = telegramChannels())
         setContent(vm)
 
         expandSection("Notification Channels")
@@ -103,6 +114,7 @@ class SendTestUiTest {
     fun validDraftSendsAndShowsDeliveredSnackbar() {
         val vm = viewModel(
             factories = mapOf("telegram" to { c: ChannelConfig -> LogChannel(id = c.id) }),
+            channels = telegramChannels(),
         )
         setContent(vm)
         compose.runOnIdle {
@@ -146,7 +158,7 @@ class SendTestUiTest {
     @Test
     fun invalidDraftShowsTheReasonUnderTheButton() {
         // No telegram factory → merged draft cannot validate → reason shown.
-        val vm = viewModel(factories = emptyMap())
+        val vm = viewModel(factories = emptyMap(), channels = telegramChannels())
         setContent(vm)
 
         expandSection("Notification Channels")

@@ -2,6 +2,7 @@ package io.securitycam.level2.ui.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -47,6 +48,24 @@ class SettingsScreenTest {
             eventsClearer = { cleared.add(it) },
         )
     }
+
+    /** Harness seeded with the pre-empty-defaults channel set (log + four accounts). */
+    private fun channelsHarness(): Harness = Harness(
+        AppSettings.defaults().copyWith(
+            channelConfigs = listOf(
+                ChannelConfig(id = "log", type = "log", enabled = true),
+                ChannelConfig(id = "telegram", type = "telegram", enabled = false),
+                ChannelConfig(id = "email", type = "email", enabled = false),
+                ChannelConfig(
+                    id = "discord",
+                    type = "webhook",
+                    enabled = false,
+                    settingsJson = mapOf("preset" to "discord"),
+                ),
+                ChannelConfig(id = "pushover", type = "pushover", enabled = false),
+            ),
+        ),
+    )
 
     private fun setContent(harness: Harness) {
         compose.setContent {
@@ -98,7 +117,7 @@ class SettingsScreenTest {
 
     @Test
     fun expandingSectionRevealsChannelCardsAndExpandingCardRevealsFields() {
-        setContent(Harness())
+        setContent(channelsHarness())
 
         expandSection("Notification Channels")
         // Channel cards now visible (header rows).
@@ -115,7 +134,7 @@ class SettingsScreenTest {
 
     @Test
     fun secretFieldVisibilityToggleRevealsPassword() {
-        setContent(Harness())
+        setContent(channelsHarness())
 
         expandSection("Notification Channels")
         expandChannel("email")
@@ -137,8 +156,96 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun emailChannelCardRendersAboveTelegram() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        val emailY = compose.onNodeWithTag("channelHeader_email")
+            .fetchSemanticsNode().positionInRoot.y
+        val telegramY = compose.onNodeWithTag("channelHeader_telegram")
+            .fetchSemanticsNode().positionInRoot.y
+        assertTrue("email card should render above telegram", emailY < telegramY)
+    }
+
+    @Test
+    fun addChannelCreatesSecondEmailAccount() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        compose.onNodeWithTag("addChannel").performScrollTo().performClick()
+        compose.onNodeWithText("Email account").performClick()
+        compose.waitForIdle()
+
+        expandChannel("email-2")
+        compose.onNodeWithTag(fieldTag("SMTP host")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("channelHeader_email-2").performScrollTo()
+        compose.onNodeWithText("Email 2").assertIsDisplayed()
+    }
+
+    @Test
+    fun accountLabelReplacesDerivedName() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        expandChannel("email")
+        compose.onNodeWithTag("channelLabel_email").performScrollTo()
+            .performTextInput("Work")
+        compose.waitForIdle()
+        compose.onNodeWithTag("channelHeader_email").performScrollTo()
+            .assertTextContains("Work")
+    }
+
+    @Test
+    fun deleteChannelRemovesCardAfterConfirm() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        compose.onNodeWithTag("addChannel").performScrollTo().performClick()
+        compose.onNodeWithText("Email account").performClick()
+        compose.waitForIdle()
+        expandChannel("email-2")
+
+        compose.onNodeWithContentDescription("Delete Email 2").performScrollTo()
+            .performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText("Delete Email 2?").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Delete Email 2?").assertIsDisplayed()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("channelCard_email-2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun emptyDefaultsShowAddHintAndNoChannelCards() {
+        setContent(Harness())
+
+        expandSection("Notification Channels")
+        compose.onNodeWithText("No notification channels yet — add one below.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag("addChannel").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithTag("channelCard_email").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun channelCardsShowTypeIcons() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        expandChannel("email")
+        expandChannel("telegram")
+        compose.onNodeWithContentDescription("Email").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Telegram").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun rendersEmailWebhookAndPushoverChannelFields() {
-        val harness = Harness()
+        val harness = channelsHarness()
         setContent(harness)
 
         expandSection("Notification Channels")
@@ -168,7 +275,7 @@ class SettingsScreenTest {
 
     @Test
     fun savePersistsEmailWebhookAndPresetSelection() {
-        val harness = Harness()
+        val harness = channelsHarness()
         setContent(harness)
 
         expandSection("Notification Channels")
@@ -212,7 +319,7 @@ class SettingsScreenTest {
 
     @Test
     fun savePersistsPushoverSettings() {
-        val harness = Harness()
+        val harness = channelsHarness()
         setContent(harness)
 
         expandSection("Notification Channels")
