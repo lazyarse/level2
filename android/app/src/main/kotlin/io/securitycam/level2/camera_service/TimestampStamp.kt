@@ -42,13 +42,13 @@ object TimestampStamp {
     ) {
         val text = text(wallMs, includeCameraName, cameraName)
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            color = Color.argb(230, 255, 255, 255)
             textSize = max(22f, height * 0.015f)
             isFakeBoldText = false
-            setShadowLayer(4f, 0f, 0f, Color.argb(140, 0, 0, 0))
+            setShadowLayer(4f, 0f, 0f, Color.argb(100, 0, 0, 0))
         }
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(127, 0, 0, 0)
+            color = Color.argb(89, 0, 0, 0)
         }
         val bounds = android.graphics.Rect()
         textPaint.getTextBounds(text, 0, text.length, bounds)
