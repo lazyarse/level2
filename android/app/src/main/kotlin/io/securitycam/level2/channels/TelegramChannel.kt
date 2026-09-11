@@ -34,6 +34,8 @@ class TelegramChannel(
     override val enabled: Boolean = true,
     override val settings: TelegramChannelSettings,
     client: OkHttpClient? = null,
+    /** Builds the photo for test sends; injectable so JVM tests avoid Bitmap. */
+    private val testSnapshot: () -> Snapshot = ::sampleTestSnapshot,
 ) : io.securitycam.level2.core.Channel {
 
     private val client: OkHttpClient = client ?: newHttpClient()
@@ -93,7 +95,17 @@ class TelegramChannel(
     }
 
     override suspend fun sendTest() {
-        sendMessage("Security Cam: test alert")
+        // Route through send() so the test exercises the photo path; a
+        // snapshot failure degrades to text-only instead of failing the test.
+        val snap = runCatching(testSnapshot).getOrNull()
+        send(
+            AlertMessage(
+                timestamp = java.time.Instant.now(),
+                triggerType = "test",
+                text = "Security Cam: test alert",
+                snapshot = snap,
+            ),
+        )
     }
 
     override fun validate(): String? {

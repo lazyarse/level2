@@ -23,6 +23,7 @@ class PushoverChannelTest {
         expireSeconds: Int = 3600,
         sound: String = "siren",
         fitSnapshot: (Snapshot, Int) -> Snapshot? = ::fitSnapshotForUpload,
+        testSnapshot: () -> Snapshot = { Snapshot(byteArrayOf(1, 2, 3), "image/jpeg", "test-snapshot.jpg") },
     ): PushoverChannel = PushoverChannel(
         id = "pushover",
         enabled = true,
@@ -36,6 +37,7 @@ class PushoverChannelTest {
         ),
         client = mockBase?.let { TestHttp.rewritingClient(it.toHttpUrl()) },
         fitSnapshot = fitSnapshot,
+        testSnapshot = testSnapshot,
     )
 
     private fun message(snapshot: Snapshot? = null): AlertMessage = AlertMessage(
@@ -94,12 +96,33 @@ class PushoverChannelTest {
     }
 
     @Test
-    fun sendTestPostsATestAlert() = runBlocking {
+    fun sendTestAttachesASampleSnapshot() = runBlocking {
         val server = serverWith()
         try {
             val c = channel(server.url("/").toString())
             c.sendTest()
-            val body = server.takeRequest().body.readUtf8()
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("multipart"))
+            val body = recorded.body.readUtf8()
+            assertTrue(body.contains("Security Cam: test alert"))
+            assertTrue(body.contains("test-snapshot.jpg"))
+            assertTrue(body.contains("apptok"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun sendTestDegradesToTextWhenSnapshotFails() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString(), testSnapshot = { error("no bitmap") })
+            c.sendTest()
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("application/x-www-form-urlencoded"))
+            val body = recorded.body.readUtf8()
             val fields = body.split('&').associate {
                 val (k, v) = it.split('=', limit = 2)
                 k to java.net.URLDecoder.decode(v, "UTF-8")

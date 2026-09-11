@@ -17,13 +17,17 @@ import org.junit.Test
 class TelegramChannelTest {
 
     /** Rewrites api.telegram.org onto the local mock server. */
-    private fun newChannel(mockBase: String): TelegramChannel {
+    private fun newChannel(
+        mockBase: String,
+        testSnapshot: () -> Snapshot = { Snapshot(byteArrayOf(1, 2, 3), "image/jpeg", "test-snapshot.jpg") },
+    ): TelegramChannel {
         val base = mockBase.toHttpUrl()
         val client = TestHttp.rewritingClient(base)
         return TelegramChannel(
             id = "telegram",
             settings = TelegramChannelSettings(botToken = "123456:ABC-DEF", chatId = "42"),
             client = client,
+            testSnapshot = testSnapshot,
         )
     }
 
@@ -116,6 +120,61 @@ class TelegramChannelTest {
                 thrown = t
             }
             assertTrue(thrown?.message.orEmpty().contains("Telegram sendMessage failed"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun sendTestAttemptsPhotoBeforeText() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"ok\":true}"))
+        server.start()
+        try {
+            val c = newChannel(server.url("/").toString())
+            c.sendTest()
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertEquals("/bot123456:ABC-DEF/sendPhoto", recorded.path)
+            val body = recorded.body.readUtf8()
+            assertTrue(body.contains("Security Cam: test alert"))
+            assertTrue(body.contains("test-snapshot.jpg"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun sendTestFallsBackToTextWhenPhotoFails() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"ok\":false}"))
+        server.enqueue(MockResponse().setBody("{\"ok\":true}"))
+        server.start()
+        try {
+            val c = newChannel(server.url("/").toString())
+            c.sendTest()
+            assertEquals(2, server.requestCount)
+            server.takeRequest()
+            val second = server.takeRequest()
+            assertEquals("/bot123456:ABC-DEF/sendMessage", second.path)
+            assertTrue(second.body.readUtf8().contains("Security Cam: test alert"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun sendTestDegradesToTextWhenSnapshotFails() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"ok\":true}"))
+        server.start()
+        try {
+            val c = newChannel(server.url("/").toString(), testSnapshot = { error("no bitmap") })
+            c.sendTest()
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertEquals("/bot123456:ABC-DEF/sendMessage", recorded.path)
+            assertTrue(recorded.body.readUtf8().contains("Security Cam: test alert"))
         } finally {
             server.shutdown()
         }

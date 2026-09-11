@@ -2,6 +2,7 @@ package io.securitycam.level2.channels
 
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
+import io.securitycam.level2.core.Snapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,6 +53,8 @@ class WebhookChannel(
     override val enabled: Boolean = true,
     override val settings: WebhookChannelSettings,
     client: OkHttpClient? = null,
+    /** Builds the photo for test sends (discord preset); injectable so JVM tests avoid Bitmap. */
+    private val testSnapshot: () -> Snapshot = ::sampleTestSnapshot,
 ) : io.securitycam.level2.core.Channel {
 
     private val client: OkHttpClient = client ?: newHttpClient()
@@ -128,11 +131,16 @@ class WebhookChannel(
     }
 
     override suspend fun sendTest() {
+        // Route through send() so the test exercises the attachment path on
+        // presets that support it (discord); a snapshot failure degrades to
+        // text-only instead of failing the test.
+        val snap = runCatching(testSnapshot).getOrNull()
         send(
             AlertMessage(
                 timestamp = java.time.Instant.now(),
                 triggerType = "test",
                 text = "Security Cam: test alert",
+                snapshot = snap,
             ),
         )
     }

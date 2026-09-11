@@ -25,6 +25,7 @@ class WebhookChannelTest {
         title: String = "",
         bodyStyle: String = "json",
         mockBase: String? = null,
+        testSnapshot: () -> Snapshot = { Snapshot(byteArrayOf(1, 2, 3), "image/jpeg", "test-snapshot.jpg") },
     ): WebhookChannel = WebhookChannel(
         id = "webhook",
         enabled = true,
@@ -36,6 +37,7 @@ class WebhookChannelTest {
             bodyStyle = bodyStyle,
         ),
         client = mockBase?.let { TestHttp.rewritingClient(it.toHttpUrl()) },
+        testSnapshot = testSnapshot,
     )
 
     private fun message(snapshot: Snapshot? = null): AlertMessage = AlertMessage(
@@ -105,11 +107,48 @@ class WebhookChannelTest {
     }
 
     @Test
-    fun discordSendTestPostsATestAlert() = runBlocking {
+    fun discordSendTestAttachesASampleSnapshot() = runBlocking {
         val server = serverWith(code = 200, body = "{}")
         try {
             channel(mockBase = server.url("/").toString()).sendTest()
-            assertTrue(server.takeRequest().body.readUtf8().contains("Security Cam: test alert"))
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("multipart"))
+            val body = recorded.body.readUtf8()
+            assertTrue(body.contains("Security Cam: test alert"))
+            assertTrue(body.contains("test-snapshot.jpg"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun discordSendTestFallsBackToJsonWhenUploadFails() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401).setBody("boom"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        server.start()
+        try {
+            channel(mockBase = server.url("/").toString()).sendTest()
+            assertEquals(2, server.requestCount)
+            server.takeRequest()
+            val second = server.takeRequest()
+            assertTrue(second.getHeader("content-type").orEmpty().contains("application/json"))
+            assertTrue(second.body.readUtf8().contains("Security Cam: test alert"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun customSendTestStaysTextOnly() = runBlocking {
+        val server = serverWith(code = 200, body = "{}")
+        try {
+            channel(preset = "custom", url = "https://example.com/hook", mockBase = server.url("/").toString()).sendTest()
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("application/json"))
+            assertTrue(recorded.body.readUtf8().contains("Security Cam: test alert"))
         } finally {
             server.shutdown()
         }
