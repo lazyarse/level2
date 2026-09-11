@@ -138,6 +138,7 @@ import kotlinx.coroutines.flow.first
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onOpenZoneEditor: () -> Unit = {},
+    onOpenAlertLog: () -> Unit = {},
 ) {
     val draft by viewModel.draft.collectAsState()
     val message by viewModel.message.collectAsState()
@@ -1035,6 +1036,25 @@ fun SettingsScreen(
                         CollapsibleSection("Advanced") {
                             detectorGroup(null, current, listOf(TriggerType.health)) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Card {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onOpenAlertLog)
+                                        .padding(16.dp)
+                                        .testTag("openAlertLog"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Filled.Terminal, contentDescription = null)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "Alert log",
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                                }
                             }
                             Spacer(Modifier.height(8.dp))
                             BodyText(

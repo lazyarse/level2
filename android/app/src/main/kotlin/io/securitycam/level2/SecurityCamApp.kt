@@ -32,6 +32,7 @@ import io.securitycam.level2.ui.events.EventsScreen
 import io.securitycam.level2.ui.events.EventsViewModel
 import io.securitycam.level2.ui.monitor.MonitorScreen
 import io.securitycam.level2.ui.zones.ZoneEditorScreen
+import io.securitycam.level2.ui.settings.AlertLogScreen
 import io.securitycam.level2.ui.settings.FaceEnrollmentScreen
 import io.securitycam.level2.ui.settings.SettingsScreen
 import io.securitycam.level2.ui.settings.SettingsViewModel
@@ -57,6 +58,7 @@ fun SecurityCamApp(
     var tab by remember { mutableStateOf(Level2Tab.Monitor) }
     val settingsViewModel: SettingsViewModel = viewModel(factory = settingsFactory)
     var showZoneEditor by remember { mutableStateOf(false) }
+    var showAlertLog by remember { mutableStateOf(false) }
     // Full-screen capture page while a face enrollment is in flight; it is
     // dismissed automatically when the enrollment finishes (label → null).
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
@@ -79,7 +81,7 @@ fun SecurityCamApp(
 
     Scaffold(
         bottomBar = {
-            if (!showZoneEditor && !enrollmentActive) {
+            if (!showZoneEditor && !showAlertLog && !enrollmentActive) {
                 NavigationBar {
                     Level2Tab.entries.forEach { t ->
                         NavigationBarItem(
@@ -135,6 +137,8 @@ fun SecurityCamApp(
                     frameWidth = analysisDims.first,
                     frameHeight = analysisDims.second,
                 )
+            } else if (showAlertLog) {
+                AlertLogScreen(onClose = { showAlertLog = false })
             } else {
                 when (tab) {
                     Level2Tab.Monitor -> MonitorScreen()
@@ -144,6 +148,7 @@ fun SecurityCamApp(
                     Level2Tab.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,
                         onOpenZoneEditor = { showZoneEditor = true },
+                        onOpenAlertLog = { showAlertLog = true },
                     )
                 }
             }

@@ -29,12 +29,13 @@ internal fun jsonEscape(s: String): String {
     return sb.append('"').toString()
 }
 
-/** In-memory log channel used as the always-on delivery fallback. */
+/** In-memory log channel: records into the process-wide [AlertLog] viewer feed. */
 class LogChannel(
     override val id: String = "log",
     override val enabled: Boolean = true,
 ) : io.securitycam.level2.core.Channel {
 
+    /** Test-visible mirror of what was sent (the [AlertLog] holds the shared feed). */
     val sent = mutableListOf<AlertMessage>()
 
     override val type: String get() = "log"
@@ -43,10 +44,18 @@ class LogChannel(
 
     override suspend fun send(message: AlertMessage) {
         sent.add(message)
+        AlertLog.add(
+            AlertLogEntry(
+                timestamp = message.timestamp,
+                channelId = id,
+                triggerType = message.triggerType,
+                text = message.text,
+            ),
+        )
     }
 
     override suspend fun sendTest() {
-        sent.add(
+        send(
             AlertMessage(
                 timestamp = Instant.now(),
                 triggerType = "test",
