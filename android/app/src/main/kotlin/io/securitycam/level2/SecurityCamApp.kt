@@ -2,6 +2,7 @@ package io.securitycam.level2
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -59,6 +60,11 @@ fun SecurityCamApp(
     val settingsViewModel: SettingsViewModel = viewModel(factory = settingsFactory)
     var showZoneEditor by remember { mutableStateOf(false) }
     var showAlertLog by remember { mutableStateOf(false) }
+    // Overlays are boolean state, not navigation destinations: without this,
+    // a system back press falls through to the Activity default and exits
+    // the app instead of dismissing the overlay.
+    BackHandler(enabled = showZoneEditor) { showZoneEditor = false }
+    BackHandler(enabled = showAlertLog) { showAlertLog = false }
     // Full-screen capture page while a face enrollment is in flight; it is
     // dismissed automatically when the enrollment finishes (label → null).
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()

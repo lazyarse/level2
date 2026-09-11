@@ -1,15 +1,26 @@
 package io.securitycam.level2.ui
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.securitycam.level2.SecurityCamApp
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.storage.RecordedEventRow
 import io.securitycam.level2.ui.events.EventsViewModel
 import io.securitycam.level2.ui.settings.SettingsViewModel
+import io.securitycam.level2.ui.settings.sectionTag
 import java.time.Instant
 import java.time.ZoneId
 import java.time.LocalDate
@@ -131,5 +142,67 @@ class ShellNavigationTest {
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
         compose.onAllNodesWithText("Confidence: High", substring = true)
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+    }
+
+    private lateinit var backDispatcher: OnBackPressedDispatcher
+
+    private fun settingsAppWithBack() {
+        val lifecycleOwner = object : LifecycleOwner {
+            val registry = LifecycleRegistry(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        lifecycleOwner.registry.currentState = Lifecycle.State.RESUMED
+        val owner = object : OnBackPressedDispatcherOwner, LifecycleOwner by lifecycleOwner {
+            override val onBackPressedDispatcher = OnBackPressedDispatcher()
+        }
+        backDispatcher = owner.onBackPressedDispatcher
+        val settingsFactory = viewModelFactory {
+            initializer {
+                SettingsViewModel(
+                    settingsLoader = { AppSettings() },
+                    settingsSaver = { },
+                    eventsClearer = { _ -> },
+                )
+            }
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides owner) {
+                SecurityCamApp(settingsFactory = settingsFactory)
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Settings").performClick()
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun systemBackDismissesAlertLogViewer() {
+        settingsAppWithBack()
+
+        compose.onNodeWithTag(sectionTag("Advanced")).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("openAlertLog").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Copy").assertIsDisplayed()
+
+        compose.runOnIdle { backDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Copy").assertDoesNotExist()
+        compose.onNodeWithTag(sectionTag("Advanced")).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun systemBackDismissesZoneEditor() {
+        settingsAppWithBack()
+
+        compose.onNodeWithTag(sectionTag("Zones")).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("No zones — detecting everywhere").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Detection zones").assertIsDisplayed()
+
+        compose.runOnIdle { backDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Detection zones").assertDoesNotExist()
     }
 }
