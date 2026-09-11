@@ -206,6 +206,19 @@ class SettingsTest {
     }
 
     @Test
+    fun fromJsonDropsRetiredSirenConfigs() {
+        val restored = AppSettings.fromJson(
+            jsonOf(
+                "channelConfigs" to listOf(
+                    mapOf("id" to "log", "type" to "log", "enabled" to true),
+                    mapOf("id" to "siren", "type" to "siren", "enabled" to true),
+                ),
+            ),
+        )
+        assertEquals(listOf("log"), restored.channelConfigs.map { it.id })
+    }
+
+    @Test
     fun fromJsonDropsPristinePlaceholderAccounts() {
         val restored = AppSettings.fromJson(
             jsonOf(

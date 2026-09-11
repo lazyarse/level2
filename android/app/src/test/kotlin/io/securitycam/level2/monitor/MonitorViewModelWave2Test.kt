@@ -50,10 +50,11 @@ class MonitorViewModelWave2Test {
             },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
         )
         vm.start()
-        assertEquals(MonitorState.Monitoring, vm.state.value)
         shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
         assertEquals(listOf("Porch/9"), refreshed)
     }
 
@@ -71,9 +72,11 @@ class MonitorViewModelWave2Test {
             },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
         )
         vm.start()
         shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
         assertTrue(refreshed.isEmpty())
     }
 }

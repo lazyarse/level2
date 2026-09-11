@@ -16,16 +16,26 @@ import org.junit.Test
 /** Port of `test/pushover_channel_test.dart`. */
 class PushoverChannelTest {
 
-    private fun channel(mockBase: String? = null): PushoverChannel = PushoverChannel(
+    private fun channel(
+        mockBase: String? = null,
+        priority: Int = 1,
+        retrySeconds: Int = 60,
+        expireSeconds: Int = 3600,
+        sound: String = "siren",
+        fitSnapshot: (Snapshot, Int) -> Snapshot? = ::fitSnapshotForUpload,
+    ): PushoverChannel = PushoverChannel(
         id = "pushover",
         enabled = true,
         settings = PushoverChannelSettings(
             appToken = "apptok",
             userKey = "userkey",
-            sound = "siren",
-            priority = 1,
+            sound = sound,
+            priority = priority,
+            retrySeconds = retrySeconds,
+            expireSeconds = expireSeconds,
         ),
         client = mockBase?.let { TestHttp.rewritingClient(it.toHttpUrl()) },
+        fitSnapshot = fitSnapshot,
     )
 
     private fun message(snapshot: Snapshot? = null): AlertMessage = AlertMessage(
@@ -144,10 +154,67 @@ class PushoverChannelTest {
     }
 
     @Test
+    fun validateRejectsOutOfRangeEmergencyWindows() {
+        assertEquals(
+            "Emergency retry must be at least 30 seconds",
+            PushoverChannel(
+                id = "p",
+                settings = PushoverChannelSettings(appToken = "a", userKey = "u", priority = 2, retrySeconds = 10),
+            ).validate(),
+        )
+        assertEquals(
+            "Emergency expiry must be at most 10800 seconds",
+            PushoverChannel(
+                id = "p",
+                settings = PushoverChannelSettings(appToken = "a", userKey = "u", priority = 2, expireSeconds = 99999),
+            ).validate(),
+        )
+        assertNull(
+            PushoverChannel(
+                id = "p",
+                settings = PushoverChannelSettings(appToken = "a", userKey = "u", priority = 2),
+            ).validate(),
+        )
+    }
+
+    @Test
+    fun emergencyPrioritySendsRetryAndExpire() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString(), priority = 2, retrySeconds = 60, expireSeconds = 3600)
+            c.send(message())
+            val fields = server.takeRequest().body.readUtf8().split('&').associate {
+                val (k, v) = it.split('=', limit = 2)
+                k to v
+            }
+            assertEquals("2", fields["priority"])
+            assertEquals("60", fields["retry"])
+            assertEquals("3600", fields["expire"])
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun nonEmergencyOmitsRetryAndExpire() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString(), priority = 1)
+            c.send(message())
+            val body = server.takeRequest().body.readUtf8()
+            assertFalse(body.contains("retry="))
+            assertFalse(body.contains("expire="))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun oversizeSnapshotFallsBackToTextForm() = runBlocking {
         val server = serverWith()
         try {
-            val c = channel(server.url("/").toString())
+            // Bitmap work can't run on the plain JVM: inject a hopeless fit.
+            val c = channel(server.url("/").toString(), fitSnapshot = { _, _ -> null })
             val big = Snapshot(
                 ByteArray(PushoverChannel.MAX_ATTACHMENT_BYTES + 1),
                 "image/jpeg",

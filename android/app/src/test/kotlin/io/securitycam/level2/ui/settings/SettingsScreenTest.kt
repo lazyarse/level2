@@ -267,6 +267,17 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun pushoverShowsEmergencyFields() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        expandChannel("pushover")
+        for (label in listOf("Priority (-2 to 2)", "Emergency retry seconds", "Emergency expiry seconds")) {
+            compose.onNodeWithTag(fieldTag("pushover", label)).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun rendersEmailWebhookAndPushoverChannelFields() {
         val harness = channelsHarness()
         setContent(harness)

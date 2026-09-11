@@ -1,7 +1,6 @@
 package io.securitycam.level2.ui.settings
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Notifications
@@ -65,7 +64,6 @@ class ChannelAccountsTest {
         assertEquals(Icons.Filled.Send, channelIcon("telegram"))
         assertEquals(Icons.Filled.Webhook, channelIcon("webhook"))
         assertEquals(Icons.Filled.Notifications, channelIcon("pushover"))
-        assertEquals(Icons.Filled.Campaign, channelIcon("siren"))
         assertEquals(Icons.Filled.Terminal, channelIcon("log"))
         assertEquals(Icons.Filled.NotificationImportant, channelIcon("nope"))
     }

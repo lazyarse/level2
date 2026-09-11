@@ -128,6 +128,15 @@ class MonitorViewModel(
      * initialize the native detectors, so they opt out.
      */
     private val surfaceRuntimeStartFailures: Boolean = true,
+    /**
+     * Bind/health confirmation for a freshly started service (Wave 4 honest
+     * startup): state stays [MonitorState.Starting] until this reports the
+     * service alive, and flips to [MonitorState.Error] otherwise. Defaults to
+     * the controller's live flag; tests inject fakes.
+     */
+    private val serviceHealth: () -> Boolean = {
+        MonitoringServiceController.cameraActive()
+    },
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MonitorState.Idle)
@@ -347,7 +356,7 @@ class MonitorViewModel(
     }
 
     fun start() {
-        if (_state.value == MonitorState.Monitoring) return
+        if (_state.value == MonitorState.Monitoring || _state.value == MonitorState.Starting) return
         if (!permissionsGranted()) {
             onPermissionsDenied()
             return
@@ -390,20 +399,30 @@ class MonitorViewModel(
             exclusionZones = clip?.exclusionZones ?: emptyList(),
         )
         val exclusionsJson = exclusionsToJson(sentParams.exclusionZones)
-        startMonitoring(
-            _cameraId.value,
-            _monitorPreview.value,
-            sentParams.clipTimestamp,
-            sentParams.clipTimestampPosition,
-            sentParams.clipTimestampCameraName,
-            sentParams.privacyMasking,
-            sentParams.privacyMaskEffect,
-            exclusionsJson,
-        )
-        _state.value = MonitorState.Monitoring
+        // Wave 4 honest startup: the service bind is fire-and-forget, so a
+        // synchronous throw is the only immediate signal — anything later is
+        // confirmed via serviceHealth before leaving Starting.
+        try {
+            startMonitoring(
+                _cameraId.value,
+                _monitorPreview.value,
+                sentParams.clipTimestamp,
+                sentParams.clipTimestampPosition,
+                sentParams.clipTimestampCameraName,
+                sentParams.privacyMasking,
+                sentParams.privacyMaskEffect,
+                exclusionsJson,
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "service start failed", t)
+            _state.value = MonitorState.Error
+            _error.value = "Monitoring failed to start: ${t.message ?: t.javaClass.simpleName}"
+            return
+        }
         val gen = ++startGeneration
         // Build the detection→event runtime off the main thread; the service
         // (camera + mic) is already streaming by the time it subscribes.
+        // State stays Starting until the bind/health confirms below.
         viewModelScope.launch {
             // Settings load failures are always real bugs — surface them.
             val settings: AppSettings
@@ -413,7 +432,7 @@ class MonitorViewModel(
                 // A stop (manual or scheduled) may have won the race while we
                 // were suspended; abandon this start instead of leaking a live
                 // pipeline into an Idle session.
-                if (gen != startGeneration || _state.value != MonitorState.Monitoring) {
+                if (gen != startGeneration || _state.value != MonitorState.Starting) {
                     return@launch
                 }
                 _cameraName.value = settings.cameraName
@@ -428,7 +447,7 @@ class MonitorViewModel(
             }
             try {
                 MonitoringRuntime.create(getApplication(), settings, viewModelScope).let { created ->
-                    if (gen != startGeneration || _state.value != MonitorState.Monitoring) {
+                    if (gen != startGeneration || _state.value != MonitorState.Starting) {
                         created.stop()
                         return@let
                     }
@@ -443,18 +462,32 @@ class MonitorViewModel(
                     }
                     created.begin()
                 }
-                if (gen == startGeneration && _state.value == MonitorState.Monitoring) {
-                    purgeOldEvents(settings)
-                }
             } catch (t: Throwable) {
                 Log.w(TAG, "runtime start failed", t)
                 if (surfaceRuntimeStartFailures) failStart(gen, t)
+            }
+            // Honest startup: only leave Starting once the service
+            // bind/health confirms; otherwise surface Error. Runs even when
+            // a runtime failure was swallowed above, so an up service still
+            // reaches Monitoring (historical behavior) while a dead bind
+            // surfaces instead of sticking in Starting.
+            if (gen == startGeneration && _state.value == MonitorState.Starting) {
+                if (serviceHealth()) {
+                    _state.value = MonitorState.Monitoring
+                    purgeOldEvents(settings)
+                } else {
+                    failStart(
+                        gen,
+                        IllegalStateException("monitoring service did not start"),
+                    )
+                }
             }
         }
     }
 
     private fun failStart(gen: Int, t: Throwable) {
-        if (gen != startGeneration || _state.value != MonitorState.Monitoring) return
+        if (gen != startGeneration) return
+        if (_state.value != MonitorState.Starting && _state.value != MonitorState.Monitoring) return
         _state.value = MonitorState.Error
         _error.value = "Monitoring failed to start: ${t.message ?: t.javaClass.simpleName}"
     }

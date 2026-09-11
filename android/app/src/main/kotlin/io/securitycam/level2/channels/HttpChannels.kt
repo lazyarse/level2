@@ -21,6 +21,53 @@ internal fun safeMediaType(mime: String): MediaType =
     runCatching { mime.toMediaType() }.getOrElse { "image/jpeg".toMediaType() }
 
 /**
+ * Fits [snapshot] under [maxBytes] for upload: already-small snapshots pass
+ * through untouched (original mime kept); oversized ones are downscaled and
+ * re-encoded as JPEG; corrupt/unsalvageable bytes yield null (caller falls
+ * back to the text form). Bitmap work stays here so JVM unit tests avoid it
+ * via injection (mirrors the email test-snapshot seam).
+ */
+internal fun fitSnapshotForUpload(
+    snapshot: Snapshot,
+    maxBytes: Int,
+    maxSide: Int = 1280,
+): Snapshot? {
+    if (snapshot.bytes.size <= maxBytes) return snapshot
+    val src = android.graphics.BitmapFactory.decodeByteArray(
+        snapshot.bytes, 0, snapshot.bytes.size,
+    ) ?: return null
+    try {
+        val scale = (maxSide / maxOf(src.width, src.height).toFloat()).coerceAtMost(1f)
+        val scaled = if (scale < 1f) {
+            android.graphics.Bitmap.createScaledBitmap(
+                src,
+                (src.width * scale).toInt().coerceAtLeast(1),
+                (src.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+        } else {
+            src
+        }
+        try {
+            for (quality in listOf(85, 70, 55, 40)) {
+                val out = java.io.ByteArrayOutputStream()
+                scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+                val bytes = out.toByteArray()
+                if (bytes.isNotEmpty() && bytes.size <= maxBytes) {
+                    val stem = snapshot.name.substringBeforeLast(".")
+                    return Snapshot(bytes, "image/jpeg", "$stem.jpg")
+                }
+            }
+            return null
+        } finally {
+            if (scaled !== src) scaled.recycle()
+        }
+    } finally {
+        src.recycle()
+    }
+}
+
+/**
  * Writes [snapshot] to a temp file off-main, runs [block], deletes the file.
  * Replaces the copy-pasted create/write/try/finally-delete in each channel.
  */

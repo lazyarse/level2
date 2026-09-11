@@ -29,15 +29,24 @@ class MonitorViewModelTest {
         permissionsGranted = { granted },
         startMonitoring = { _, _, _, _, _, _, _, _ -> startRan.add(1) },
         stopMonitoring = { stopRan.add(1) },
+        // In-memory loader: settles deterministically without DataStore IO.
+        // (The async Starting→Monitoring proof lives in MonitorViewModelWave4Test
+        // with a gated loader; init-path async loading is covered below.)
+        settingsLoader = { AppSettings.defaults() },
+        scheduleCheckInterval = null,
         // Robolectric cannot initialize native detectors; runtime-init failures
         // are environmental here, not product bugs.
         surfaceRuntimeStartFailures = false,
+        // Wave 4: the service bind is confirmed asynchronously; tests simulate
+        // a healthy bind so start() settles on Monitoring after the looper pumps.
+        serviceHealth = { true },
     )
 
     @Test
     fun start_whenPermissionsGranted_transitionsToMonitoring() {
         val vm = viewModel()
         vm.start()
+        shadowOf(Looper.getMainLooper()).idle()
         assertEquals(MonitorState.Monitoring, vm.state.value)
     }
 
@@ -64,7 +73,9 @@ class MonitorViewModelTest {
         val startRan = mutableListOf<Int>()
         val vm = viewModel(startRan = startRan)
         vm.start()
+        vm.start()
         assertEquals(1, startRan.size)
+        shadowOf(Looper.getMainLooper()).idle()
         assertEquals(MonitorState.Monitoring, vm.state.value)
     }
 
@@ -73,6 +84,7 @@ class MonitorViewModelTest {
         val stopRan = mutableListOf<Int>()
         val vm = viewModel(stopRan = stopRan)
         vm.start()
+        shadowOf(Looper.getMainLooper()).idle()
         vm.stop()
         assertEquals(MonitorState.Idle, vm.state.value)
         assertEquals(1, stopRan.size)
@@ -114,8 +126,10 @@ class MonitorViewModelTest {
             settingsLoader = { scheduleSettings(always = excluded) },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
         )
         vm.start()
+        shadowOf(Looper.getMainLooper()).idle()
         assertEquals(MonitorState.Monitoring, vm.state.value)
 
         kotlinx.coroutines.runBlocking {
@@ -130,6 +144,7 @@ class MonitorViewModelTest {
             excluded = false
             vm.checkScheduleNow()
         }
+        shadowOf(Looper.getMainLooper()).idle()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         assertTrue(!vm.schedulePaused.value)
         assertEquals(2, startRan.size)
@@ -169,6 +184,7 @@ class MonitorViewModelTest {
             previewRebind = { rebinds.add(it) },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
         )
         // Preview ships off (battery saver); the persisted default agrees.
         assertFalse(vm.monitorPreview.value)
@@ -180,6 +196,8 @@ class MonitorViewModelTest {
         assertEquals(true, saved.single().monitorPreview)
 
         vm.start()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
         vm.togglePreview()
         // Monitoring → rebind fired with the new value; persisted again.
         assertEquals(listOf(false), rebinds)
@@ -198,8 +216,11 @@ class MonitorViewModelTest {
             settingsLoader = { scheduleSettings(always = true) },
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
         )
         vm.start()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
         kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
         assertTrue(vm.schedulePaused.value)
         vm.stop()

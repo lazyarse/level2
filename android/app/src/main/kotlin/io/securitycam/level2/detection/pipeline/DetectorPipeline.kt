@@ -27,16 +27,22 @@ import java.time.Instant
 class DetectorPipeline(
     private val classifier: AudioEventClassifier,
     configs: List<DetectorConfig>,
+    /**
+     * Runtime-scoped factory lookup (Wave 4): [MonitoringRuntime] passes its
+     * own [DetectorRegistry] so overlapping runtimes never share factories.
+     * Defaults to the process-global registry for tests/legacy call sites.
+     */
+    private val registry: DetectorRegistry = DetectorRegistry.global,
 ) {
     private val frameDetectorsInternal: MutableList<FrameDetector> = configs
         .filter { it.enabled }
-        .map { DetectorRegistry.factoryFor(it.type)?.invoke(it) }
+        .map { registry.factoryFor(it.type)?.invoke(it) }
         .filterIsInstance<FrameDetector>()
         .toMutableList()
 
     private val audioDetectorsInternal: MutableList<AudioDetector> = configs
         .filter { it.enabled }
-        .map { DetectorRegistry.factoryFor(it.type)?.invoke(it) }
+        .map { registry.factoryFor(it.type)?.invoke(it) }
         .filterIsInstance<AudioDetector>()
         .toMutableList()
 

@@ -1,7 +1,6 @@
 package io.securitycam.level2.ui.settings
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Notifications
@@ -11,7 +10,6 @@ import androidx.compose.material.icons.filled.Webhook
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
-import io.securitycam.level2.channels.SirenChannelSettings
 import io.securitycam.level2.channels.TelegramChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 
@@ -21,7 +19,6 @@ internal object ChannelTypes {
     const val EMAIL = "email"
     const val WEBHOOK = "webhook"
     const val PUSHOVER = "pushover"
-    const val SIREN = "siren"
     const val LOG = "log"
 }
 
@@ -96,13 +93,9 @@ internal fun buildChannelConfigs(
                 appToken = f("appToken").trim(),
                 userKey = f("userKey").trim(),
                 sound = f("sound").trim(),
-            ).toJson(),
-        )
-
-        ChannelTypes.SIREN -> c.copy(
-            settingsJson = SirenChannelSettings(
-                durationSeconds = f("duration").toIntOrNull() ?: 15,
-                volume = f("volume").toFloatOrNull() ?: 0.8f,
+                priority = f("priority").trim().toIntOrNull() ?: 0,
+                retrySeconds = f("retrySeconds").trim().toIntOrNull() ?: 60,
+                expireSeconds = f("expireSeconds").trim().toIntOrNull() ?: 3600,
             ).toJson(),
         )
 
@@ -129,7 +122,6 @@ internal fun channelIcon(type: String): ImageVector =
         ChannelTypes.TELEGRAM -> Icons.Filled.Send
         ChannelTypes.WEBHOOK -> Icons.Filled.Webhook
         ChannelTypes.PUSHOVER -> Icons.Filled.Notifications
-        ChannelTypes.SIREN -> Icons.Filled.Campaign
         ChannelTypes.LOG -> Icons.Filled.Terminal
         else -> Icons.Filled.NotificationImportant
     }

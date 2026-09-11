@@ -8,6 +8,7 @@ import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.core.TriggerEvent
+import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.storage.OutboxEntity
 import io.securitycam.level2.storage.OutboxKind
 import io.securitycam.level2.storage.SnapshotStore
@@ -75,6 +76,13 @@ class EventPipeline(
                 // No factory for this channel type (unknown type, missing
                 // build): record the hole explicitly instead of dropping the
                 // target silently from the event history.
+                statuses[target.id] = STATUS_MISCONFIGURED
+                continue
+            }
+            // Unknown (forward-version) channel types fail soft: a null typed
+            // settings means no factory can be trusted to build it, so it
+            // lands on the explicit misconfigured status instead of throwing.
+            if (ChannelRegistry.buildChannelSettings(target.type, target.settingsJson) == null) {
                 statuses[target.id] = STATUS_MISCONFIGURED
                 continue
             }

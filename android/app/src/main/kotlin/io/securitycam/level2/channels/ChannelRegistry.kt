@@ -8,6 +8,7 @@ typealias ChannelFactory = (ChannelConfig) -> io.securitycam.level2.core.Channel
 
 /** Registry of channel factories keyed by channel type. */
 object ChannelRegistry {
+    private const val TAG = "ChannelRegistry"
     private data class ChannelEntry(
         val factory: ChannelFactory,
         val settingsBuilder: (Map<String, Any?>) -> ChannelSettings,
@@ -58,16 +59,6 @@ object ChannelRegistry {
             },
             settingsBuilder = { json -> PushoverChannelSettings.fromJson(json) },
         ),
-        "siren" to ChannelEntry(
-            factory = { c ->
-                SirenChannel(
-                    id = c.id,
-                    enabled = c.enabled,
-                    settings = SirenChannelSettings.fromJson(c.settingsJson),
-                )
-            },
-            settingsBuilder = { json -> SirenChannelSettings.fromJson(json) },
-        ),
     )
 
     val factories: Map<String, ChannelFactory> =
@@ -78,8 +69,12 @@ object ChannelRegistry {
     /**
      * Builds the typed [ChannelSettings] for a channel type (used by the
      * settings store to know which fields are secrets, and by the UI).
+     * Returns null (fail soft) for forward-version unknown types so callers
+     * can route through the misconfigured path instead of crashing.
      */
-    fun buildChannelSettings(type: String, json: Map<String, Any?>): ChannelSettings =
-        entries[type]?.settingsBuilder?.invoke(json)
-            ?: throw IllegalArgumentException("unsupported channel type: $type")
+    fun buildChannelSettings(type: String, json: Map<String, Any?>): ChannelSettings? =
+        entries[type]?.settingsBuilder?.invoke(json) ?: run {
+            android.util.Log.w(TAG, "unsupported channel type: $type")
+            null
+        }
 }

@@ -143,12 +143,13 @@ class SettingsStore(
         var migrated = false
         val channels = mutableListOf<ChannelConfig>()
         for (c in settings.channelConfigs) {
-            val typed = try {
-                ChannelRegistry.buildChannelSettings(c.type, c.settingsJson)
-            } catch (_: Exception) {
-                channels.add(c)
-                continue
-            }
+            // Unknown (forward-version) types carry no typed secret list, so
+            // they pass through verbatim — never crash, never strip.
+            val typed = ChannelRegistry.buildChannelSettings(c.type, c.settingsJson)
+                ?: run {
+                    channels.add(c)
+                    continue
+                }
             var json = c.settingsJson
             var injected = false
             for (field in typed.secretFields) {
@@ -214,11 +215,10 @@ class SettingsStore(
      * wipe a previously saved secret.
      */
     private suspend fun persistChannelSecrets(config: ChannelConfig) {
-        val typed = try {
-            ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
-        } catch (_: Exception) {
-            return
-        }
+        // Unknown types have no typed secret list: nothing to persist, and
+        // the blob keeps the entry verbatim (fail soft, no crash).
+        val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
+            ?: return
         for (field in typed.secretFields) {
             val value = config.settingsJson[field]
             if (value is String && value.isNotEmpty()) {
@@ -241,8 +241,8 @@ class SettingsStore(
         val removed = rawChannelIds(raw) - nextIds
         if (removed.isEmpty()) return
         val secretFields = ChannelRegistry.factories.keys.flatMapTo(mutableSetOf()) { type ->
-            runCatching { ChannelRegistry.buildChannelSettings(type, emptyMap()) }
-                .getOrNull()?.secretFields ?: emptyList()
+            ChannelRegistry.buildChannelSettings(type, emptyMap())?.secretFields
+                ?: emptyList()
         }
         for (id in removed) {
             for (field in secretFields) {
@@ -262,24 +262,19 @@ class SettingsStore(
     } catch (_: Exception) {
         emptySet()
     }
-    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {
+    /**
+     * Strips a channel's secret fields from the persisted blob. Unknown
+     * (forward-version) types have no typed secret list, so the blob is kept
+     * verbatim — skipping beats guessing which keys are credentials, and the
+     * pipeline surfaces the account as misconfigured instead of crashing.
+     */
+    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> {
         val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
+            ?: return config.settingsJson
         if (typed.secretFields.isEmpty()) {
-            config.settingsJson
-        } else {
-            config.settingsJson.filterKeys { it !in typed.secretFields }
+            return config.settingsJson
         }
-    } catch (_: Exception) {
-        // Unknown type (forward-version data): the typed secret list is
-        // unavailable, so fail closed on secret-shaped keys rather than
-        // persisting a possible inline credential in plaintext.
-        android.util.Log.w(
-            "SettingsStore",
-            "stripping suspect keys for unknown channel type ${config.type}",
-        )
-        config.settingsJson.filterKeys { key ->
-            SUSPECT_SECRET_SUBSTRINGS.none { key.contains(it, ignoreCase = true) }
-        }
+        return config.settingsJson.filterKeys { it !in typed.secretFields }
     }
 
     companion object {
@@ -311,11 +306,6 @@ class SettingsStore(
         }
 
         fun secretKey(channelId: String, field: String): String = "channel.$channelId.$field"
-
-        /** Key fragments treated as credentials when the channel type is unknown. */
-        private val SUSPECT_SECRET_SUBSTRINGS = listOf(
-            "password", "passwd", "secret", "token", "apikey", "passphrase", "privatekey",
-        )
 
         private fun jsonStringToMap(raw: String): Map<String, Any?> =
             jsonToAny(JSONObject(raw)) as Map<String, Any?>

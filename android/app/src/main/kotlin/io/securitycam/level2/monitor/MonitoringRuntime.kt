@@ -19,11 +19,14 @@ import io.securitycam.level2.core.TriggerEvent
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.audio.AudioClassifierFactory
+import io.securitycam.level2.detection.audio.AudioEventClassifier
 import io.securitycam.level2.detection.face.FaceDetector
+import io.securitycam.level2.detection.face.FaceEmbedder
 import io.securitycam.level2.detection.face.FaceEmbeddingEngine
+import io.securitycam.level2.detection.face.FaceEngine
 import io.securitycam.level2.detection.face.FaceRecognizer
-import io.securitycam.level2.identity.FaceDirectory
 import io.securitycam.level2.identity.KnownFaceStore
+import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.detection.pipeline.AnalysisDispatcher
 import io.securitycam.level2.detection.pipeline.DetectorPipeline
 import io.securitycam.level2.event.EventPipeline
@@ -111,6 +114,23 @@ class MonitoringRuntime private constructor(
     @Volatile
     private var stopped = false
 
+    /**
+     * Runtime-scoped detector factories (Wave 4): this runtime's face
+     * override lives here, never on the process-global [DetectorRegistry].
+     */
+    private lateinit var scopedRegistry: DetectorRegistry
+
+    /** This runtime's detector registry (test seam: proves scoping). */
+    val detectorRegistry: DetectorRegistry get() = scopedRegistry
+
+    /**
+     * Face roster snapshot taken at creation (Wave 4): later
+     * [io.securitycam.level2.identity.FaceDirectory] updates do not move a
+     * live session; a restart picks them up. Cleared on [stop].
+     */
+    var faceRoster: List<KnownFace> = emptyList()
+        private set
+
     companion object {
         private const val TAG = "MonitoringRuntime"
         private const val HEALTH_ID = "health"
@@ -126,6 +146,18 @@ class MonitoringRuntime private constructor(
             settings: AppSettings,
             scope: CoroutineScope,
             healthCheckInterval: Duration = Duration.ofSeconds(5),
+            faceStoreFactory: (Context) -> KnownFaceStore = { KnownFaceStore(it) },
+            embedderLoader: suspend (Context) -> FaceEmbedder? = { ctx ->
+                withContext(Dispatchers.IO) { FaceEmbeddingEngine.load(ctx) }
+            },
+            classifierLoader: suspend (Context) -> AudioEventClassifier = { ctx ->
+                AudioClassifierFactory.build(ctx)
+            },
+            /**
+             * Face detection engine override (tests inject fakes here; null
+             * keeps the shipped MediaPipe engine via the detector default).
+             */
+            faceEngineFactory: (() -> FaceEngine)? = null,
         ): MonitoringRuntime {
             val appContext = context.applicationContext
             val runtime = MonitoringRuntime(appContext, settings, scope)
@@ -133,38 +165,48 @@ class MonitoringRuntime private constructor(
             // recognizing variant; registering unconditionally keeps repeated
             // create() calls consistent with the current settings.
             val recognitionOn = AppSettings.faceRecognitionEnabled(settings)
-            val faceStore = if (recognitionOn) KnownFaceStore(appContext) else null
+            val faceStore = if (recognitionOn) faceStoreFactory(appContext) else null
             // Native/model IO stays off the main thread.
             val embedder = if (recognitionOn) {
-                withContext(Dispatchers.IO) { FaceEmbeddingEngine.load(appContext) }
+                embedderLoader(appContext)
             } else {
                 null
             }
-            // Seed the live roster so enrollments made after this point (which
-            // update FaceDirectory) are visible to the recognizer.
-            if (recognitionOn) FaceDirectory.setAll(settings.knownFaces)
+            // Wave 4: snapshot the live roster instead of publishing into the
+            // process-global FaceDirectory — overlapping runtimes (monitoring
+            // + face-enrollment capture) keep independent rosters. Later
+            // enrollments/deletes take effect on restart.
+            runtime.faceRoster = if (recognitionOn) settings.knownFaces.toList() else emptyList()
             val matchThreshold = if (recognitionOn) {
                 settings.detectorConfigs[TriggerType.faceKnown]?.threshold
                     ?: AppSettings.FACE_MATCH_THRESHOLD
             } else {
                 0.0
             }
-            DetectorRegistry.register(TriggerType.face) { c ->
+            // Wave 4: the face override is registered on a runtime-scoped
+            // registry passed explicitly to the pipeline — the global
+            // DetectorRegistry is never mutated here.
+            val scoped = DetectorRegistry.withDefaults()
+            val faceEngine = faceEngineFactory?.invoke()
+            scoped.register(TriggerType.face) { c ->
                 if (recognitionOn) {
                     FaceRecognizer(
                         c,
                         faceStore!!,
                         embedder,
-                        { FaceDirectory.people() },
+                        { runtime.faceRoster },
                         matchThreshold,
+                        engine = faceEngine,
                     )
                 } else {
-                    FaceDetector(c)
+                    FaceDetector(c, engine = faceEngine)
                 }
             }
+            runtime.scopedRegistry = scoped
             runtime.pipeline = DetectorPipeline(
-                classifier = AudioClassifierFactory.build(appContext),
+                classifier = classifierLoader(appContext),
                 configs = settings.detectorConfigs.values.toList(),
+                registry = scoped,
             )
             withContext(Dispatchers.IO) { runtime.pipeline.init() }
             runtime.pipeline.setZones(settings.detectionZones, settings.exclusionZones)
@@ -289,6 +331,10 @@ class MonitoringRuntime private constructor(
         runCatching { frameDispatcher.dispose() }
         runCatching { audioDispatcher.dispose() }
         runCatching { pipeline.dispose() }
+        // Wave 4: drop this runtime's face override and roster snapshot so a
+        // stopped session retains no detection state.
+        runCatching { if (::scopedRegistry.isInitialized) scopedRegistry.unregister(TriggerType.face) }
+        faceRoster = emptyList()
         runCatching { runtimeScope.coroutineContext[Job]?.cancel() }
     }
 

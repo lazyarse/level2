@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Webhook
 import androidx.compose.material.icons.filled.CropFree
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Face
@@ -109,7 +108,6 @@ import androidx.compose.ui.unit.dp
 import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
-import io.securitycam.level2.channels.SirenChannelSettings
 import io.securitycam.level2.channels.TelegramChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.channels.webhookPresets
@@ -127,7 +125,6 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
-import java.util.Locale
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
@@ -187,11 +184,9 @@ fun SettingsScreen(
                     fields["${c.id}.appToken"] = it.appToken
                     fields["${c.id}.userKey"] = it.userKey
                     fields["${c.id}.sound"] = it.sound
-                }
-
-                ChannelTypes.SIREN -> SirenChannelSettings.fromJson(c.settingsJson).let {
-                    fields["${c.id}.duration"] = it.durationSeconds.toString()
-                    fields["${c.id}.volume"] = it.volume.toString()
+                    fields["${c.id}.priority"] = it.priority.toString()
+                    fields["${c.id}.retrySeconds"] = it.retrySeconds.toString()
+                    fields["${c.id}.expireSeconds"] = it.expireSeconds.toString()
                 }
             }
         }
@@ -1764,26 +1759,9 @@ private fun ChannelBody(
                     ChannelTextField("App token", config.id, fields, "${config.id}.appToken", setField, isSecret = true)
                     ChannelTextField("User key", config.id, fields, "${config.id}.userKey", setField, isSecret = true)
                     ChannelTextField("Sound", config.id, fields, "${config.id}.sound", setField)
-                }
-
-                ChannelTypes.SIREN -> {
-                    val duration = (fields["${config.id}.duration"] ?: "15").toFloatOrNull() ?: 15f
-                    Text("Duration: ${duration.toInt()} s")
-                    Slider(
-                        value = duration,
-                        onValueChange = { v -> setField("${config.id}.duration", v.toInt().toString()) },
-                        valueRange = 5f..60f,
-                        steps = 10,
-                        modifier = Modifier.testTag("sirenDuration_${config.id}"),
-                    )
-                    val vol = (fields["${config.id}.volume"] ?: "0.8").toFloatOrNull() ?: 0.8f
-                    Text("Volume: %.0f%%".format(Locale.US, vol * 100))
-                    Slider(
-                        value = vol,
-                        onValueChange = { v -> setField("${config.id}.volume", formatSirenVolume(v)) },
-                        valueRange = 0.1f..1.0f,
-                        modifier = Modifier.testTag("sirenVolume_${config.id}"),
-                    )
+                    ChannelTextField("Priority (-2 to 2)", config.id, fields, "${config.id}.priority", setField, keyboardType = KeyboardType.Number)
+                    ChannelTextField("Emergency retry seconds", config.id, fields, "${config.id}.retrySeconds", setField, keyboardType = KeyboardType.Number)
+                    ChannelTextField("Emergency expiry seconds", config.id, fields, "${config.id}.expireSeconds", setField, keyboardType = KeyboardType.Number)
                 }
             }
             // Snapshot-aware validation: derivedStateOf subscribes to the
@@ -1930,13 +1908,6 @@ private fun ChannelTextField(
  */
 internal fun fieldTag(channelId: String, label: String): String =
     "field_${channelId}_" + label.lowercase().replace(Regex("[^a-z0-9]+"), "_")
-
-/**
- * Siren volume wire format: always a dot decimal. The default-locale
- * `"%.2f".format` renders a comma under e.g. German/Turkish locales, which
- * `toFloatOrNull` (and the siren channel) can't parse back.
- */
-internal fun formatSirenVolume(v: Float): String = "%.2f".format(Locale.US, v)
 
 @Composable
 private fun DropdownField(

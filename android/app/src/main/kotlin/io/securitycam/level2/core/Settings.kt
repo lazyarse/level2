@@ -505,6 +505,9 @@ data class AppSettings(
             val stored = (json["channelConfigs"] as? List<*>)
                 ?.mapNotNull { e ->
                     val config = ChannelConfig.fromJson(e as Map<String, Any?>)
+                    // The retired on-device alarm channel is dropped outright:
+                    // it has no UI, no delete path, and no secrets to migrate.
+                    if (config.type == "siren") return@mapNotNull null
                     if (config.type != "discord") return@mapNotNull config
                     ChannelConfig(
                         id = config.id,

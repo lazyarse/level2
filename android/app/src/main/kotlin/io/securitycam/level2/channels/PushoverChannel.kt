@@ -2,6 +2,7 @@ package io.securitycam.level2.channels
 
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
+import io.securitycam.level2.core.Snapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -15,6 +16,10 @@ class PushoverChannelSettings(
     val userKey: String = "",
     val sound: String = "",
     val priority: Int = 0,
+    /** Emergency (priority 2) re-alert interval, seconds (API requires >= 30). */
+    val retrySeconds: Int = 60,
+    /** Emergency (priority 2) total re-alert window, seconds (API requires <= 10800). */
+    val expireSeconds: Int = 3600,
 ) : ChannelSettings() {
     override val type: String get() = "pushover"
     override fun toJson(): Map<String, Any?> = mapOf(
@@ -22,6 +27,8 @@ class PushoverChannelSettings(
         "userKey" to userKey,
         "sound" to sound,
         "priority" to priority,
+        "retrySeconds" to retrySeconds,
+        "expireSeconds" to expireSeconds,
     )
     override val secretFields: List<String> get() = listOf("appToken", "userKey")
 
@@ -31,6 +38,8 @@ class PushoverChannelSettings(
             userKey = json["userKey"] as? String ?: "",
             sound = json["sound"] as? String ?: "",
             priority = (json["priority"] as? Number)?.toInt() ?: 0,
+            retrySeconds = (json["retrySeconds"] as? Number)?.toInt() ?: 60,
+            expireSeconds = (json["expireSeconds"] as? Number)?.toInt() ?: 3600,
         )
     }
 }
@@ -44,6 +53,8 @@ class PushoverChannel(
     override val enabled: Boolean = true,
     override val settings: PushoverChannelSettings,
     client: OkHttpClient? = null,
+    /** Fits snapshots to the attachment cap; injectable so JVM tests avoid Bitmap. */
+    private val fitSnapshot: (Snapshot, Int) -> Snapshot? = ::fitSnapshotForUpload,
 ) : io.securitycam.level2.core.Channel {
 
     private val client: OkHttpClient = client ?: newHttpClient()
@@ -56,21 +67,25 @@ class PushoverChannel(
         add("message" to message)
         if (settings.sound.isNotEmpty()) add("sound" to settings.sound)
         add("priority" to settings.priority.toString())
+        if (settings.priority == 2) {
+            add("retry" to settings.retrySeconds.toString())
+            add("expire" to settings.expireSeconds.toString())
+        }
     }
 
     override suspend fun send(message: AlertMessage) {
-        val snapshot = message.snapshot
-        // Oversized attachments are rejected server-side: fall back to the
-        // text form (mirrors Telegram's photo→message fallback).
-        if (snapshot != null && snapshot.bytes.size <= MAX_ATTACHMENT_BYTES) {
-            withTempSnapshot(snapshot) { tmp ->
+        // Oversized originals are downscaled to fit; unsalvageable ones fall
+        // back to the text form (mirrors Telegram's photo→message fallback).
+        val upload = message.snapshot?.let { fitSnapshot(it, MAX_ATTACHMENT_BYTES) }
+        if (message.snapshot != null && upload != null) {
+            withTempSnapshot(upload) { tmp ->
                 val builder = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                 for ((k, v) in fields(message.text)) builder.addFormDataPart(k, v)
                 builder.addFormDataPart(
                     "attachment",
-                    snapshot.name,
-                    tmp.asRequestBody(safeMediaType(snapshot.mimeType)),
+                    upload.name,
+                    tmp.asRequestBody(safeMediaType(upload.mimeType)),
                 )
                 val response = withContext(Dispatchers.IO) {
                     client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
@@ -108,6 +123,10 @@ class PushoverChannel(
         if (settings.priority !in -2..2) return "Priority must be between -2 and 2"
         if (settings.sound.isNotEmpty() && settings.sound !in VALID_SOUNDS) {
             return "Unknown notification sound"
+        }
+        if (settings.priority == 2) {
+            if (settings.retrySeconds < 30) return "Emergency retry must be at least 30 seconds"
+            if (settings.expireSeconds > 10800) return "Emergency expiry must be at most 10800 seconds"
         }
         return null
     }
