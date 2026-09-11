@@ -375,6 +375,62 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun pushoverSoundDropdownDefaultsAndPersistsSelection() {
+        val harness = channelsHarness()
+        setContent(harness)
+
+        expandSection("Notification Channels")
+        expandChannel("pushover")
+
+        compose.onNodeWithTag(fieldTag("pushover", "Sound")).performScrollTo()
+            .assertIsDisplayed()
+            .assertTextContains("Default")
+
+        compose.onNodeWithTag(fieldTag("pushover", "Sound")).performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText("siren").fetchSemanticsNodes().isNotEmpty()
+        }
+        // The 24-item menu scrolls: bring the item into the menu viewport
+        // before clicking or the tap lands outside and dismisses it.
+        compose.onNodeWithText("siren").performScrollTo().performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("saveSettings").performClick()
+        compose.waitUntil(5000) { harness.saved.isNotEmpty() }
+
+        val pushover = PushoverChannelSettings.fromJson(
+            harness.saved.single().channelConfigs.first { it.type == "pushover" }.settingsJson,
+        )
+        assertEquals("siren", pushover.sound)
+    }
+
+    @Test
+    fun pushoverGarbagePriorityBlocksSendTest() {
+        setContent(channelsHarness())
+
+        expandSection("Notification Channels")
+        expandChannel("pushover")
+
+        // Valid tokens first so the priority check is the one that fires.
+        compose.onNodeWithTag(fieldTag("pushover", "App token")).performScrollTo()
+            .performTextInput("apptok")
+        compose.onNodeWithTag(fieldTag("pushover", "User key")).performScrollTo()
+            .performTextInput("userkey")
+        compose.onNodeWithTag(fieldTag("pushover", "Priority (-2 to 2)")).performScrollTo()
+            .performTextReplacement("high")
+        compose.waitForIdle()
+
+        // The replacement text landed in the field.
+        compose.onNodeWithTag(fieldTag("pushover", "Priority (-2 to 2)"))
+            .assertTextContains("high", substring = true)
+
+        compose.onNodeWithText("Priority must be a whole number from -2 to 2")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag("sendTest_pushover").assertIsNotEnabled()
+    }
+
+    @Test
     fun recordVideoToggleSavesTheVideoClipPreference() {
         val harness = Harness()
         setContent(harness)

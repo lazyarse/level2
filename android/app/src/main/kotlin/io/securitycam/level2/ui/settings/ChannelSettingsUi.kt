@@ -115,6 +115,26 @@ internal fun emailPortError(channelId: String, fields: Map<String, String>): Str
     return if (port == null || port !in 1..65535) "Port must be a number from 1 to 65535" else null
 }
 
+/**
+ * Numeric checks the channel validators don't see: [buildChannelConfigs]
+ * silently falls back to 0/60/3600 on garbage input, so flag it here
+ * instead. Blank (which means the default) is fine; range rules for the
+ * emergency window stay in [PushoverChannel.validate].
+ */
+internal fun pushoverNumericError(channelId: String, fields: Map<String, String>): String? {
+    val priority = fields["$channelId.priority"]?.trim().orEmpty()
+    if (priority.isNotEmpty() && (priority.toIntOrNull() == null || priority.toInt() !in -2..2)) {
+        return "Priority must be a whole number from -2 to 2"
+    }
+    for ((key, label) in listOf("retrySeconds" to "Emergency retry", "expireSeconds" to "Emergency expiry")) {
+        val raw = fields["$channelId.$key"]?.trim().orEmpty()
+        if (raw.isNotEmpty() && (raw.toIntOrNull() == null || raw.toInt() < 1)) {
+            return "$label must be a whole number of seconds"
+        }
+    }
+    return null
+}
+
 /** Type glyph for channel cards (mirrors the DetectorCard title-icon pattern). */
 internal fun channelIcon(type: String): ImageVector =
     when (type) {

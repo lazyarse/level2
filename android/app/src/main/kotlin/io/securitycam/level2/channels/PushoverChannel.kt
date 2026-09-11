@@ -66,7 +66,7 @@ class PushoverChannel(
     private fun fields(message: String): List<Pair<String, String>> = buildList {
         add("token" to settings.appToken)
         add("user" to settings.userKey)
-        add("message" to message)
+        add("message" to fitMessage(message))
         if (settings.sound.isNotEmpty()) add("sound" to settings.sound)
         add("priority" to settings.priority.toString())
         if (settings.priority == 2) {
@@ -76,6 +76,7 @@ class PushoverChannel(
     }
 
     override suspend fun send(message: AlertMessage) {
+        val text = fitMessage(message.text)
         // Oversized originals are downscaled to fit; unsalvageable ones fall
         // back to the text form (mirrors Telegram's photo→message fallback).
         val upload = message.snapshot?.let { fitSnapshot(it, MAX_ATTACHMENT_BYTES) }
@@ -83,7 +84,7 @@ class PushoverChannel(
             withTempSnapshot(upload) { tmp ->
                 val builder = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
-                for ((k, v) in fields(message.text)) builder.addFormDataPart(k, v)
+                for ((k, v) in fields(text)) builder.addFormDataPart(k, v)
                 builder.addFormDataPart(
                     "attachment",
                     upload.name,
@@ -93,19 +94,31 @@ class PushoverChannel(
                     client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
                 }
                 response.use {
-                    check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                    if (!it.isSuccessful && it.code in 400..499) {
+                        // The server rejected the upload itself (bad key,
+                        // oversize attachment): degrade to text so the alert
+                        // still arrives. 5xx/network errors keep the photo
+                        // for the outbox retry path.
+                        postText(text)
+                    } else {
+                        check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                    }
                 }
             }
         } else {
-            val body = FormBody.Builder().apply {
-                for ((k, v) in fields(message.text)) add(k, v)
-            }.build()
-            val response = withContext(Dispatchers.IO) {
-                client.newCall(Request.Builder().url(ENDPOINT).post(body).build()).execute()
-            }
-            response.use {
-                check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
-            }
+            postText(text)
+        }
+    }
+
+    private suspend fun postText(text: String) {
+        val body = FormBody.Builder().apply {
+            for ((k, v) in fields(text)) add(k, v)
+        }.build()
+        val response = withContext(Dispatchers.IO) {
+            client.newCall(Request.Builder().url(ENDPOINT).post(body).build()).execute()
+        }
+        response.use {
+            check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
         }
     }
 
@@ -143,8 +156,11 @@ class PushoverChannel(
         /** Server-side cap: larger attachments are rejected with an API error. */
         const val MAX_ATTACHMENT_BYTES = 5_242_880
 
+        /** Server-side cap on the message field: longer text is rejected. */
+        const val MAX_MESSAGE_CHARS = 1024
+
         /** Documented sound names (Pushover API); blank means the default sound. */
-        private val VALID_SOUNDS = setOf(
+        internal val VALID_SOUNDS = setOf(
             "pushover", "bike", "bugle", "cashregister", "classical", "cosmic",
             "falling", "gamelan", "incoming", "intermission", "magic",
             "mechanical", "pianobar", "siren", "spacealarm", "tugboat",
@@ -152,3 +168,11 @@ class PushoverChannel(
         )
     }
 }
+
+/**
+ * Fits alert text to Pushover's message cap: overlong text is rejected with
+ * an API error (which would retry forever), so ellipsize up-front.
+ */
+internal fun fitMessage(text: String): String =
+    if (text.length <= PushoverChannel.MAX_MESSAGE_CHARS) text
+    else text.take(PushoverChannel.MAX_MESSAGE_CHARS - 1) + "…"

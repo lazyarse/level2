@@ -137,6 +137,9 @@ class PushoverChannelTest {
     @Test
     fun non2xxResponseThrowsAReadableError() = runBlocking {
         val server = MockWebServer().apply {
+            // sendTest attaches a snapshot: the multipart upload 401s, the
+            // text fallback 401s too, and that error surfaces.
+            enqueue(MockResponse().setResponseCode(401).setBody("boom"))
             enqueue(MockResponse().setResponseCode(401).setBody("boom"))
             start()
         }
@@ -149,6 +152,7 @@ class PushoverChannelTest {
                 thrown = t
             }
             assertTrue(thrown?.message.orEmpty().contains("Pushover failed (401)"))
+            assertEquals(2, server.requestCount)
         } finally {
             server.shutdown()
         }
@@ -257,5 +261,70 @@ class PushoverChannelTest {
     @Test
     fun appTokenAndUserKeyAreSecretFields() {
         assertEquals(listOf("appToken", "userKey"), PushoverChannelSettings(appToken = "a", userKey = "u").secretFields)
+    }
+
+    @Test
+    fun overlongMessageIsEllipsizedToTheApiCap() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString())
+            c.send(message().copy(text = "x".repeat(PushoverChannel.MAX_MESSAGE_CHARS + 500)))
+            val body = server.takeRequest().body.readUtf8()
+            val fields = body.split('&').associate {
+                val (k, v) = it.split('=', limit = 2)
+                k to java.net.URLDecoder.decode(v, "UTF-8")
+            }
+            val sent = fields["message"].orEmpty()
+            assertEquals(PushoverChannel.MAX_MESSAGE_CHARS, sent.length)
+            assertTrue(sent.endsWith("…"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun shortMessagePassesThroughUntouched() {
+        assertEquals("hi", fitMessage("hi"))
+        assertEquals("x".repeat(1024), fitMessage("x".repeat(1024)))
+    }
+
+    @Test
+    fun rejectedUploadFallsBackToText() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(400).setBody("bad attachment"))
+        server.enqueue(MockResponse().setBody("{}"))
+        server.start()
+        try {
+            val c = channel(server.url("/").toString())
+            c.send(message(snapshot = snapshot()))
+            assertEquals(2, server.requestCount)
+            server.takeRequest()
+            val second = server.takeRequest()
+            assertTrue(second.getHeader("content-type").orEmpty().contains("application/x-www-form-urlencoded"))
+            assertTrue(second.body.readUtf8().contains("message=Motion"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun serverErrorOnUploadThrowsInsteadOfFallingBack() = runBlocking {
+        val server = MockWebServer().apply {
+            enqueue(MockResponse().setResponseCode(500).setBody("boom"))
+            start()
+        }
+        try {
+            val c = channel(server.url("/").toString())
+            var thrown: Throwable? = null
+            try {
+                c.send(message(snapshot = snapshot()))
+            } catch (t: IllegalStateException) {
+                thrown = t
+            }
+            assertTrue(thrown?.message.orEmpty().contains("Pushover failed (500)"))
+            assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
     }
 }

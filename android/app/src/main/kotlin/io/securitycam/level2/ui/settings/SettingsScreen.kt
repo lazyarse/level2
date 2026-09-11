@@ -107,6 +107,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
+import io.securitycam.level2.channels.PushoverChannel
 import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.TelegramChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
@@ -1778,7 +1779,14 @@ private fun ChannelBody(
                 ChannelTypes.PUSHOVER -> {
                     ChannelTextField("App token", config.id, fields, "${config.id}.appToken", setField, isSecret = true)
                     ChannelTextField("User key", config.id, fields, "${config.id}.userKey", setField, isSecret = true)
-                    ChannelTextField("Sound", config.id, fields, "${config.id}.sound", setField)
+                    val sound = fields["${config.id}.sound"] ?: ""
+                    DropdownField(
+                        label = "Sound",
+                        selected = sound.ifEmpty { "Default" },
+                        options = listOf("" to "Default") + PushoverChannel.VALID_SOUNDS.sorted().map { it to it },
+                        testTag = fieldTag(config.id, "Sound"),
+                        onSelect = { s -> setField("${config.id}.sound", s) },
+                    )
                     ChannelTextField("Priority (-2 to 2)", config.id, fields, "${config.id}.priority", setField, keyboardType = KeyboardType.Number)
                     ChannelTextField("Emergency retry seconds", config.id, fields, "${config.id}.retrySeconds", setField, keyboardType = KeyboardType.Number)
                     ChannelTextField("Emergency expiry seconds", config.id, fields, "${config.id}.expireSeconds", setField, keyboardType = KeyboardType.Number)
@@ -1797,6 +1805,7 @@ private fun ChannelBody(
                     val channel = factories[merged.type]?.invoke(merged)
                     if (channel == null) "Unknown channel type ${merged.type}"
                     else channel.validate() ?: emailPortError(config.id, snapshot)
+                        ?: pushoverNumericError(config.id, snapshot)
                 }
             }
             // Local copy: delegated properties don't smart-cast.
