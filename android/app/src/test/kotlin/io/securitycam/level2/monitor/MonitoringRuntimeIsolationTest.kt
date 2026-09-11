@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -82,15 +83,16 @@ class MonitoringRuntimeIsolationTest {
     )
 
     @Test
-    fun createLeavesTheGlobalRegistryUntouched() = runBlocking {
-        val before = DetectorRegistry.factoryFor(TriggerType.face)
+    fun freshRegistriesAreIndependentCopies() = runBlocking {
+        val defaults = DetectorRegistry.withDefaults()
         val runtime = create(motionOnlySettings())
         try {
-            assertSame(before, DetectorRegistry.factoryFor(TriggerType.face))
-            assertTrue(DetectorRegistry.supports(TriggerType.face))
+            // Same shipped types, distinct maps: mutating one cannot leak.
+            assertNotNull(defaults.factoryFor(TriggerType.face))
+            assertTrue(defaults.supports(TriggerType.face))
             assertNotSame(
-                before,
-                runtime.detectorRegistry.factoryFor(TriggerType.face),
+                defaults,
+                runtime.detectorRegistry,
             )
         } finally {
             runtime.stop()
@@ -108,7 +110,6 @@ class MonitoringRuntimeIsolationTest {
             a.detectorRegistry.register("wave4-probe", fakeFactory)
             assertSame(fakeFactory, a.detectorRegistry.factoryFor("wave4-probe"))
             assertNull(b.detectorRegistry.factoryFor("wave4-probe"))
-            assertNull(DetectorRegistry.factoryFor("wave4-probe"))
         } finally {
             a.stop()
             b.stop()

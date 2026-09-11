@@ -32,7 +32,7 @@ class DetectorPipeline(
      * own [DetectorRegistry] so overlapping runtimes never share factories.
      * Defaults to the process-global registry for tests/legacy call sites.
      */
-    private val registry: DetectorRegistry = DetectorRegistry.global,
+    private val registry: DetectorRegistry = DetectorRegistry.withDefaults(),
 ) {
     private val frameDetectorsInternal: MutableList<FrameDetector> = configs
         .filter { it.enabled }

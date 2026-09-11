@@ -14,18 +14,6 @@ interface DogEngine {
     suspend fun dispose()
 }
 
-/** Test/dry-run engine: returns whatever [dogs] was pre-loaded with. */
-class MockDogEngine : DogEngine {
-    val dogs = mutableListOf<DetectedBox>()
-
-    override suspend fun init() {}
-
-    override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> =
-        dogs.toList()
-
-    override suspend fun dispose() {}
-}
-
 /**
  * YOLO26n dog detector via the shared [YoloModelSingleton]. Decodes COCO
  * class 16 (dog) from the same model the person detector uses — zero extra

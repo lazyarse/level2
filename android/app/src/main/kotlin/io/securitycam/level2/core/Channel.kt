@@ -75,11 +75,6 @@ interface Channel {
     fun validate(): String?
 }
 
-data class ChannelDeliveryResult(
-    val channelId: String,
-    val status: String,
-)
-
 /**
  * True for never-configured placeholder accounts: one of the multi-account
  * types, disabled, unlabeled, with no real settings (webhook allows a lone

@@ -11,13 +11,9 @@ typealias DetectorFactory = (DetectorConfig) -> Detector
  * motion are available in Phase 2; face/person arrive in Phase 3 and
  * tamper/dog in Phase 6.
  *
- * Wave 4: the registry is instance-scoped. [MonitoringRuntime] builds its own
- * copy via [withDefaults] and registers its face variant on that instance, so
- * overlapping runtimes (monitoring + face-enrollment capture) can no longer
- * clobber each other's factories through the process-global map. The
- * companion delegates ([factoryFor], [register], [supports], [types]) preserve
- * the historical global for settings parity, the UI, and tests that
- * intentionally stub the shared map.
+ * Instances are independent: every holder ([MonitoringRuntime], pipelines,
+ * tests) builds its own copy via [withDefaults] and mutates only that copy,
+ * so overlapping runtimes can never clobber each other's factories.
  */
 class DetectorRegistry private constructor(
     private val factories: MutableMap<String, DetectorFactory>,
@@ -84,26 +80,5 @@ class DetectorRegistry private constructor(
 
         /** A fresh registry seeded with the shipped detector factories. */
         fun withDefaults(): DetectorRegistry = DetectorRegistry(defaultFactories())
-
-        /**
-         * Process-global registry (settings parity, UI, legacy call sites).
-         * Production runtimes never mutate this; they scope to [withDefaults].
-         */
-        val global: DetectorRegistry by lazy { withDefaults() }
-
-        fun register(type: String, factory: DetectorFactory) {
-            global.register(type, factory)
-        }
-
-        fun unregister(type: String) {
-            global.unregister(type)
-        }
-
-        fun factoryFor(type: String): DetectorFactory? = global.factoryFor(type)
-
-        val types: Set<String> get() = global.types
-
-        /** True when a detector class exists for [type] (used by settings parity). */
-        fun supports(type: String): Boolean = global.supports(type)
     }
 }

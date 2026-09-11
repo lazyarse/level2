@@ -16,7 +16,7 @@ class DetectorRegistryTest {
 
     @Test
     fun registryBuildsAMotionDetectorForTheMotionTrigger() {
-        val factory = DetectorRegistry.factoryFor(TriggerType.motion)
+        val factory = DetectorRegistry.withDefaults().factoryFor(TriggerType.motion)
         assertNotNull(factory)
         val detector = factory!!(DetectorConfig(type = TriggerType.motion))
         assertTrue(detector is MotionDetector)
@@ -27,7 +27,7 @@ class DetectorRegistryTest {
     @Test
     fun registryBuildsAudioDetectors() {
         for (type in listOf(TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise)) {
-            val detector = DetectorRegistry.factoryFor(type)!!(DetectorConfig(type = type))
+            val detector = DetectorRegistry.withDefaults().factoryFor(type)!!(DetectorConfig(type = type))
             assertEquals(type, detector.triggerType)
             assertEquals(type, detector.id)
         }
@@ -39,8 +39,8 @@ class DetectorRegistryTest {
         // just verify registration — hybrid behavior is covered by
         // PetHybridDetectorTest with mock engines.
         for (type in listOf(TriggerType.dog, TriggerType.cat)) {
-            assertNotNull(DetectorRegistry.factoryFor(type))
-            assertTrue(DetectorRegistry.supports(type))
+            assertNotNull(DetectorRegistry.withDefaults().factoryFor(type))
+            assertTrue(DetectorRegistry.withDefaults().supports(type))
         }
     }
 

@@ -86,9 +86,11 @@ class DetectorPipelineTest {
 
             override suspend fun dispose() {}
         }
-        DetectorRegistry.register(TriggerType.face) { detector }
+        val registry = DetectorRegistry.withDefaults()
+        registry.register(TriggerType.face) { detector }
         val pipeline = DetectorPipeline(
             classifier = MockAudioEventClassifier(),
+            registry = registry,
             configs = listOf(
                 DetectorConfig(
                     type = TriggerType.motion, enabled = true, threshold = 0.01,

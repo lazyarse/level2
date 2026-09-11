@@ -99,7 +99,7 @@ fun AlertLogScreen(onClose: () -> Unit) {
                             Text(
                                 text = EventPipeline.ALERT_TIME_FORMAT.format(
                                     entry.timestamp.atZone(ZoneId.systemDefault()),
-                                ) + " · ${entry.channelId}",
+                                ) + " · ${entry.channelId} · ${entry.triggerType}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -14,18 +14,6 @@ interface LivestockEngine {
     suspend fun dispose()
 }
 
-/** Test/dry-run engine: returns whatever [animals] was pre-loaded with. */
-class MockLivestockEngine : LivestockEngine {
-    val animals = mutableListOf<DetectedBox>()
-
-    override suspend fun init() {}
-
-    override suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox> =
-        animals.toList()
-
-    override suspend fun dispose() {}
-}
-
 /**
  * YOLO26n livestock detector via the shared [YoloModelSingleton]. Fuses COCO
  * horse/sheep/cow from the same model the person detector uses — zero extra

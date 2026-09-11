@@ -14,18 +14,6 @@ interface VehicleEngine {
     suspend fun dispose()
 }
 
-/** Test/dry-run engine: returns whatever [vehicles] was pre-loaded with. */
-class MockVehicleEngine : VehicleEngine {
-    val vehicles = mutableListOf<DetectedBox>()
-
-    override suspend fun init() {}
-
-    override suspend fun detectVehicles(frame: ColorBitmap): List<DetectedBox> =
-        vehicles.toList()
-
-    override suspend fun dispose() {}
-}
-
 /**
  * YOLO26n vehicle detector via the shared [YoloModelSingleton]. Fuses COCO
  * car/motorcycle/bus/truck from the same model the person detector uses —

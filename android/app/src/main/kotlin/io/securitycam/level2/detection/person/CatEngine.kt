@@ -14,18 +14,6 @@ interface CatEngine {
     suspend fun dispose()
 }
 
-/** Test/dry-run engine: returns whatever [cats] was pre-loaded with. */
-class MockCatEngine : CatEngine {
-    val cats = mutableListOf<DetectedBox>()
-
-    override suspend fun init() {}
-
-    override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> =
-        cats.toList()
-
-    override suspend fun dispose() {}
-}
-
 /**
  * YOLO26n cat detector via the shared [YoloModelSingleton]. Decodes COCO
  * class 15 (cat) from the same model the person detector uses — zero extra

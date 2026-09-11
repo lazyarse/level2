@@ -58,7 +58,7 @@ class EventPipeline(
             }
         }
 
-        val text = alertText(batch, snapshot)
+        val text = alertText(batch)
         val message = AlertMessage(
             timestamp = batch.timestamp,
             triggerType = type,
@@ -164,10 +164,7 @@ class EventPipeline(
             }
     }
 
-    private fun alertText(
-        batch: TriggerBatch,
-        snapshot: Snapshot?,
-    ): String {
+    private fun alertText(batch: TriggerBatch): String {
         val types = batch.triggers.map { it.triggerType }.distinct()
         val label = if (types.size == 1) {
             tamperDetailLabel(types.first(), batch.triggers.firstOrNull()?.detail)

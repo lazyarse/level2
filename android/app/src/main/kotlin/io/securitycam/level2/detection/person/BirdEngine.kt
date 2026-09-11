@@ -14,18 +14,6 @@ interface BirdEngine {
     suspend fun dispose()
 }
 
-/** Test/dry-run engine: returns whatever [birds] was pre-loaded with. */
-class MockBirdEngine : BirdEngine {
-    val birds = mutableListOf<DetectedBox>()
-
-    override suspend fun init() {}
-
-    override suspend fun detectBirds(frame: ColorBitmap): List<DetectedBox> =
-        birds.toList()
-
-    override suspend fun dispose() {}
-}
-
 /**
  * YOLO26n bird detector via the shared [YoloModelSingleton]. Decodes COCO
  * class 14 from the same model the person detector uses — zero extra model
