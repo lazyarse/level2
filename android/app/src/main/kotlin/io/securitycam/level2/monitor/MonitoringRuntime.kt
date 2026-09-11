@@ -42,7 +42,9 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +55,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Owns the full native detection→event path while monitoring runs (port of the
@@ -67,6 +71,13 @@ class MonitoringRuntime private constructor(
     val settings: AppSettings,
     private val scope: CoroutineScope,
 ) {
+    /**
+     * Runtime-owned scope: a SupervisorJob child of the creator's scope, so a
+     * failure in one collector never cancels the ViewModel scope, and stop()
+     * cancels all runtime work in one place.
+     */
+    private val runtimeScope: CoroutineScope =
+        CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
     private lateinit var pipeline: DetectorPipeline
     private lateinit var batcher: TriggerBatcher
     private lateinit var eventPipeline: EventPipeline
@@ -104,6 +115,9 @@ class MonitoringRuntime private constructor(
         private const val TAG = "MonitoringRuntime"
         private const val HEALTH_ID = "health"
 
+        /** Upper bound for a still capture before the batch proceeds without it. */
+        private const val CAPTURE_TIMEOUT_MS = 15_000L
+
         /** mediaPath prefix marking a MediaStore clip display name. */
         const val CLIP_MEDIA_PREFIX = "clip:"
 
@@ -120,7 +134,12 @@ class MonitoringRuntime private constructor(
             // create() calls consistent with the current settings.
             val recognitionOn = AppSettings.faceRecognitionEnabled(settings)
             val faceStore = if (recognitionOn) KnownFaceStore(appContext) else null
-            val embedder = if (recognitionOn) FaceEmbeddingEngine.load(appContext) else null
+            // Native/model IO stays off the main thread.
+            val embedder = if (recognitionOn) {
+                withContext(Dispatchers.IO) { FaceEmbeddingEngine.load(appContext) }
+            } else {
+                null
+            }
             // Seed the live roster so enrollments made after this point (which
             // update FaceDirectory) are visible to the recognizer.
             if (recognitionOn) FaceDirectory.setAll(settings.knownFaces)
@@ -147,7 +166,7 @@ class MonitoringRuntime private constructor(
                 classifier = AudioClassifierFactory.build(appContext),
                 configs = settings.detectorConfigs.values.toList(),
             )
-            runtime.pipeline.init()
+            withContext(Dispatchers.IO) { runtime.pipeline.init() }
             runtime.pipeline.setZones(settings.detectionZones, settings.exclusionZones)
             runtime.pipeline.setTripwireZones(settings.tripwireZones)
             runtime.eventPipeline = EventPipeline(
@@ -166,15 +185,15 @@ class MonitoringRuntime private constructor(
                 },
             )
             runtime.batcher = TriggerBatcher(
-                scope = scope,
+                scope = runtime.runtimeScope,
                 window = settings.notificationMergeWindow,
                 captureSnapshot = { runtime.captureSnapshot() },
                 captureVideo = { triggerAt -> runtime.captureVideo(triggerAt) },
             )
             runtime.frameDispatcher =
-                AnalysisDispatcher<AnalysisFrame>(scope, process = { runtime.pipeline.processFrame(it) })
+                AnalysisDispatcher<AnalysisFrame>(runtime.runtimeScope, process = { runtime.pipeline.processFrame(it) })
             runtime.audioDispatcher =
-                AnalysisDispatcher<AudioWindow>(scope, process = { runtime.pipeline.processAudio(it) })
+                AnalysisDispatcher<AudioWindow>(runtime.runtimeScope, process = { runtime.pipeline.processAudio(it) })
             val healthConfig = settings.detectorConfigs[TriggerType.health]
             if (healthConfig?.enabled != false) {
                 runtime.watchdog = HealthWatchdog(
@@ -215,27 +234,39 @@ class MonitoringRuntime private constructor(
     fun begin() {
         CameraFrameBus.add(frameListener)
         CameraEvents.addMicPcmListener(micListener)
-        triggerJob = scope.launch {
+        triggerJob = runtimeScope.launch {
             pipeline.triggers.collect {
-                android.util.Log.i(TAG, "trigger type=${it.triggerType} score=${it.score}")
-                _activeTriggerTypes.value = _activeTriggerTypes.value + it.triggerType
-                _triggerEvents.tryEmit(it)
-                batcher.add(it)
+                // Per-trigger guard: one bad trigger (batcher/collector bug)
+                // must not kill the collector for all future events.
+                runCatching {
+                    android.util.Log.i(TAG, "trigger type=${it.triggerType} score=${it.score}")
+                    _activeTriggerTypes.value = _activeTriggerTypes.value + it.triggerType
+                    _triggerEvents.tryEmit(it)
+                    batcher.add(it)
+                }.onFailure { t ->
+                    android.util.Log.w(TAG, "trigger collect failed", t)
+                }
             }
         }
-        batchJob = scope.launch {
+        batchJob = runtimeScope.launch {
             batcher.batches.collect {
-                android.util.Log.i(TAG, "batch emitted triggers=${it.triggers.size}")
-                eventPipeline.handleBatch(it)
-                android.util.Log.i(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
-                queueCloudBackups(it)
+                // Per-batch guard: one failing batch (channel crash, IO) must
+                // not end event recording for the rest of the session.
+                runCatching {
+                    android.util.Log.i(TAG, "batch emitted triggers=${it.triggers.size}")
+                    eventPipeline.handleBatch(it)
+                    android.util.Log.i(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
+                    queueCloudBackups(it)
+                }.onFailure { t ->
+                    android.util.Log.w(TAG, "batch handling failed", t)
+                }
             }
         }
         watchdog?.let { watchdog ->
-            healthJob = scope.launch {
+            healthJob = runtimeScope.launch {
                 while (isActive) {
                     delay(healthCheckInterval.toMillis())
-                    watchdog.check(Instant.now())
+                    runCatching { watchdog.check(Instant.now()) }
                 }
             }
         }
@@ -245,18 +276,20 @@ class MonitoringRuntime private constructor(
         if (stopped) return
         stopped = true
         _activeTriggerTypes.value = emptySet()
-        CameraFrameBus.remove(frameListener)
-        CameraEvents.removeMicPcmListener(micListener)
-        triggerJob?.cancel()
+        runCatching { CameraFrameBus.remove(frameListener) }
+        runCatching { CameraEvents.removeMicPcmListener(micListener) }
+        runCatching { triggerJob?.cancel() }
         triggerJob = null
-        batchJob?.cancel()
+        runCatching { batchJob?.cancel() }
         batchJob = null
-        healthJob?.cancel()
+        runCatching { healthJob?.cancel() }
         healthJob = null
-        batcher.dispose()
-        frameDispatcher.dispose()
-        audioDispatcher.dispose()
-        pipeline.dispose()
+        // One throwing dispose must not skip the rest.
+        runCatching { batcher.dispose() }
+        runCatching { frameDispatcher.dispose() }
+        runCatching { audioDispatcher.dispose() }
+        runCatching { pipeline.dispose() }
+        runCatching { runtimeScope.coroutineContext[Job]?.cancel() }
     }
 
     private val frameListener: (bgr: ByteArray, width: Int, height: Int) -> Unit =
@@ -284,35 +317,54 @@ class MonitoringRuntime private constructor(
         }
     }
 
-    private suspend fun captureSnapshot(): Snapshot? =
-        suspendCancellableCoroutine { cont ->
-            MonitoringServiceController.captureStill(object : MonitoringServiceController.StillCallback {
-                override fun onResult(bytes: ByteArray) {
-                    if (!cont.isActive) return
-                    val name = mediaFileName(
-                        timestamp = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
-                        cameraName = settings.cameraName,
-                        extension = "jpg",
-                    )
-                    cont.resumeWith(Result.success(Snapshot(bytes, "image/jpeg", name)))
-                }
+    private suspend fun captureSnapshot(): Snapshot? {
+        var callback: MonitoringServiceController.StillCallback? = null
+        try {
+            return withTimeoutOrNull(CAPTURE_TIMEOUT_MS) {
+                suspendCancellableCoroutine { cont ->
+                    callback = object : MonitoringServiceController.StillCallback {
+                        override fun onResult(bytes: ByteArray) {
+                            if (!cont.isActive) return
+                            val name = mediaFileName(
+                                timestamp = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                cameraName = settings.cameraName,
+                                extension = "jpg",
+                            )
+                            cont.resumeWith(Result.success(Snapshot(bytes, "image/jpeg", name)))
+                        }
 
-                override fun onError(message: String) {
-                    if (cont.isActive) cont.resumeWith(Result.success(null))
+                        override fun onError(message: String) {
+                            if (cont.isActive) cont.resumeWith(Result.success(null))
+                        }
+                    }
+                    MonitoringServiceController.captureStill(callback!!)
+                    cont.invokeOnCancellation {
+                        android.util.Log.w(TAG, "captureSnapshot cancelled/timed out")
+                    }
                 }
-            })
+            }
+        } finally {
+            callback = null
         }
-    private suspend fun captureVideo(triggerAt: Instant): String? =
-        suspendCancellableCoroutine { cont ->
-            VideoClipRecorder.exportClip(
-                triggerAtMs = triggerAt.toEpochMilli(),
-                preRollSeconds = settings.preRollSeconds,
-                postRollSeconds = settings.postRollSeconds,
-                camName = settings.cameraName,
-            ) { name ->
-                if (cont.isActive) cont.resumeWith(Result.success(name))
+    }
+
+    private suspend fun captureVideo(triggerAt: Instant): String? {
+        return withTimeoutOrNull(CAPTURE_TIMEOUT_MS + settings.postRollSeconds * 1000L) {
+            suspendCancellableCoroutine { cont ->
+                VideoClipRecorder.exportClip(
+                    triggerAtMs = triggerAt.toEpochMilli(),
+                    preRollSeconds = settings.preRollSeconds,
+                    postRollSeconds = settings.postRollSeconds,
+                    camName = settings.cameraName,
+                ) { name ->
+                    if (cont.isActive) cont.resumeWith(Result.success(name))
+                }
+                cont.invokeOnCancellation {
+                    android.util.Log.w(TAG, "captureVideo cancelled/timed out")
+                }
             }
         }
+    }
 
     /**
      * Cloud backup (see docs/plans/2026-08-24-cloud-backup-design.md): after

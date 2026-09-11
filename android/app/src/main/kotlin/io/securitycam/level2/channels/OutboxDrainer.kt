@@ -38,7 +38,13 @@ class OutboxDrainer(
             val ok = when (row.kind) {
                 OutboxKind.NOTIFY -> sendNotify(row)
                 OutboxKind.BACKUP -> sendBackup(row)
-                else -> false
+                // Unknown kinds can never succeed (no sender exists): expire
+                // them instead of retrying forever.
+                else -> {
+                    queue.delete(row.id)
+                    onExpired(row)
+                    continue
+                }
             }
             if (ok) {
                 queue.delete(row.id)

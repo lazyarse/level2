@@ -2,14 +2,14 @@ package io.securitycam.level2.channels
 
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 
 val webhookPresets = listOf("discord", "ntfy", "slack", "teams", "custom")
 
@@ -54,10 +54,12 @@ class WebhookChannel(
     client: OkHttpClient? = null,
 ) : io.securitycam.level2.core.Channel {
 
-    private val client: OkHttpClient =
-        client ?: OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+    private val client: OkHttpClient = client ?: newHttpClient()
 
     override val type: String get() = "webhook"
+
+    /** Trimmed endpoint: validation trims, so sends must too (trailing spaces 404). */
+    private val endpoint: String get() = settings.url.trim()
 
     override suspend fun send(message: AlertMessage) {
         when (settings.preset) {
@@ -73,24 +75,22 @@ class WebhookChannel(
             sendJson("content" to message.text)
             return
         }
-        val tmp = File.createTempFile("level2", ".img")
-        try {
-            tmp.writeBytes(snapshot.bytes)
+        withTempSnapshot(snapshot) { tmp ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("content", message.text)
                 .addFormDataPart(
                     "file",
                     snapshot.name,
-                    tmp.asRequestBody(snapshot.mimeType.toMediaType()),
+                    tmp.asRequestBody(safeMediaType(snapshot.mimeType)),
                 )
                 .build()
-            val response = client.newCall(Request.Builder().url(settings.url).post(body).build()).execute()
+            val response = withContext(Dispatchers.IO) {
+                client.newCall(Request.Builder().url(endpoint).post(body).build()).execute()
+            }
             response.use {
                 if (!it.isSuccessful) sendJson("content" to message.text)
             }
-        } finally {
-            tmp.delete()
         }
     }
 
@@ -117,11 +117,13 @@ class WebhookChannel(
     }
 
     private suspend fun post(headers: Map<String, String>, body: String) {
-        val builder = Request.Builder().url(settings.url).post(body.toRequestBody())
+        val builder = Request.Builder().url(endpoint).post(body.toRequestBody())
         for ((k, v) in headers) builder.header(k, v)
-        val response = client.newCall(builder.build()).execute()
+        val response = withContext(Dispatchers.IO) {
+            client.newCall(builder.build()).execute()
+        }
         response.use {
-            check(it.isSuccessful) { "Webhook failed (${it.code}) ${it.body?.string()}" }
+            check(it.isSuccessful) { "Webhook failed (${it.code}) ${it.body?.string()?.take(200)}" }
         }
     }
 
@@ -150,22 +152,23 @@ class WebhookChannel(
                 return "Webhook URL is not a valid Teams webhook URL"
             }
             "ntfy" -> {
-                val rest = url.substring("https://".length)
-                if (!rest.contains('/')) return "ntfy topic is missing from the URL"
+                val topic = url.substring("https://".length).substringAfter('/', "")
+                if (topic.isEmpty()) return "ntfy topic is missing from the URL"
             }
         }
         return null
     }
 
     companion object {
-        // ^https://(?:canary|ptb\.)?discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]+$
+        // ^https://(?:canary|ptb\.)?discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]+(\?.*)?$
         private val DISCORD_REGEX =
-            Regex("^https://(?:canary|ptb\\.)?discord(?:app)?\\.com/api/webhooks/\\d+/[A-Za-z0-9_-]+$")
-        // ^https://hooks\.slack\.com/services/T\d+/B\d+/[A-Za-z0-9]+$
+            Regex("^https://(?:canary|ptb\\.)?discord(?:app)?\\.com/api/webhooks/\\d+/[A-Za-z0-9_-]+(\\?[A-Za-z0-9_=&%\\-.]*)?\$")
+        // ^https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9_-]+$
         private val SLACK_REGEX =
-            Regex("^https://hooks\\.slack\\.com/services/T\\d+/B\\d+/[A-Za-z0-9]+$")
-        // ^https://[A-Za-z0-9.\-]+\.webhook\.office\.com/webhookbot/.+$
+            Regex("^https://hooks\\.slack\\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9_-]+\$")
+        // Legacy ^https://<sub>.webhook.office.com/webhookbot/.+$ plus the new
+        // Workflows ^https://<env>.logic.azure.com(:port)/.+$
         private val TEAMS_REGEX =
-            Regex("^https://[A-Za-z0-9.\\-]+\\.webhook\\.office\\.com/webhookbot/.+$")
+            Regex("^https://([A-Za-z0-9.\\-]+\\.webhook\\.office\\.com/webhookbot/.+|[A-Za-z0-9.\\-]+\\.logic\\.azure\\.com(:\\d+)?/.+)\$")
     }
 }

@@ -157,6 +157,45 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun saveDropsPristinePlaceholdersAndPrunesTheirSecrets() = runBlocking {
+        val s = store()
+        secrets.write("channel.email.password", "lingering")
+        val configs = listOf(
+            ChannelConfig(id = "log", type = "log", enabled = true),
+            ChannelConfig(id = "email", type = "email", enabled = false),
+        )
+        s.seedRaw(AppSettings.defaults().copyWith(channelConfigs = configs))
+
+        s.save(AppSettings.defaults().copyWith(channelConfigs = configs))
+
+        val raw = s.rawJson().orEmpty()
+        assertFalse(raw.contains("\"email\""))
+        assertNull(secrets.all["channel.email.password"])
+        assertEquals(listOf("log"), s.load().channelConfigs.map { it.id })
+    }
+
+    @Test
+    fun liveViewInlinePasswordMigratesAndBlobIsStripped() = runBlocking {
+        val s = store()
+        // Legacy blob shape: current serializers never emit an inline
+        // password, so the JSON is crafted literally.
+        s.seedRawJson(
+            """
+            {"cameraName":"Hallway",
+             "liveView":{"enabled":true,"mode":"server","port":8554,
+               "username":"admin","password":"s3cret"},
+             "channelConfigs":[{"id":"log","type":"log","enabled":true}]}
+            """.trimIndent(),
+        )
+
+        val loaded = s.load()
+
+        assertEquals("s3cret", loaded.liveView.password)
+        assertEquals("s3cret", secrets.all["liveview.password"])
+        assertFalse(s.rawJson().orEmpty().contains("s3cret"))
+    }
+
+    @Test
     fun logChannelRoundTripsUnchanged() = runBlocking {
         val s = store()
         s.save(AppSettings.defaults())

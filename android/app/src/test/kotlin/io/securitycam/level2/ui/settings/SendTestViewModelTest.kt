@@ -29,6 +29,7 @@ class SendTestViewModelTest {
         override val type: String,
         private val invalid: String? = null,
         private val throwOnSend: Boolean = false,
+        private val toThrow: Throwable? = null,
     ) : Channel {
         var sentTests: Int = 0
 
@@ -45,17 +46,19 @@ class SendTestViewModelTest {
 
         override suspend fun sendTest() {
             sentTests++
+            toThrow?.let { throw it }
             if (throwOnSend) throw IllegalStateException("boom")
         }
     }
 
     private fun viewModel(
         factories: Map<String, ChannelFactory>,
+        saver: suspend (AppSettings) -> Unit = {},
     ): SettingsViewModel {
         val app = ApplicationProvider.getApplicationContext<Application>()
         return SettingsViewModel(
             settingsLoader = { AppSettings.defaults() },
-            settingsSaver = {},
+            settingsSaver = saver,
             eventsClearer = {},
             channelFactories = factories,
         )
@@ -98,6 +101,29 @@ class SendTestViewModelTest {
     fun unknownTypeFailsGracefully() = runBlocking {
         val vm = viewModel(factories = emptyMap())
         assertEquals("failed: unknown channel type log", vm.sendTest(ChannelConfig(id = "c", type = "log")))
+    }
+
+    @Test
+    fun cancellationPropagatesInsteadOfFailed() {
+        val fake = FakeChannel("c", "log", toThrow = kotlinx.coroutines.CancellationException("gone"))
+        val vm = viewModel(factories = mapOf("log" to { _: ChannelConfig -> fake }))
+
+        org.junit.Assert.assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            runBlocking { vm.sendTest(ChannelConfig(id = "c", type = "log")) }
+        }
+        assertEquals(1, fake.sentTests)
+    }
+
+    @Test
+    fun saveFailureSurfacesSnackbar() = runBlocking {
+        val vm = viewModel(
+            factories = emptyMap(),
+            saver = { throw IllegalStateException("keystore locked") },
+        )
+
+        vm.save()
+
+        assertEquals("Save failed: keystore locked", vm.message.value)
     }
 
     @Test

@@ -71,7 +71,13 @@ class EventPipeline(
         val failedTargets = mutableListOf<ChannelConfig>()
         for (target in targets) {
             val factory = channelFactories[target.type]
-            if (factory == null) continue
+            if (factory == null) {
+                // No factory for this channel type (unknown type, missing
+                // build): record the hole explicitly instead of dropping the
+                // target silently from the event history.
+                statuses[target.id] = STATUS_MISCONFIGURED
+                continue
+            }
             val status = sendWithRetry(factory(target), message)
             statuses[target.id] = status
             if (status == STATUS_FAILED) failedTargets.add(target)
@@ -89,7 +95,7 @@ class EventPipeline(
                 cameraName = cameraName,
                 triggerType = type,
                 triggerTypes = if (single) emptyList() else types,
-                score = batch.triggers.maxOf { it.score },
+                score = batch.triggers.maxOfOrNull { it.score } ?: 0.0,
                 snapshotName = snapshot?.name,
                 videoName = batch.videoName,
                 channelStatuses = statuses,
@@ -124,9 +130,11 @@ class EventPipeline(
             try {
                 channel.send(message)
                 return STATUS_DELIVERED
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 if (attempt == maxAttempts - 1) return STATUS_FAILED
-                sleep(backoffDelays[attempt])
+                sleep(backoffDelays.getOrElse(attempt) { Duration.ZERO })
             }
         }
         return STATUS_FAILED
@@ -183,6 +191,9 @@ class EventPipeline(
         const val STATUS_DELIVERED = "delivered"
         const val STATUS_FAILED = "failed"
         const val STATUS_QUEUED = "queued"
+
+        /** Target selected but no channel factory could build it. */
+        const val STATUS_MISCONFIGURED = "misconfigured"
     }
 }
 

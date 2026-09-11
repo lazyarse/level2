@@ -1,8 +1,10 @@
 package io.securitycam.level2.ui.settings
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import io.securitycam.level2.channels.EmailChannelSettings
@@ -103,10 +106,10 @@ class SettingsScreenTest {
         setContent(Harness())
 
         // Channel fields are inside collapsed sections/channels.
-        compose.onAllNodesWithTag(fieldTag("Bot token")).fetchSemanticsNodes().let {
+        compose.onAllNodesWithTag(fieldTag("telegram", "Bot token")).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
-        compose.onAllNodesWithTag(fieldTag("SMTP host")).fetchSemanticsNodes().let {
+        compose.onAllNodesWithTag(fieldTag("email", "SMTP host")).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
         // Section headers themselves exist.
@@ -124,10 +127,10 @@ class SettingsScreenTest {
         compose.onNodeWithTag("channelHeader_telegram").assertExists()
 
         expandChannel("telegram")
-        compose.onNodeWithTag(fieldTag("Bot token")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(fieldTag("telegram", "Bot token")).performScrollTo().assertIsDisplayed()
 
         // Other channels still collapsed.
-        compose.onAllNodesWithTag(fieldTag("SMTP host")).fetchSemanticsNodes().let {
+        compose.onAllNodesWithTag(fieldTag("email", "SMTP host")).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
     }
@@ -138,7 +141,7 @@ class SettingsScreenTest {
 
         expandSection("Notification Channels")
         expandChannel("email")
-        compose.onNodeWithTag(fieldTag("Password / app password")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("email", "Password / app password")).performScrollTo()
             .assertIsDisplayed()
         compose.onNodeWithContentDescription("Show Password / app password").performScrollTo()
             .performClick()
@@ -177,7 +180,7 @@ class SettingsScreenTest {
         compose.waitForIdle()
 
         expandChannel("email-2")
-        compose.onNodeWithTag(fieldTag("SMTP host")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(fieldTag("email-2", "SMTP host")).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("channelHeader_email-2").performScrollTo()
         compose.onNodeWithText("Email 2").assertIsDisplayed()
     }
@@ -244,6 +247,26 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun staleClearDurationFallsBackInsteadOfCrashing() {
+        val harness = Harness()
+        setContent(harness)
+
+        expandSection("Events")
+        // Default retention is 7 days: pick its derived option (168h).
+        compose.onNodeWithTag("clearEventsOlderThan").performScrollTo().performClick()
+        compose.onNodeWithText("7 days (retention)").performClick()
+        compose.waitForIdle()
+        // Shrink retention so the picked duration vanishes from the options.
+        compose.runOnIdle {
+            harness.viewModel.update { it.copy(retentionDays = 1) }
+        }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("clearEventsOlderThan").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("24 hours").assertIsDisplayed()
+    }
+
+    @Test
     fun rendersEmailWebhookAndPushoverChannelFields() {
         val harness = channelsHarness()
         setContent(harness)
@@ -254,20 +277,20 @@ class SettingsScreenTest {
         expandChannel("discord")
         expandChannel("pushover")
 
-        for (label in listOf(
-            "Bot token",
-            "Chat ID",
-            "SMTP host",
-            "Port (587 or 465)",
-            "Username",
-            "Password / app password",
-            "From address",
-            "To address",
-            "Webhook URL",
-            "App token",
-            "User key",
+        for ((id, label) in listOf(
+            "telegram" to "Bot token",
+            "telegram" to "Chat ID",
+            "email" to "SMTP host",
+            "email" to "Port (587 or 465)",
+            "email" to "Username",
+            "email" to "Password / app password",
+            "email" to "From address",
+            "email" to "To address",
+            "discord" to "Webhook URL",
+            "pushover" to "App token",
+            "pushover" to "User key",
         )) {
-            compose.onNodeWithTag(fieldTag(label)).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag(fieldTag(id, label)).performScrollTo().assertIsDisplayed()
         }
         // log is internal plumbing, not a user-toggleable channel.
         compose.onNodeWithTag(switchTag("log")).assertDoesNotExist()
@@ -282,17 +305,17 @@ class SettingsScreenTest {
         expandChannel("email")
         expandChannel("discord")
 
-        compose.onNodeWithTag(fieldTag("SMTP host")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("email", "SMTP host")).performScrollTo()
             .performTextInput("smtp.example.com")
-        compose.onNodeWithTag(fieldTag("Port (587 or 465)")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("email", "Port (587 or 465)")).performScrollTo()
             .performTextReplacement("587")
-        compose.onNodeWithTag(fieldTag("To address")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("email", "To address")).performScrollTo()
             .performTextInput("alice@example.com")
 
         compose.onNodeWithTag("webhookPreset_discord").performScrollTo().performClick()
         compose.onNodeWithText("slack").performClick()
 
-        compose.onNodeWithTag(fieldTag("Webhook URL")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("discord", "Webhook URL")).performScrollTo()
             .performTextInput("https://discord.com/api/webhooks/1/abc")
 
         compose.onNodeWithTag("saveSettings").performClick()
@@ -325,9 +348,9 @@ class SettingsScreenTest {
         expandSection("Notification Channels")
         expandChannel("pushover")
 
-        compose.onNodeWithTag(fieldTag("App token")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("pushover", "App token")).performScrollTo()
             .performTextInput("apptok123")
-        compose.onNodeWithTag(fieldTag("User key")).performScrollTo()
+        compose.onNodeWithTag(fieldTag("pushover", "User key")).performScrollTo()
             .performTextInput("userkey456")
 
         compose.onNodeWithTag("saveSettings").performClick()
@@ -439,6 +462,188 @@ class SettingsScreenTest {
         expandSection("Advanced")
         compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
         compose.onNodeWithTag("detectorHeader_health").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun fieldTagIsQualifiedByChannelId() {
+        assertEquals("field_email_smtp_host", fieldTag("email", "SMTP host"))
+        assertEquals("field_email-2_smtp_host", fieldTag("email-2", "SMTP host"))
+    }
+
+    @Test
+    fun sameTypeChannelCardsHaveDistinctFieldTags() {
+        val harness = Harness(
+            AppSettings.defaults().copyWith(
+                channelConfigs = listOf(
+                    ChannelConfig(id = "log", type = "log", enabled = true),
+                    ChannelConfig(id = "email", type = "email", enabled = false),
+                    ChannelConfig(id = "email-2", type = "email", enabled = false),
+                ),
+            ),
+        )
+        setContent(harness)
+
+        expandSection("Notification Channels")
+        expandChannel("email")
+        expandChannel("email-2")
+        compose.onNodeWithTag(fieldTag("email", "SMTP host")).performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(fieldTag("email-2", "SMTP host")).performScrollTo()
+            .assertIsDisplayed()
+        // Exactly one node per qualified tag — no collision.
+        compose.onAllNodesWithTag(fieldTag("email", "SMTP host")).fetchSemanticsNodes().let {
+            assertEquals(1, it.size)
+        }
+    }
+
+    @Test
+    fun detectorRouteRowsShowDisplayNames() {
+        val harness = Harness(
+            AppSettings.defaults().copyWith(
+                channelConfigs = listOf(
+                    ChannelConfig(id = "log", type = "log", enabled = true),
+                    ChannelConfig(id = "email", type = "email", enabled = false, label = "Work"),
+                    ChannelConfig(id = "email-2", type = "email", enabled = false),
+                ),
+            ),
+        )
+        setContent(harness)
+
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_motion").performScrollTo().performClick()
+        compose.waitForIdle()
+
+        // Custom label and derived "Email 2" — never raw ids.
+        compose.onNodeWithTag("detectorRoute_motion_email").performScrollTo()
+            .assertTextContains("Work")
+        compose.onNodeWithTag("detectorRoute_motion_email-2").performScrollTo()
+            .assertTextContains("Email 2")
+        compose.onAllNodesWithText("email-2", substring = false).fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun liveViewPortFieldIsClearable() {
+        val harness = Harness()
+        setContent(harness)
+        compose.runOnIdle {
+            harness.viewModel.update { it.copy(liveView = it.liveView.copy(enabled = true)) }
+        }
+        compose.waitForIdle()
+
+        expandSection("Live View")
+        compose.onNodeWithTag("liveViewPort").performScrollTo().performTextReplacement("8555")
+        compose.waitForIdle()
+        assertEquals(8555, harness.viewModel.draft.value!!.liveView.port)
+
+        // Clearing must empty the field (the old toIntOrNull filter swallowed clears).
+        compose.onNodeWithTag("liveViewPort").performTextClearance()
+        compose.waitForIdle()
+        // assertTextEquals would also match the "Port" label in merged text;
+        // read the editable content directly instead.
+        val editable = compose.onNodeWithTag("liveViewPort").fetchSemanticsNode()
+            .config[SemanticsProperties.EditableText].text
+        assertEquals("", editable)
+        // The draft keeps the last valid port.
+        assertEquals(8555, harness.viewModel.draft.value!!.liveView.port)
+    }
+
+    @Test
+    fun liveViewAuthTogglePreservesCustomUsername() {
+        val harness = Harness()
+        setContent(harness)
+        compose.runOnIdle {
+            harness.viewModel.update {
+                it.copy(
+                    liveView = it.liveView.copy(
+                        enabled = true,
+                        username = "cameraman",
+                        password = "s3cret",
+                    ),
+                )
+            }
+        }
+        compose.waitForIdle()
+
+        expandSection("Live View")
+        compose.onNodeWithTag(switchTag("Require authentication")).performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+        assertEquals("", harness.viewModel.draft.value!!.liveView.username)
+        compose.onNodeWithTag(switchTag("Require authentication")).performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+        assertEquals("cameraman", harness.viewModel.draft.value!!.liveView.username)
+    }
+
+    @Test
+    fun liveViewAuthDefaultsToAdminWhenBlank() {
+        val harness = Harness()
+        setContent(harness)
+        compose.runOnIdle {
+            harness.viewModel.update { it.copy(liveView = it.liveView.copy(enabled = true)) }
+        }
+        compose.waitForIdle()
+        assertEquals("", harness.viewModel.draft.value!!.liveView.username)
+
+        expandSection("Live View")
+        compose.onNodeWithTag(switchTag("Require authentication")).performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+        assertEquals("admin", harness.viewModel.draft.value!!.liveView.username)
+    }
+
+    @Test
+    fun clearEventsDialogSurvivesRotation() {
+        val dialogText = "Delete ALL recorded events and their snapshots and videos?"
+        val harness = Harness()
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            SettingsScreen(viewModel = harness.viewModel)
+        }
+        compose.waitUntil(5000) { harness.viewModel.draft.value != null }
+        compose.waitForIdle()
+
+        expandSection("Events")
+        compose.onNodeWithText("Clear all events").performScrollTo().performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText(dialogText).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        restoration.emulateSavedInstanceStateRestore()
+        compose.waitForIdle()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText(dialogText).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(dialogText).assertIsDisplayed()
+    }
+
+    @Test
+    fun faceEnrollNameSurvivesRotation() {
+        val harness = Harness()
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            SettingsScreen(viewModel = harness.viewModel)
+        }
+        compose.waitUntil(5000) { harness.viewModel.draft.value != null }
+        compose.waitForIdle()
+
+        expandSection("Face Recognition")
+        compose.onNodeWithTag("faceRecognitionSwitch").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("addFaceButton").performScrollTo().performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithTag("faceNameField").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("faceNameField").performTextInput("Ada")
+
+        restoration.emulateSavedInstanceStateRestore()
+        compose.waitForIdle()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithTag("faceNameField").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("faceNameField").assertTextContains("Ada")
     }
 
     @Test

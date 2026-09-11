@@ -1,6 +1,7 @@
 package io.securitycam.level2.storage
 
 import android.content.Context
+import android.util.Log
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -10,6 +11,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import io.securitycam.level2.event.DeletedMedia
 import io.securitycam.level2.event.EventRecorder
 import io.securitycam.level2.event.RecordedEvent
@@ -73,6 +75,12 @@ interface EventDao {
     @Query("SELECT snapshot_name, video_name FROM events")
     suspend fun allMedia(): List<MediaRef>
 
+    @Query("SELECT id FROM events WHERE timestamp < :olderThanIso")
+    suspend fun idsOlderThan(olderThanIso: String): List<Long>
+
+    @Query("SELECT id FROM events")
+    suspend fun allIds(): List<Long>
+
     @Query("DELETE FROM events")
     suspend fun deleteAll(): Int
 
@@ -81,6 +89,29 @@ interface EventDao {
 
     @Query("UPDATE events SET channel_statuses = :json WHERE id = :id")
     suspend fun updateChannelStatusesRaw(id: Long, json: String)
+
+    /**
+     * Read-modify-write of one channel's status as a single transaction;
+     * concurrent flips for different channels no longer lose each other.
+     */
+    @Transaction
+    suspend fun flipChannelStatusJson(eventId: Long, channelId: String, status: String) {
+        val row = byId(eventId) ?: return
+        val statuses = row.channelStatuses?.let(::decodeChannelStatusMap) ?: return
+        if (statuses[channelId] == status) return
+        updateChannelStatusesRaw(eventId, jsonEncodeChannelStatusMap(statuses + (channelId to status)))
+    }
+
+    /**
+     * Collect-then-delete media refs atomically; concurrent inserts between
+     * the select and the delete can no longer orphan files or double-delete.
+     */
+    @Transaction
+    suspend fun deleteEventsCollectingRefs(olderThanIso: String?): List<MediaRef> {
+        val refs = if (olderThanIso == null) allMedia() else mediaOlderThan(olderThanIso)
+        if (olderThanIso == null) deleteAll() else deleteOlderThan(olderThanIso)
+        return refs
+    }
 
     data class MediaRef(val snapshot_name: String?, val video_name: String?)
 }
@@ -129,14 +160,19 @@ abstract class AppDatabase : RoomDatabase() {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "events.db",
-            ).addMigrations(MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+            ).addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                // Safety net only: every version this codebase ever shipped
+                // (3→4→5) migrates explicitly above. This fires solely for a
+                // foreign/corrupt db file, where starting fresh beats a
+                // startup crash (event media on disk is unaffected).
+                .fallbackToDestructiveMigration().build().also { instance = it }
         }
     }
 }
 
 /**
  * Room-backed [EventRecorder] (port of `lib/storage/event_log.dart`,
- * schema version 3).
+ * schema version 5).
  */
 class RoomEventLog(private val dao: EventDao) : EventRecorder {
 
@@ -149,8 +185,8 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
                 score = event.score,
                 snapshotName = event.snapshotName,
                 videoName = event.videoName,
-                channelStatuses = jsonEncodeStringMap(event.channelStatuses),
-                triggerTypes = if (event.triggerTypes.isEmpty()) null else jsonEncodeStringList(event.triggerTypes),
+                channelStatuses = jsonEncodeChannelStatusMap(event.channelStatuses),
+                triggerTypes = if (event.triggerTypes.isEmpty()) null else jsonEncodeChannelStatusList(event.triggerTypes),
                 detail = event.detail,
             ),
         )
@@ -160,33 +196,31 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
      * status on an already-recorded event (e.g. "queued" → "delivered").
      */
     suspend fun flipChannelStatus(eventId: Long, channelId: String, status: String) {
-        val row = dao.byId(eventId) ?: return
-        val statuses = row.channelStatuses?.let(::decodeStringMap) ?: return
-        if (statuses[channelId] == status) return
-        val updated = jsonEncodeStringMap(statuses + (channelId to status))
-        dao.updateChannelStatusesRaw(eventId, updated)
+        dao.flipChannelStatusJson(eventId, channelId, status)
     }
 
     override suspend fun deleteEvents(olderThan: Instant?): DeletedMedia {
-        val refs: List<EventDao.MediaRef> = if (olderThan == null) {
-            dao.allMedia()
-        } else {
-            dao.mediaOlderThan(olderThan.toString())
-        }
-        val deleted = DeletedMedia(
+        // deleteEventsCollectingRefs already deletes the rows atomically;
+        // the extra delete below the original code had was dead weight.
+        val refs: List<EventDao.MediaRef> = dao.deleteEventsCollectingRefs(olderThan?.toString())
+        return DeletedMedia(
             snapshotNames = refs.mapNotNull { it.snapshot_name },
             videoNames = refs.mapNotNull { it.video_name },
         )
-        if (olderThan == null) dao.deleteAll() else dao.deleteOlderThan(olderThan.toString())
-        return deleted
+    }
+
+    /** Ids of rows about to be purged (for outbox notify cleanup). */
+    suspend fun idsForPurge(olderThan: Instant?): List<Long> {
+        val iso = olderThan?.toString()
+        return if (iso == null) dao.allIds() else dao.idsOlderThan(iso)
     }
 
     /** Most recent rows, newest first. */
     suspend fun recent(limit: Int = 100): List<RecordedEventRow> =
-        dao.recent(limit).map { it.toRow() }
+        dao.recent(limit).mapNotNull { it.toRowOrNull() }
 
     fun recentFlow(limit: Int = 100): Flow<List<RecordedEventRow>> =
-        dao.recentFlow(limit).map { rows -> rows.map { it.toRow() } }
+        dao.recentFlow(limit).map { rows -> rows.mapNotNull { it.toRowOrNull() } }
 
     /** Row-count changes; consumed by the events UI for live refresh. */
     fun countFlow(): Flow<Long> = dao.countFlow()
@@ -213,7 +247,15 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         } else {
             dao.between(startIso, endIso, limit)
         }
-        return rows.map { it.toRow() }
+        return rows.mapNotNull { it.toRowOrNull() }
+    }
+
+    /** Null (and logged) when the row's timestamp is corrupt; keeps one bad row from breaking the whole list. */
+    private fun EventEntity.toRowOrNull(): RecordedEventRow? = try {
+        toRow()
+    } catch (t: Exception) {
+        Log.w("RoomEventLog", "skipping event row $id with bad timestamp", t)
+        null
     }
 
     private fun EventEntity.toRow(): RecordedEventRow = RecordedEventRow(
@@ -224,41 +266,41 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         score = score,
         snapshotName = snapshotName,
         videoName = videoName,
-        channelStatuses = channelStatuses?.let(::decodeStringMap) ?: emptyMap(),
-        triggerTypes = triggerTypes?.let(::decodeStringList) ?: emptyList(),
+        channelStatuses = channelStatuses?.let(::decodeChannelStatusMap) ?: emptyMap(),
+        triggerTypes = triggerTypes?.let(::decodeChannelStatusList) ?: emptyList(),
         detail = detail,
     )
 
-    companion object {
-        private fun jsonEncodeStringMap(m: Map<String, String>): String =
-            m.entries.joinToString(",", "{", "}") { (k, v) ->
-                "\"${k.replace("\"", "\\\"")}\":\"${v.replace("\"", "\\\"")}\""
+}
+
+/** Channel-status JSON helpers shared by [EventDao] defaults and [RoomEventLog]. */
+internal fun jsonEncodeChannelStatusMap(m: Map<String, String>): String =
+    m.entries.joinToString(",", "{", "}") { (k, v) ->
+        "\"${k.replace("\"", "\\\"")}\":\"${v.replace("\"", "\\\"")}\""
+    }
+
+internal fun jsonEncodeChannelStatusList(l: List<String>): String =
+    l.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" }
+
+internal fun decodeChannelStatusMap(raw: String): Map<String, String> = try {
+    org.json.JSONObject(raw).let { o ->
+        buildMap {
+            val keys = o.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                put(k, o.getString(k))
             }
-
-        private fun jsonEncodeStringList(l: List<String>): String =
-            l.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" }
-
-        private fun decodeStringMap(raw: String): Map<String, String> = try {
-            org.json.JSONObject(raw).let { o ->
-                buildMap {
-                    val keys = o.keys()
-                    while (keys.hasNext()) {
-                        val k = keys.next()
-                        put(k, o.getString(k))
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            emptyMap()
-        }
-
-        private fun decodeStringList(raw: String): List<String> = try {
-            val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (_: Exception) {
-            emptyList()
         }
     }
+} catch (_: Exception) {
+    emptyMap()
+}
+
+internal fun decodeChannelStatusList(raw: String): List<String> = try {
+    val arr = org.json.JSONArray(raw)
+    (0 until arr.length()).map { arr.getString(it) }
+} catch (_: Exception) {
+    emptyList()
 }
 
 /** A recorded event row as returned by [RoomEventLog.recent]. */

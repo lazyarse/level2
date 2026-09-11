@@ -112,19 +112,24 @@ class OutboxDrainerTest {
     }
 
     @Test
-    fun unknownKindCountsAsFailureNotCrash() = runBlocking {
+    fun unknownKindExpiresInsteadOfRetryingForever() = runBlocking {
         val queue = FakeQueue()
         queue.rows += row(9, 100, kind = "mystery")
+        val expired = mutableListOf<Long>()
         val drainer = OutboxDrainer(
             queue = queue,
             nowMs = { 1_000L },
             sendNotify = { true },
+            onExpired = { expired.add(it.id) },
         )
 
         val remaining = drainer.drainOnce()
 
-        assertTrue(remaining)
-        assertEquals(1, queue.rows.single().attempts)
+        // No sender exists for this kind — it can never succeed, so it is
+        // expired (deleted + callback) rather than attempt-counted forever.
+        assertFalse(remaining)
+        assertTrue(queue.rows.isEmpty())
+        assertEquals(listOf(9L), expired)
     }
 
     @Test

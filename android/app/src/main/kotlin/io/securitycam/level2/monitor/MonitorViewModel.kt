@@ -99,6 +99,30 @@ class MonitorViewModel(
         MonitoringServiceController.setMonitoringPreviewEnabled(it)
     },
     /**
+     * Re-applies FGS recording params once fresh settings load (test seam;
+     * defaults to [MonitoringServiceController.refreshRecordingParams]).
+     */
+    private val recordingParamsRefresh: (
+        cameraName: String,
+        preRollSeconds: Int,
+        postRollSeconds: Int,
+        videoQuality: String,
+        clipTimestamp: Boolean,
+        clipTimestampPosition: String,
+        clipTimestampCameraName: Boolean,
+        privacyMasking: Boolean,
+        privacyMaskEffect: String,
+        exclusionZones: List<DetectionZone>,
+    ) -> Unit = { cameraName, preRoll, postRoll, quality,
+        clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
+        privacyMasking, privacyMaskEffect, exclusionZones ->
+        MonitoringServiceController.refreshRecordingParams(
+            cameraName, preRoll, postRoll, quality,
+            clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
+            privacyMasking, privacyMaskEffect, exclusionZones,
+        )
+    },
+    /**
      * Whether a detection-runtime initialization failure flips the session to
      * [MonitorState.Error] instead of only logging. Robolectric JVM tests cannot
      * initialize the native detectors, so they opt out.
@@ -174,19 +198,21 @@ class MonitorViewModel(
 
     init {
         CameraEvents.addPreviewStatusListener(previewStatusListener)
-        // Load current settings synchronously so the UI reflects the latest
-        // camera name, camera id, etc. even on first composition.
-        try {
-            val settings = runBlocking { settingsLoader() }
-            _cameraName.value = settings.cameraName
-            _cameraId.value = settings.cameraId
-            _monitorPreview.value = settings.monitorPreview
+        // Load current settings off the main thread (Keystore/Room IO would
+        // risk an ANR here); the UI shows placeholders until the first load
+        // lands, mirroring refreshSettings() below.
+        viewModelScope.launch {
+            try {
+                val settings = settingsLoader()
+                _cameraName.value = settings.cameraName
+                _cameraId.value = settings.cameraId
+                _monitorPreview.value = settings.monitorPreview
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
                 updateDisplayLabels(settings.cameraId, settings.screenOrientation)
-            updateDisplayLabels(settings.cameraId, settings.screenOrientation)
-        } catch (t: Throwable) {
-            Log.w(TAG, "init settings load failed", t)
+            } catch (t: Throwable) {
+                Log.w(TAG, "init settings load failed", t)
+            }
         }
         // Schedule enforcement tick (design: auto-stop on entering an exclusion,
         // auto-resume on leaving if monitoring was running before).
@@ -264,15 +290,15 @@ class MonitorViewModel(
                 PackageManager.PERMISSION_GRANTED
     }
 
-    private fun resolveCameraLabel(cameraId: String): String {
-        val cameras = runBlocking { availableCameras(getApplication()) }
+    private suspend fun resolveCameraLabel(cameraId: String): String {
+        val cameras = availableCameras(getApplication())
         return cameras.firstOrNull { it.id == cameraId }?.label ?: cameraId
     }
 
     private fun orientationLabel(orientation: String): String =
         ScreenOrientation.label(orientation).let { if (it == "Auto (sensor)") "Auto" else it }
 
-    private fun updateDisplayLabels(cameraId: String, orientation: String) {
+    private suspend fun updateDisplayLabels(cameraId: String, orientation: String) {
         _cameraLabel.value = resolveCameraLabel(cameraId)
         _screenOrientationLabel.value = orientationLabel(orientation)
     }
@@ -345,16 +371,33 @@ class MonitorViewModel(
         _error.value = null
         // Use cached cameraId (or default "0") for synchronous service start;
         // full settings are loaded in the coroutine for runtime creation.
+        // NOTE: the cached scheduleSettings may be stale (edited in Settings
+        // while monitoring was idle) — the coroutine below re-sends the fresh
+        // recording params once the load lands (see refreshSentParams).
         val clip = scheduleSettings
-        val exclusionsJson = exclusionsToJson(clip?.exclusionZones ?: emptyList())
+        val sentParams = SentRecordingParams(
+            cameraName = _cameraName.value,
+            preRollSeconds = clip?.preRollSeconds ?: 5,
+            postRollSeconds = clip?.postRollSeconds ?: 5,
+            videoQuality = clip?.videoQuality ?: io.securitycam.level2.core.VideoQuality.lowest,
+            clipTimestamp = clip?.clipTimestamp ?: false,
+            clipTimestampPosition = clip?.clipTimestampPosition
+                ?: io.securitycam.level2.core.ClipStampPosition.bottomRight,
+            clipTimestampCameraName = clip?.clipTimestampCameraName ?: false,
+            privacyMasking = clip?.privacyMasking ?: false,
+            privacyMaskEffect = clip?.privacyMaskEffect
+                ?: io.securitycam.level2.core.PrivacyMaskEffect.solid,
+            exclusionZones = clip?.exclusionZones ?: emptyList(),
+        )
+        val exclusionsJson = exclusionsToJson(sentParams.exclusionZones)
         startMonitoring(
             _cameraId.value,
             _monitorPreview.value,
-            clip?.clipTimestamp ?: false,
-            clip?.clipTimestampPosition ?: io.securitycam.level2.core.ClipStampPosition.bottomRight,
-            clip?.clipTimestampCameraName ?: false,
-            clip?.privacyMasking ?: false,
-            clip?.privacyMaskEffect ?: io.securitycam.level2.core.PrivacyMaskEffect.solid,
+            sentParams.clipTimestamp,
+            sentParams.clipTimestampPosition,
+            sentParams.clipTimestampCameraName,
+            sentParams.privacyMasking,
+            sentParams.privacyMaskEffect,
             exclusionsJson,
         )
         _state.value = MonitorState.Monitoring
@@ -377,6 +420,7 @@ class MonitorViewModel(
                 _cameraId.value = settings.cameraId
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
+                refreshSentParams(sentParams, settings)
             } catch (t: Throwable) {
                 Log.w(TAG, "settings load failed", t)
                 failStart(gen, t)
@@ -413,6 +457,56 @@ class MonitorViewModel(
         if (gen != startGeneration || _state.value != MonitorState.Monitoring) return
         _state.value = MonitorState.Error
         _error.value = "Monitoring failed to start: ${t.message ?: t.javaClass.simpleName}"
+    }
+
+    /** FGS-bound recording params snapshot, for post-load refresh comparison. */
+    private data class SentRecordingParams(
+        val cameraName: String,
+        val preRollSeconds: Int,
+        val postRollSeconds: Int,
+        val videoQuality: String,
+        val clipTimestamp: Boolean,
+        val clipTimestampPosition: String,
+        val clipTimestampCameraName: Boolean,
+        val privacyMasking: Boolean,
+        val privacyMaskEffect: String,
+        val exclusionZones: List<DetectionZone>,
+    )
+
+    /**
+     * The FGS starts synchronously from cached settings (possibly stale).
+     * Once fresh settings load, re-apply any recording params that differ so
+     * future clips/segments use the saved values.
+     */
+    private fun refreshSentParams(sent: SentRecordingParams, fresh: AppSettings) {
+        if (sent.cameraName == fresh.cameraName &&
+            sent.preRollSeconds == fresh.preRollSeconds &&
+            sent.postRollSeconds == fresh.postRollSeconds &&
+            sent.videoQuality == fresh.videoQuality &&
+            sent.clipTimestamp == fresh.clipTimestamp &&
+            sent.clipTimestampPosition == fresh.clipTimestampPosition &&
+            sent.clipTimestampCameraName == fresh.clipTimestampCameraName &&
+            sent.privacyMasking == fresh.privacyMasking &&
+            sent.privacyMaskEffect == fresh.privacyMaskEffect &&
+            sent.exclusionZones == fresh.exclusionZones
+        ) {
+            return
+        }
+        Log.i(TAG, "refreshing FGS recording params from freshly loaded settings")
+        runCatching {
+            recordingParamsRefresh(
+                fresh.cameraName,
+                fresh.preRollSeconds,
+                fresh.postRollSeconds,
+                fresh.videoQuality,
+                fresh.clipTimestamp,
+                fresh.clipTimestampPosition,
+                fresh.clipTimestampCameraName,
+                fresh.privacyMasking,
+                fresh.privacyMaskEffect,
+                fresh.exclusionZones,
+            )
+        }
     }
 
     private fun cancelTriggerJobs() {
@@ -463,27 +557,32 @@ class MonitorViewModel(
     /** Cycle to the next available camera. Stops monitoring, updates the setting, and restarts. */
     fun cycleCamera() {
         viewModelScope.launch {
-            val settings = settingsLoader()
-            val cameras = availableCameras(getApplication())
-            if (cameras.size <= 1) return@launch
-            val currentIndex = cameras.indexOfFirst { it.id == settings.cameraId }
-            val nextIndex = (currentIndex + 1) % cameras.size
-            val nextId = cameras[nextIndex].id
-            val updated = settings.copy(cameraId = nextId)
-            settingsSaver(updated)
-            scheduleSettings = updated
-            // Restart below must bind the NEW camera: start()/startPreview()
-            // read the cached id synchronously.
-            _cameraId.value = nextId
-            updateDisplayLabels(nextId, updated.screenOrientation)
-            // Restart monitoring/preview with the new camera if currently active
-            val currentState = _state.value
-            if (currentState == MonitorState.Monitoring) {
-                stop()
-                start()
-            } else if (currentState == MonitorState.Previewing) {
-                stopPreview()
-                startPreview()
+            runCatching {
+                val settings = settingsLoader()
+                val cameras = availableCameras(getApplication())
+                if (cameras.size <= 1) return@runCatching
+                val currentIndex = cameras.indexOfFirst { it.id == settings.cameraId }
+                val nextIndex = (currentIndex + 1) % cameras.size
+                val nextId = cameras[nextIndex].id
+                val updated = settings.copy(cameraId = nextId)
+                settingsSaver(updated)
+                scheduleSettings = updated
+                // Restart below must bind the NEW camera: start()/startPreview()
+                // read the cached id synchronously.
+                _cameraId.value = nextId
+                updateDisplayLabels(nextId, updated.screenOrientation)
+                // Restart monitoring/preview with the new camera if currently active
+                val currentState = _state.value
+                if (currentState == MonitorState.Monitoring) {
+                    stop()
+                    start()
+                } else if (currentState == MonitorState.Previewing) {
+                    stopPreview()
+                    startPreview()
+                }
+            }.onFailure { t ->
+                Log.w(TAG, "cycleCamera failed", t)
+                _error.value = "Switching camera failed: ${t.message ?: t.javaClass.simpleName}"
             }
         }
     }
@@ -525,16 +624,22 @@ class MonitorViewModel(
     private suspend fun purgeOldEvents(settings: AppSettings) {
         val context = getApplication<Application>()
         val cutoff = Instant.now().minus(Duration.ofDays(settings.retentionDays.toLong()))
-        val deleted = RoomEventLog(AppDatabase.get(context).eventDao()).deleteEvents(cutoff)
-        val pinned = OutboxStore.from(AppDatabase.get(context)).pendingBackupFileNames()
+        val log = RoomEventLog(AppDatabase.get(context).eventDao())
+        val outbox = OutboxStore.from(AppDatabase.get(context))
+        // Capture purged ids first: dropping their queued notify rows keeps
+        // the outbox from retrying deliveries for events that no longer exist.
+        val purgedIds = runCatching { log.idsForPurge(cutoff) }.getOrDefault(emptyList())
+        val deleted = log.deleteEvents(cutoff)
+        runCatching { outbox.deleteNotifyForEvents(purgedIds) }
+        val pinned = outbox.pendingBackupFileNames()
         val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
         for (name in deleted.snapshotNames) {
-            if (name in pinned) continue
+            if (OutboxStore.normalizeMediaRef(name) in pinned) continue
             runCatching { snapshots.delete(name) }
             io.securitycam.level2.ui.events.ThumbCache.evict("snap:$name")
         }
         for (name in deleted.videoNames) {
-            if (name in pinned) continue
+            if (OutboxStore.normalizeMediaRef(name) in pinned) continue
             runCatching { VideoClipRecorder.delete(name) }
         }
     }

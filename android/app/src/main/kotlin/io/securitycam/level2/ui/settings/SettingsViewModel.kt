@@ -153,9 +153,15 @@ class SettingsViewModel(
     fun save() {
         val current = _draft.value ?: return
         viewModelScope.launch {
-            settingsSaver(current)
-            FaceDirectory.setAll(current.knownFaces)
-            _message.value = "Settings saved"
+            try {
+                settingsSaver(current)
+                FaceDirectory.setAll(current.knownFaces)
+                _message.value = "Settings saved"
+            } catch (t: Throwable) {
+                // Secret-store failures now propagate instead of silently
+                // dropping secrets: surface instead of crashing.
+                _message.value = "Save failed: ${t.message ?: t.javaClass.simpleName}"
+            }
         }
     }
 
@@ -188,6 +194,8 @@ class SettingsViewModel(
                 _lastTestPreview.value = TestPreview(channelId = config.id, url = it)
             }
             "delivered"
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (t: Throwable) {
             "failed: ${t.message ?: t.javaClass.simpleName}"
         }

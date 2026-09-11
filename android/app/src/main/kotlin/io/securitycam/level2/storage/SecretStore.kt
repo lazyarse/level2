@@ -75,19 +75,26 @@ class EncryptedSecretStore(context: Context) : SecretStore {
     }
 
     override suspend fun write(key: String, value: String): Unit = withContext(Dispatchers.IO) {
-        try {
-            prefs().edit().putString(key, value).apply()
+        // commit(), not apply(): save() strips the blob on the assumption the
+        // secret landed — an un-awaited write could leave it in neither place.
+        // Failures propagate (never log the value) so the caller can abort.
+        val ok = try {
+            prefs().edit().putString(key, value).commit()
         } catch (t: Throwable) {
-            Log.w(TAG, "secret write failed", t)
+            Log.w(TAG, "secret write failed for $key", t)
+            false
         }
+        check(ok) { "secret write failed for $key" }
     }
 
     override suspend fun delete(key: String): Unit = withContext(Dispatchers.IO) {
-        try {
-            prefs().edit().remove(key).apply()
+        val ok = try {
+            prefs().edit().remove(key).commit()
         } catch (t: Throwable) {
-            Log.w(TAG, "secret delete failed", t)
+            Log.w(TAG, "secret delete failed for $key", t)
+            false
         }
+        check(ok) { "secret delete failed for $key" }
     }
 
     companion object {

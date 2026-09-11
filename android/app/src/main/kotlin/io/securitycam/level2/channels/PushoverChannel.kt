@@ -2,15 +2,13 @@ package io.securitycam.level2.channels
 
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.FormBody
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 
 class PushoverChannelSettings(
     val appToken: String = "",
@@ -48,8 +46,7 @@ class PushoverChannel(
     client: OkHttpClient? = null,
 ) : io.securitycam.level2.core.Channel {
 
-    private val client: OkHttpClient =
-        client ?: OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+    private val client: OkHttpClient = client ?: newHttpClient()
 
     override val type: String get() = "pushover"
 
@@ -63,29 +60,35 @@ class PushoverChannel(
 
     override suspend fun send(message: AlertMessage) {
         val snapshot = message.snapshot
-        if (snapshot != null) {
-            val tmp = File.createTempFile("level2", ".img")
-            try {
-                tmp.writeBytes(snapshot.bytes)
+        // Oversized attachments are rejected server-side: fall back to the
+        // text form (mirrors Telegram's photo→message fallback).
+        if (snapshot != null && snapshot.bytes.size <= MAX_ATTACHMENT_BYTES) {
+            withTempSnapshot(snapshot) { tmp ->
                 val builder = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                 for ((k, v) in fields(message.text)) builder.addFormDataPart(k, v)
                 builder.addFormDataPart(
                     "attachment",
                     snapshot.name,
-                    tmp.asRequestBody(snapshot.mimeType.toMediaType()),
+                    tmp.asRequestBody(safeMediaType(snapshot.mimeType)),
                 )
-                val response = client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
-                response.use { check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()}" } }
-            } finally {
-                tmp.delete()
+                val response = withContext(Dispatchers.IO) {
+                    client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
+                }
+                response.use {
+                    check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                }
             }
         } else {
             val body = FormBody.Builder().apply {
                 for ((k, v) in fields(message.text)) add(k, v)
             }.build()
-            val response = client.newCall(Request.Builder().url(ENDPOINT).post(body).build()).execute()
-            response.use { check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()}" } }
+            val response = withContext(Dispatchers.IO) {
+                client.newCall(Request.Builder().url(ENDPOINT).post(body).build()).execute()
+            }
+            response.use {
+                check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
+            }
         }
     }
 
@@ -102,10 +105,25 @@ class PushoverChannel(
     override fun validate(): String? {
         if (settings.appToken.isEmpty()) return "App token is required"
         if (settings.userKey.isEmpty()) return "User key is required"
+        if (settings.priority !in -2..2) return "Priority must be between -2 and 2"
+        if (settings.sound.isNotEmpty() && settings.sound !in VALID_SOUNDS) {
+            return "Unknown notification sound"
+        }
         return null
     }
 
     companion object {
         private const val ENDPOINT = "https://api.pushover.net/1/messages.json"
+
+        /** Server-side cap: larger attachments are rejected with an API error. */
+        const val MAX_ATTACHMENT_BYTES = 5_242_880
+
+        /** Documented sound names (Pushover API); blank means the default sound. */
+        private val VALID_SOUNDS = setOf(
+            "pushover", "bike", "bugle", "cashregister", "classical", "cosmic",
+            "falling", "gamelan", "incoming", "intermission", "magic",
+            "mechanical", "pianobar", "siren", "spacealarm", "tugboat",
+            "alien", "climb", "persistent", "echo", "updown", "vibrate", "none",
+        )
     }
 }

@@ -3,14 +3,14 @@ package io.securitycam.level2.channels
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelSettings
 import io.securitycam.level2.core.Snapshot
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 
 class TelegramChannelSettings(
     val botToken: String = "",
@@ -36,8 +36,7 @@ class TelegramChannel(
     client: OkHttpClient? = null,
 ) : io.securitycam.level2.core.Channel {
 
-    private val client: OkHttpClient =
-        client ?: OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+    private val client: OkHttpClient = client ?: newHttpClient()
 
     override val type: String get() = "telegram"
 
@@ -55,10 +54,8 @@ class TelegramChannel(
         }
     }
 
-    private suspend fun sendPhoto(photo: Snapshot, caption: String): Boolean {
-        val tmp = File.createTempFile("level2", ".img")
-        try {
-            tmp.writeBytes(photo.bytes)
+    private suspend fun sendPhoto(photo: Snapshot, caption: String): Boolean =
+        withTempSnapshot(photo) { tmp ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("chat_id", settings.chatId)
@@ -66,20 +63,21 @@ class TelegramChannel(
                 .addFormDataPart(
                     "photo",
                     photo.name,
-                    tmp.asRequestBody(photo.mimeType.toMediaType()),
+                    tmp.asRequestBody(safeMediaType(photo.mimeType)),
                 )
                 .build()
-            val response = client.newCall(Request.Builder().url(endpoint("sendPhoto")).post(body).build()).execute()
-            response.use { return isOk(it.body?.string()) }
-        } finally {
-            tmp.delete()
+            val response = withContext(Dispatchers.IO) {
+                client.newCall(Request.Builder().url(endpoint("sendPhoto")).post(body).build()).execute()
+            }
+            response.use { return@withTempSnapshot isOk(it.body?.string()) }
         }
-    }
 
     private suspend fun sendMessage(text: String) {
         val body = jsonEncode("chat_id" to settings.chatId, "text" to text)
             .toRequestBody("application/json".toMediaType())
-        val response = client.newCall(Request.Builder().url(endpoint("sendMessage")).post(body).build()).execute()
+        val response = withContext(Dispatchers.IO) {
+            client.newCall(Request.Builder().url(endpoint("sendMessage")).post(body).build()).execute()
+        }
         response.use {
             if (!isOk(it.body?.string())) {
                 error("Telegram sendMessage failed (${it.code})")

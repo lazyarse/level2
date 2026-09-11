@@ -77,11 +77,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -126,6 +129,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
+import java.util.Locale
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
@@ -196,16 +200,23 @@ fun SettingsScreen(
     }
 
     val current = draft
-    var pendingClear by remember { mutableStateOf<ClearRequest?>(null) }
+    // Hoisted above the channel loop: one collector each, stable across
+    // expand/collapse recompositions (per-card collectors restarted and
+    // multiplied with the card count).
+    val sendingTestId by viewModel.sendingTestId.collectAsState()
+    val testPreview by viewModel.lastTestPreview.collectAsState()
+    var pendingClear by rememberSaveable(stateSaver = ClearRequestSaver) {
+        mutableStateOf<ClearRequest?>(null)
+    }
     var clearDurationHours by rememberSaveable { mutableStateOf(24) }
-    var showAddFaceDialog by remember { mutableStateOf(false) }
-    var faceEnrollName by remember { mutableStateOf("") }
+    var showAddFaceDialog by rememberSaveable { mutableStateOf(false) }
+    var faceEnrollName by rememberSaveable { mutableStateOf("") }
     val enrolling by viewModel.enrollingLabel.collectAsState()
     val isEnrolling = enrolling != null
 
     // Enrollment needs only CAMERA (no audio). If missing, stash the entered
     // name and resume enrollment once the grant returns.
-    var pendingFaceName by remember { mutableStateOf<String?>(null) }
+    var pendingFaceName by rememberSaveable { mutableStateOf<String?>(null) }
     val enrollPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
@@ -220,7 +231,17 @@ fun SettingsScreen(
     val ctx = androidx.compose.ui.platform.LocalContext.current
 
     // Pending delete awaiting confirmation.
-    var pendingDeleteFace by remember { mutableStateOf<KnownFace?>(null) }
+    var pendingDeleteFace by rememberSaveable(stateSaver = KnownFaceSaver) {
+        mutableStateOf<KnownFace?>(null)
+    }
+
+    // Raw LiveView port text: the typed Int in the draft can't represent a
+    // cleared/in-progress field, so keep the raw string here and parse on
+    // save (invalid input falls back to the last valid port).
+    var livePortText by rememberSaveable { mutableStateOf<String?>(null) }
+    // Last non-blank LiveView username, restored when re-enabling auth so a
+    // custom name survives an off/on toggle instead of becoming "admin".
+    var lastLvUsername by rememberSaveable { mutableStateOf("admin") }
 
     val scrollState = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
@@ -300,7 +321,6 @@ fun SettingsScreen(
                                 "$active/${nonLog.size} active"
                             },
                         ) {
-                            val testPreview by viewModel.lastTestPreview.collectAsState()
                             if (current.channelConfigs.none { it.type != "log" }) {
                                 BodyText("No notification channels yet — add one below.")
                             }
@@ -350,7 +370,8 @@ fun SettingsScreen(
                                                 )
                                             }
                                         },
-                                        inFlight = viewModel.sendingTestId.collectAsState().value == config.id,
+                                        inFlight = sendingTestId == config.id,
+                                        sendingDisabled = sendingTestId != null,
                                         factories = viewModel.testFactories,
                                         testPreviewUrl = testPreview?.takeIf { it.channelId == config.id }?.url,
                                     )
@@ -671,11 +692,24 @@ fun SettingsScreen(
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     OutlinedTextField(
-                                        value = current.liveView.port.toString(),
+                                        value = livePortText ?: current.liveView.port.toString(),
                                         onValueChange = { v ->
-                                            v.toIntOrNull()?.let { port ->
-                                                viewModel.update { it.copy(liveView = it.liveView.copy(port = port)) }
-                                            }
+                                            // Keep the raw string so the field
+                                            // stays clearable; only valid
+                                            // ports reach the draft (the save
+                                            // button re-parses with fallback).
+                                            livePortText = v
+                                            v.trim().toIntOrNull()
+                                                ?.takeIf { it in 1..65535 }
+                                                ?.let { port ->
+                                                    viewModel.update {
+                                                        it.copy(
+                                                            liveView = it.liveView.copy(
+                                                                port = port,
+                                                            ),
+                                                        )
+                                                    }
+                                                }
                                         },
                                         label = { Text("Port") },
                                         singleLine = true,
@@ -689,9 +723,18 @@ fun SettingsScreen(
                                         subtitle = "",
                                         checked = current.liveView.username.isNotEmpty(),
                                         onCheckedChange = { v ->
+                                            if (!v && current.liveView.username.isNotBlank()) {
+                                                lastLvUsername = current.liveView.username
+                                            }
                                             viewModel.update {
                                                 it.copy(liveView = it.liveView.copy(
-                                                    username = if (v) "admin" else "",
+                                                    username = if (v) {
+                                                        it.liveView.username.ifBlank {
+                                                            lastLvUsername.ifBlank { "admin" }
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    },
                                                     password = if (v) it.liveView.password else "",
                                                 ))
                                             }
@@ -976,9 +1019,21 @@ fun SettingsScreen(
                                     add(days * 24 to "$dayLabel (retention)")
                                 }
                             }
+                            // A retention change can invalidate the picked
+                            // duration; reset rather than crash or clear the
+                            // wrong window.
+                            LaunchedEffect(clearOptions) {
+                                if (clearOptions.none { it.first == clearDurationHours }) {
+                                    clearDurationHours = 24
+                                }
+                            }
                             DropdownField(
                                 label = "Clear events older than",
-                                selected = clearOptions.first { it.first == clearDurationHours }.second,
+                                // The retention slider can invalidate a
+                                // previously picked duration; fall back to
+                                // the first option instead of crashing.
+                                selected = clearOptions.firstOrNull { it.first == clearDurationHours }?.second
+                                    ?: clearOptions.first().second,
                                 options = clearOptions.map { it.second to it.second },
                                 testTag = "clearEventsOlderThan",
                                 onSelect = { label ->
@@ -1081,12 +1136,20 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         // Fold raw field state into typed channel configs at commit
-                        // time (Dart `_save`), then persist the draft.
+                        // time (Dart `_save`), then persist the draft. The raw
+                        // LiveView port text is parsed here too; garbage falls
+                        // back to the last valid port (same as email in
+                        // buildChannelConfigs).
                         viewModel.update { draftNow ->
+                            val parsedPort = livePortText?.trim()?.toIntOrNull()
+                                ?.takeIf { it in 1..65535 }
+                                ?: draftNow.liveView.port
                             draftNow.copy(
+                                liveView = draftNow.liveView.copy(port = parsedPort),
                                 channelConfigs = buildChannelConfigs(draftNow.channelConfigs, fields),
                             )
                         }
+                        livePortText = null
                         viewModel.save()
                     },
                     modifier = Modifier
@@ -1237,6 +1300,28 @@ fun SettingsScreen(
 
 /** Which clear-events confirmation the dialog is showing. */
 private data class ClearRequest(val all: Boolean, val hours: Int = 24)
+
+/** Bundle-safe saver so the clear-events dialog survives rotation. */
+private val ClearRequestSaver: Saver<ClearRequest?, Any> = listSaver<ClearRequest?, Any>(
+    save = { request ->
+        if (request == null) emptyList() else listOf(request.all, request.hours)
+    },
+    restore = { saved ->
+        if (saved.isEmpty()) null
+        else ClearRequest(all = saved[0] as Boolean, hours = (saved[1] as Int))
+    },
+)
+
+/** Bundle-safe saver so the pending face-delete dialog survives rotation. */
+private val KnownFaceSaver: Saver<KnownFace?, Any> = listSaver<KnownFace?, Any>(
+    save = { face ->
+        if (face == null) emptyList() else listOf(face.id, face.label)
+    },
+    restore = { saved ->
+        if (saved.isEmpty()) null
+        else KnownFace(id = saved[0] as String, label = saved[1] as String)
+    },
+)
 
 /** Builds channel configs from field state at save time (Dart `_save`). */
 internal fun buildChannelConfigs(
@@ -1393,7 +1478,7 @@ private fun scheduleSummary(window: ScheduleWindow): String {
 @Composable
 private fun DetectorCard(
     config: DetectorConfig,
-    channelIds: List<String>,
+    channels: List<io.securitycam.level2.core.ChannelConfig>,
     onChanged: (DetectorConfig) -> Unit,
 ) {
     var expanded by rememberSaveable("detector_${config.type}") { mutableStateOf(false) }
@@ -1553,7 +1638,8 @@ private fun DetectorCard(
                     Spacer(Modifier.height(8.dp))
                 }
                 Text("Route to channels", style = MaterialTheme.typography.bodySmall)
-                for (id in channelIds) {
+                for (channel in channels) {
+                    val id = channel.id
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -1563,14 +1649,15 @@ private fun DetectorCard(
                                 if (id in routes) routes.remove(id) else routes.add(id)
                                 onChanged(config.copy(routeToChannelIds = routes))
                             }
-                            .padding(vertical = 2.dp),
+                            .padding(vertical = 2.dp)
+                            .testTag("detectorRoute_${config.type}_$id"),
                     ) {
                         Checkbox(
                             checked = id in config.routeToChannelIds,
                             onCheckedChange = null,
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(channelTitle(id))
+                        Text(channelDisplayName(channel, channels))
                     }
                 }
             }
@@ -1606,11 +1693,12 @@ private fun ChannelCard(
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
     onDelete: () -> Unit,
     inFlight: Boolean,
+    sendingDisabled: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
     testPreviewUrl: String? = null,
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable("delete_${config.id}") { mutableStateOf(false) }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_${config.id}")
     val name = channelDisplayName(config, siblings)
     Card(
@@ -1664,6 +1752,7 @@ private fun ChannelCard(
                     onLabelChange = onLabelChange,
                     onSendTest = onSendTest,
                     inFlight = inFlight,
+                    sendingDisabled = sendingDisabled,
                     factories = factories,
                     testPreviewUrl = testPreviewUrl,
                 )
@@ -1703,6 +1792,7 @@ private fun ChannelBody(
     onLabelChange: (String) -> Unit,
     onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
     inFlight: Boolean,
+    sendingDisabled: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
     testPreviewUrl: String? = null,
 ) {
@@ -1721,17 +1811,17 @@ private fun ChannelBody(
         }
         when (config.type) {
                 "telegram" -> {
-                    SecretField("Bot token", fields, "${config.id}.token", setField)
-                    Field("Chat ID", fields, "${config.id}.chat", setField)
+                    SecretField("Bot token", config.id, fields, "${config.id}.token", setField)
+                    Field("Chat ID", config.id, fields, "${config.id}.chat", setField)
                 }
 
                 "email" -> {
-                    Field("SMTP host", fields, "${config.id}.host", setField, KeyboardType.Email)
-                    NumberField("Port (587 or 465)", fields, "${config.id}.port", setField)
-                    Field("Username", fields, "${config.id}.username", setField, KeyboardType.Email)
-                    SecretField("Password / app password", fields, "${config.id}.password", setField)
-                    Field("From address", fields, "${config.id}.from", setField, KeyboardType.Email)
-                    Field("To address", fields, "${config.id}.to", setField, KeyboardType.Email)
+                    Field("SMTP host", config.id, fields, "${config.id}.host", setField, KeyboardType.Email)
+                    NumberField("Port (587 or 465)", config.id, fields, "${config.id}.port", setField)
+                    Field("Username", config.id, fields, "${config.id}.username", setField, KeyboardType.Email)
+                    SecretField("Password / app password", config.id, fields, "${config.id}.password", setField)
+                    Field("From address", config.id, fields, "${config.id}.from", setField, KeyboardType.Email)
+                    Field("To address", config.id, fields, "${config.id}.to", setField, KeyboardType.Email)
                     SwitchRow(
                         title = "Implicit TLS (SSL, port 465)",
                         subtitle = "Off for port 587 (STARTTLS — Ethereal, Gmail) · on for 465",
@@ -1749,10 +1839,10 @@ private fun ChannelBody(
                         testTag = "webhookPreset_${config.id}",
                         onSelect = { p -> setField("${config.id}.preset", p) },
                     )
-                    SecretField("Webhook URL", fields, "${config.id}.url", setField)
-                    SecretField("Bearer token", fields, "${config.id}.token", setField)
+                    SecretField("Webhook URL", config.id, fields, "${config.id}.url", setField)
+                    SecretField("Bearer token", config.id, fields, "${config.id}.token", setField)
                     if (preset == "ntfy") {
-                        Field("Title", fields, "${config.id}.title", setField)
+                        Field("Title", config.id, fields, "${config.id}.title", setField)
                     }
                     if (preset == "custom") {
                         SwitchRow(
@@ -1765,9 +1855,9 @@ private fun ChannelBody(
                 }
 
                 "pushover" -> {
-                    SecretField("App token", fields, "${config.id}.appToken", setField)
-                    SecretField("User key", fields, "${config.id}.userKey", setField)
-                    Field("Sound", fields, "${config.id}.sound", setField)
+                    SecretField("App token", config.id, fields, "${config.id}.appToken", setField)
+                    SecretField("User key", config.id, fields, "${config.id}.userKey", setField)
+                    Field("Sound", config.id, fields, "${config.id}.sound", setField)
                 }
 
                 "siren" -> {
@@ -1781,35 +1871,49 @@ private fun ChannelBody(
                         modifier = Modifier.testTag("sirenDuration_${config.id}"),
                     )
                     val vol = (fields["${config.id}.volume"] ?: "0.8").toFloatOrNull() ?: 0.8f
-                    Text("Volume: %.0f%%".format(vol * 100))
+                    Text("Volume: %.0f%%".format(Locale.US, vol * 100))
                     Slider(
                         value = vol,
-                        onValueChange = { v -> setField("${config.id}.volume", "%.2f".format(v)) },
+                        onValueChange = { v -> setField("${config.id}.volume", formatSirenVolume(v)) },
                         valueRange = 0.1f..1.0f,
                         modifier = Modifier.testTag("sirenVolume_${config.id}"),
                     )
                 }
             }
-            val draftError: String? = remember(config.id, config.type, fields.toMap()) {
-                val merged = buildChannelConfigs(listOf(config), fields).first()
-                val channel = factories[merged.type]?.invoke(merged)
-                if (channel == null) "Unknown channel type ${merged.type}"
-                else channel.validate() ?: emailPortError(config.id, fields)
+            // Snapshot-aware validation: derivedStateOf subscribes to the
+            // fields map reads inside the calculation, so this recomputes
+            // only when field contents change — not on every keystroke-driven
+            // recomposition of the card (the old
+            // remember(..., fields.toMap()) key rebuilt the map — a new
+            // instance — on every recomposition, re-running validation).
+            val draftError by remember(config.id, config.type) {
+                derivedStateOf {
+                    val snapshot = fields.toMap()
+                    val merged = buildChannelConfigs(listOf(config), snapshot).first()
+                    val channel = factories[merged.type]?.invoke(merged)
+                    if (channel == null) "Unknown channel type ${merged.type}"
+                    else channel.validate() ?: emailPortError(config.id, snapshot)
+                }
             }
-            val draftValid = draftError == null
+            // Local copy: delegated properties don't smart-cast.
+            val validationError = draftError
+            val draftValid = validationError == null
             OutlinedButton(
                 onClick = {
                     onSendTest(buildChannelConfigs(listOf(config), fields).first())
                 },
-                enabled = draftValid && !inFlight,
+                // Disabled while ANY channel's test is in flight (the
+                // ViewModel drops concurrent taps, so every card must show
+                // it); the label stays per-card.
+                enabled = draftValid && !sendingDisabled,
                 modifier = Modifier.testTag("sendTest_${config.id}"),
                 shape = AppButtonShape,
             ) {
                 Text(if (inFlight) "Sending…" else "Send test")
             }
-            if (draftError != null) {
+            if (validationError != null) {
                 Text(
-                    text = draftError,
+                    text = validationError,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.testTag("sendTestError_${config.id}"),
@@ -1874,6 +1978,7 @@ private fun TestPreviewRow(url: String, channelId: String) {
 @Composable
 private fun Field(
     label: String,
+    channelId: String,
     fields: Map<String, String>,
     key: String,
     setField: SetField,
@@ -1888,13 +1993,14 @@ private fun Field(
         // hostnames, usernames and addresses (e.g. capitalising an SMTP
         // username → 535 auth rejection).
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, autoCorrect = false),
-        modifier = Modifier.fillMaxWidth().testTag(fieldTag(label)),
+        modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
     )
 }
 
 @Composable
 private fun NumberField(
     label: String,
+    channelId: String,
     fields: Map<String, String>,
     key: String,
     setField: SetField,
@@ -1905,13 +2011,14 @@ private fun NumberField(
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth().testTag(fieldTag(label)),
+        modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
     )
 }
 
 @Composable
 private fun SecretField(
     label: String,
+    channelId: String,
     fields: Map<String, String>,
     key: String,
     setField: SetField,
@@ -1932,13 +2039,24 @@ private fun SecretField(
                 )
             }
         },
-        modifier = Modifier.fillMaxWidth().testTag(fieldTag(label)),
+        modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
     )
 }
 
-/** Stable tag mirroring the Dart `_fieldOf(label)` finder strategy. */
-internal fun fieldTag(label: String): String =
-    "field_" + label.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+/**
+ * Stable tag qualified by channel id (mirrors the Dart `_fieldOf(label)`
+ * finder strategy, plus the account): two expanded same-type cards must
+ * never share a tag.
+ */
+internal fun fieldTag(channelId: String, label: String): String =
+    "field_${channelId}_" + label.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+
+/**
+ * Siren volume wire format: always a dot decimal. The default-locale
+ * `"%.2f".format` renders a comma under e.g. German/Turkish locales, which
+ * `toFloatOrNull` (and the siren channel) can't parse back.
+ */
+internal fun formatSirenVolume(v: Float): String = "%.2f".format(Locale.US, v)
 
 @Composable
 private fun DropdownField(
@@ -1949,7 +2067,7 @@ private fun DropdownField(
     testTag: String? = null,
     onSelect: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded && enabled,
         onExpandedChange = { if (enabled) expanded = it },
@@ -2203,7 +2321,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
         val config = settings.detectorConfigs[type] ?: continue
         DetectorCard(
             config = config,
-            channelIds = settings.channelConfigs.map { it.id },
+            channels = settings.channelConfigs,
             onChanged = { next -> onChanged(type, next) },
         )
     }

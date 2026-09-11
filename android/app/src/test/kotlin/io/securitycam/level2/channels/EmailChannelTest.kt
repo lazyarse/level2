@@ -246,6 +246,23 @@ class EmailChannelTest {
     }
 
     @Test
+    fun renderedMessageCarriesDateAndUniqueMessageId() {
+        val first = sender().renderMessage(
+            MailMessage(from = "a@b.c", to = "d@e.f", subject = "s", text = "hello"),
+        )
+        val second = sender().renderMessage(
+            MailMessage(from = "a@b.c", to = "d@e.f", subject = "s", text = "hello"),
+        )
+        assertTrue(first.contains("Date: "))
+        val idPattern = Regex("Message-ID: <([^>]+)>")
+        val firstId = idPattern.find(first)!!.groupValues[1]
+        val secondId = idPattern.find(second)!!.groupValues[1]
+        assertTrue(firstId.isNotEmpty())
+        assertTrue(secondId.isNotEmpty())
+        assertTrue(firstId != secondId)
+    }
+
+    @Test
     fun sendForwardsSnapshotAsAttachment() = runBlocking {
         val sent = mutableListOf<MailMessage>()
         val c = channel { m -> sent.add(m) }

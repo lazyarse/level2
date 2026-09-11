@@ -132,6 +132,39 @@ class PushoverChannelTest {
     }
 
     @Test
+    fun validateRejectsBadPriorityAndSound() {
+        assertEquals(
+            "Priority must be between -2 and 2",
+            PushoverChannel(id = "p", settings = PushoverChannelSettings(appToken = "a", userKey = "u", priority = 3)).validate(),
+        )
+        assertEquals(
+            "Unknown notification sound",
+            PushoverChannel(id = "p", settings = PushoverChannelSettings(appToken = "a", userKey = "u", sound = "nope")).validate(),
+        )
+    }
+
+    @Test
+    fun oversizeSnapshotFallsBackToTextForm() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString())
+            val big = Snapshot(
+                ByteArray(PushoverChannel.MAX_ATTACHMENT_BYTES + 1),
+                "image/jpeg",
+                "big.jpg",
+            )
+            c.send(message(snapshot = big))
+            assertEquals(1, server.requestCount)
+            val body = server.takeRequest().body.readUtf8()
+            // Form-encoded: spaces become +/percent-escapes, so match the prefix.
+            assertTrue(body.contains("message=Motion"))
+            assertFalse(body.contains("attachment"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun appTokenAndUserKeyAreSecretFields() {
         assertEquals(listOf("appToken", "userKey"), PushoverChannelSettings(appToken = "a", userKey = "u").secretFields)
     }

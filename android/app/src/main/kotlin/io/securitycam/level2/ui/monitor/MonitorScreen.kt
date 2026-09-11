@@ -121,12 +121,15 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 .weight(1f)
                 .zoomGestures(
                     onApplyFactor = { factor ->
-                        MonitoringServiceController.setZoomRatio(zoomRatio * factor)
+                        // Factor goes straight to the controller, which applies
+                        // it against the camera's live zoom state — never
+                        // read-modify-write a stale UI-observed ratio.
+                        MonitoringServiceController.applyZoomFactor(factor)
                     },
                     onReset = { MonitoringServiceController.setZoomRatio(1f) },
                 ),
         ) {
-            PreviewSurface(Modifier.fillMaxSize())
+            PreviewSurface(Modifier.fillMaxSize(), fillCrop = true)
             // Hide the frozen last frame whenever nothing is actively
             // rendering, or when the user runs preview-less monitoring
             // (PreviewView keeps showing its final buffer after unbind).
@@ -141,6 +144,9 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                 modifier = Modifier.fillMaxSize(),
                 show = showZones,
                 exclusionZones = exclusionZones,
+                // Matches PreviewSurface(fillCrop = true) above: both use the
+                // FILL_CENTER center-crop math so zones align with the preview.
+                fillCrop = true,
             )
             // Top overlay bar: camera name + zone/camera controls on one
             // translucent line.

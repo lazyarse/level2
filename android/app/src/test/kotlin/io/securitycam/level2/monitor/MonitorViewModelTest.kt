@@ -228,6 +228,7 @@ class MonitorViewModelTest {
             scheduleCheckInterval = null,
             surfaceRuntimeStartFailures = false,
         )
+        shadowOf(Looper.getMainLooper()).idle()
         assertEquals(exclusions, vm.exclusionZones.value)
         assertEquals(inclusion, vm.detectionZones.value)
         vm.start()
@@ -237,5 +238,26 @@ class MonitorViewModelTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(inclusion, vm.detectionZones.value)
         assertEquals(exclusions, vm.exclusionZones.value)
+    }
+
+    @Test
+    fun initLoadsSettingsAsynchronously() {
+        val gate = kotlinx.coroutines.CompletableDeferred<AppSettings>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _, _, _, _, _, _, _ -> },
+            stopMonitoring = {},
+            settingsLoader = { gate.await() },
+            scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
+        )
+        // Loader still gated: placeholders, no main-thread block.
+        assertEquals("Hallway", vm.cameraName.value)
+
+        gate.complete(AppSettings.defaults().copy(cameraName = "Porch"))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("Porch", vm.cameraName.value)
     }
 }

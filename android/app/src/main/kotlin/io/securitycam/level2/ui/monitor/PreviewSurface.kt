@@ -10,6 +10,10 @@ import android.view.Surface
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -34,6 +38,10 @@ fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
     val context = LocalContext.current
     val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
+    // Owns this composition's provider reference for the ownership-checked
+    // detach: a stale dispose must not unbind a newer live surface.
+    var ownedProvider by remember { mutableStateOf<PreviewView?>(null) }
+
     DisposableEffect(Unit) {
         val listener = object : DisplayManager.DisplayListener {
             override fun onDisplayAdded(displayId: Int) = Unit
@@ -54,7 +62,8 @@ fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 displayManager.unregisterDisplayListener(listener)
             }
-            MonitoringServiceController.setPreviewSurfaceProvider(null)
+            val provider = ownedProvider?.surfaceProvider
+            MonitoringServiceController.clearPreviewSurfaceProvider(provider)
         }
     }
 
@@ -68,8 +77,19 @@ fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
                 } else {
                     PreviewView.ScaleType.FIT_CENTER
                 }
+                ownedProvider = this
                 MonitoringServiceController.setPreviewSurfaceProvider(surfaceProvider)
             }
+        },
+        update = { view ->
+            // Re-apply on recomposition (e.g. fillCrop flips between the
+            // monitor screen and the zone editor reusing the composition).
+            val want = if (fillCrop) {
+                PreviewView.ScaleType.FILL_CENTER
+            } else {
+                PreviewView.ScaleType.FIT_CENTER
+            }
+            if (view.scaleType != want) view.scaleType = want
         },
     )
 }

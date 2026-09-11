@@ -10,9 +10,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.securitycam.level2.channels.LogChannel
+import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.Channel
 import io.securitycam.level2.core.ChannelConfig
+import io.securitycam.level2.core.ChannelSettings
 import io.securitycam.level2.event.ChannelFactory
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -165,5 +169,69 @@ class SendTestUiTest {
         expandChannel("telegram")
         compose.onNodeWithTag("sendTestError_telegram").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Unknown channel type telegram").assertIsDisplayed()
+    }
+
+    /** Always-valid channel whose test send blocks until [gate] completes. */
+    private class BlockingChannel(
+        override val id: String,
+        private val gate: CompletableDeferred<Unit>,
+    ) : Channel {
+        override val type: String = "telegram"
+        override val enabled: Boolean = true
+        override val settings: ChannelSettings = object : ChannelSettings() {
+            override val type: String = "telegram"
+            override fun toJson(): Map<String, Any?> = emptyMap()
+            override val secretFields: List<String> = emptyList()
+        }
+
+        override fun validate(): String? = null
+
+        override suspend fun send(message: AlertMessage) {}
+
+        override suspend fun sendTest() {
+            gate.await()
+        }
+    }
+
+    @Test
+    fun allSendButtonsDisabledWhileOneIsInFlight() {
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(
+            factories = mapOf("telegram" to { c: ChannelConfig -> BlockingChannel(c.id, gate) }),
+            channels = listOf(
+                ChannelConfig(id = "log", type = "log", enabled = true),
+                ChannelConfig(id = "telegram", type = "telegram", enabled = false),
+                ChannelConfig(id = "telegram-2", type = "telegram", enabled = false),
+            ),
+        )
+        setContent(vm)
+
+        expandSection("Notification Channels")
+        expandChannel("telegram")
+        expandChannel("telegram-2")
+        compose.onNodeWithTag("sendTest_telegram").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("sendTest_telegram-2").performScrollTo().assertIsEnabled()
+
+        compose.onNodeWithTag("sendTest_telegram").performScrollTo().performClick()
+        dispatcher.scheduler.runCurrent()
+        compose.waitForIdle()
+
+        // A keeps its per-card in-flight label; B is disabled too — taps on
+        // B are visibly blocked instead of silently dropped.
+        compose.onNodeWithTag("sendTest_telegram").performScrollTo()
+        compose.onNodeWithText("Sending…").assertIsDisplayed()
+        compose.onNodeWithTag("sendTest_telegram").assertIsNotEnabled()
+        compose.onNodeWithTag("sendTest_telegram-2").assertIsNotEnabled()
+
+        compose.runOnIdle { gate.complete(Unit) }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Send test: delivered")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Send test: delivered").assertIsDisplayed()
+        compose.onNodeWithTag("sendTest_telegram-2").performScrollTo().assertIsEnabled()
     }
 }

@@ -212,6 +212,12 @@ data class AppSettings(
     val tripwireZones: List<DetectionZone> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
+    /**
+     * One-way flag: the pre-2026-08-23 legacy cooldown normalization has run.
+     * Guards [SettingsStore.migrateLegacyCooldowns] so an intentional 60s /
+     * 120s / 5min cooldown chosen after migration is never rewritten to 5s.
+     */
+    val cooldownsMigrated: Boolean = false,
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -238,6 +244,7 @@ data class AppSettings(
         tripwireZones: List<DetectionZone>? = null,
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
+        cooldownsMigrated: Boolean? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraId = cameraId ?: this.cameraId,
@@ -264,6 +271,7 @@ data class AppSettings(
         tripwireZones = tripwireZones ?: this.tripwireZones,
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
+        cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -293,6 +301,7 @@ data class AppSettings(
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
+        json["cooldownsMigrated"] = cooldownsMigrated
         return json
     }
 
@@ -505,9 +514,9 @@ data class AppSettings(
                     )
                 }
                 ?: emptyList()
-            val channels = stored + defaults.channelConfigs.filter { d ->
+            val channels = (stored + defaults.channelConfigs.filter { d ->
                 stored.none { it.id == d.id }
-            }
+            }).filterNot { it.isPristinePlaceholder() }
             return AppSettings(
                 cameraName = json["cameraName"] as? String ?: defaults.cameraName,
                 cameraId = json["cameraId"] as? String ?: defaults.cameraId,
@@ -561,6 +570,7 @@ data class AppSettings(
                 cloudBackup = (json["cloudBackup"] as? Map<*, *>)
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
+                cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
             )
         }
     }

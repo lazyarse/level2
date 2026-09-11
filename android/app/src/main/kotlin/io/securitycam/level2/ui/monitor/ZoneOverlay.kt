@@ -14,8 +14,12 @@ import kotlin.math.min
 
 /**
  * Maps normalized analysis-frame points through the display rotation into
- * view space, letterboxing the rotated frame aspect into the view (the same
- * fit `PreviewView.ScaleType.FILL_CENTER` applies to the camera preview).
+ * view space.
+ *
+ * @param fillCrop true matches `PreviewView.ScaleType.FILL_CENTER` (the
+ *   monitor screen): the frame is center-cropped to fill the view, so zones
+ *   use the same crop math and align with the preview. False letterboxes
+ *   (fit) for the zone editor, where uncropped geometry must map 1:1.
  */
 object ZoneDisplayMapper {
 
@@ -31,6 +35,7 @@ object ZoneDisplayMapper {
         viewWidth: Float,
         viewHeight: Float,
         frameAspect: Float = 4f / 3f,
+        fillCrop: Boolean = false,
     ): Offset {
         val (dx, dy) = when (rotationDegrees) {
             90 -> 1f - ny to nx
@@ -41,7 +46,16 @@ object ZoneDisplayMapper {
         val rotAspect =
             if (rotationDegrees == 90 || rotationDegrees == 270) 1f / frameAspect
             else frameAspect
-        val scale = min(viewWidth / rotAspect, viewHeight)
+        if (!fillCrop) {
+            val scale = min(viewWidth / rotAspect, viewHeight)
+            val dispW = rotAspect * scale
+            val dispH = scale
+            val ox = (viewWidth - dispW) / 2f
+            val oy = (viewHeight - dispH) / 2f
+            return Offset(ox + dx * dispW, oy + dy * dispH)
+        }
+        // Center-crop: scale so the frame covers the view, then center.
+        val scale = maxOf(viewWidth / rotAspect, viewHeight)
         val dispW = rotAspect * scale
         val dispH = scale
         val ox = (viewWidth - dispW) / 2f
@@ -56,18 +70,27 @@ object ZoneDisplayMapper {
         viewWidth: Float,
         viewHeight: Float,
         frameAspect: Float = 4f / 3f,
+        fillCrop: Boolean = false,
     ): Path {
         val path = Path()
         if (zone.shape == DetectionZoneShape.rect && zone.points.size >= 4) {
-            val p0 = mapPoint(zone.points[0].toFloat(), zone.points[1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
-            val p1 = mapPoint(zone.points[2].toFloat(), zone.points[3].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
-            path.addRect(Rect(p0, p1))
+            val p0 = mapPoint(zone.points[0].toFloat(), zone.points[1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect, fillCrop)
+            val p1 = mapPoint(zone.points[2].toFloat(), zone.points[3].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect, fillCrop)
+            // Normalize: a reversed rect (x1 < x0) draws nothing — order it.
+            path.addRect(
+                Rect(
+                    min(p0.x, p1.x),
+                    min(p0.y, p1.y),
+                    kotlin.math.max(p0.x, p1.x),
+                    kotlin.math.max(p0.y, p1.y),
+                ),
+            )
             return path
         }
         var first = true
         var i = 0
         while (i + 1 < zone.points.size) {
-            val p = mapPoint(zone.points[i].toFloat(), zone.points[i + 1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect)
+            val p = mapPoint(zone.points[i].toFloat(), zone.points[i + 1].toFloat(), rotationDegrees, viewWidth, viewHeight, frameAspect, fillCrop)
             if (first) {
                 path.moveTo(p.x, p.y)
                 first = false
@@ -100,6 +123,8 @@ fun ZoneOverlay(
     modifier: Modifier = Modifier,
     show: Boolean = true,
     exclusionZones: List<DetectionZone> = emptyList(),
+    /** Must match the preview's scale type: true for FILL_CENTER (monitor). */
+    fillCrop: Boolean = true,
 ) {
     if (!show) return
     Canvas(modifier = modifier) {
@@ -113,7 +138,7 @@ fun ZoneOverlay(
         val size = this.size
         zones.forEachIndexed { index, zone ->
             val path = ZoneDisplayMapper.zonePath(
-                zone, rotationDegrees, size.width, size.height,
+                zone, rotationDegrees, size.width, size.height, fillCrop = fillCrop,
             )
             drawPath(
                 path = path,
@@ -123,7 +148,7 @@ fun ZoneOverlay(
         }
         exclusionZones.forEach { zone ->
             val path = ZoneDisplayMapper.zonePath(
-                zone, rotationDegrees, size.width, size.height,
+                zone, rotationDegrees, size.width, size.height, fillCrop = fillCrop,
             )
             drawPath(
                 path = path,

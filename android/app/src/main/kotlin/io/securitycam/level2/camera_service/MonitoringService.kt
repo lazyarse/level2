@@ -187,25 +187,32 @@ object MonitoringServiceController {
     private const val CHANNEL_ID = "monitoring"
     private const val NOTIFICATION_ID = 1
 
-    private val executor = Executors.newSingleThreadExecutor()
+    /**
+     * Split executors: analysis frames are converted/published on
+     * [analysisExecutor] while CameraX callbacks (stills, recorder events) and
+     * camera-control listeners run on [cameraExecutor], so a slow frame can
+     * never starve capture/recorder callbacks (or vice versa).
+     */
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
     private val micCapture = MicCapture()
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var imageAnalysis: ImageAnalysis? = null
-    private var imageCapture: ImageCapture? = null
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var active = false
+    @Volatile private var cameraProvider: ProcessCameraProvider? = null
+    @Volatile private var imageAnalysis: ImageAnalysis? = null
+    @Volatile private var imageCapture: ImageCapture? = null
+    @Volatile private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var active = false
 
     /** True while the lightweight preview-only session owns the camera. */
-    private var previewOnlyMode = false
-    private var frameCount = 0L
-    private var lastPublishMs = 0L
-    private var recordVideo = true
+    @Volatile private var previewOnlyMode = false
+    @Volatile private var frameCount = 0L
+    @Volatile private var lastPublishMs = 0L
+    @Volatile private var recordVideo = true
 
     /** Whether the monitoring session binds a Preview use case (battery saver). */
-    private var previewEnabled = true
-    private var monitoringCameraId: String? = null
-    private var analysisWidth = 320
-    private var analysisHeight = 240
+    @Volatile private var previewEnabled = true
+    @Volatile private var monitoringCameraId: String? = null
+    @Volatile private var analysisWidth = 320
+    @Volatile private var analysisHeight = 240
 
     // Live View state
     private var liveViewEncoder: LiveViewEncoder? = null
@@ -217,14 +224,14 @@ object MonitoringServiceController {
 
     // Preview use case bound into the CameraX group; its surface provider is
     // supplied/cleared by the UI via [setPreviewSurfaceProvider].
-    private var boundPreview: Preview? = null
-    private var pendingPreviewProvider: Preview.SurfaceProvider? = null
+    @Volatile private var boundPreview: Preview? = null
+    @Volatile private var pendingPreviewProvider: Preview.SurfaceProvider? = null
 
     /** Camera id of the last successful preview-only bind (flip de-dup). */
-    private var boundPreviewCameraId: String? = null
+    @Volatile private var boundPreviewCameraId: String? = null
 
     // Bound Camera handle for zoom (net-new Phase 1.4).
-    private var boundCamera: Camera? = null
+    @Volatile private var boundCamera: Camera? = null
 
     /** Parse a JSON array of exclusion zones from the intent extra. */
     private fun parseExclusionZones(json: String): List<io.securitycam.level2.detection.DetectionZone> {
@@ -342,7 +349,22 @@ object MonitoringServiceController {
                     done.countDown()
                 }
             }
-            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            val finished = try {
+                done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+            if (!finished) {
+                // The main-thread stop never ran, but the caller assumes
+                // stopped on return: force the state so a wedged main thread
+                // can't leave the camera/wakelock owned, and log loudly.
+                Log.e(TAG, "stop timed out waiting for main thread; forcing inactive state")
+                active = false
+                previewOnlyMode = false
+                runCatching { micCapture.stop() }
+                runCatching { releaseWakeLock() }
+            }
         }
     }
 
@@ -428,7 +450,18 @@ object MonitoringServiceController {
                     done.countDown()
                 }
             }
-            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            val finished = try {
+                done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+            if (!finished) {
+                Log.e(TAG, "stopPreviewOnly timed out waiting for main thread; forcing inactive state")
+                active = false
+                previewOnlyMode = false
+                runCatching { micCapture.stop() }
+            }
         }
     }
 
@@ -509,7 +542,7 @@ object MonitoringServiceController {
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setTargetRotation(rotation)
                     .build()
-                analysis.setAnalyzer(executor) { image: ImageProxy ->
+                analysis.setAnalyzer(analysisExecutor) { image: ImageProxy ->
                     try {
                         val now = System.currentTimeMillis()
                         if (active && now - lastPublishMs >= 250L) {
@@ -540,7 +573,7 @@ object MonitoringServiceController {
 
     // ---- End preview-only mode ----
 
-    private var activeService: LifecycleService? = null
+    @Volatile private var activeService: LifecycleService? = null
 
     /**
      * Attaches or detaches the live preview. Pass `null` on screen-off / screen
@@ -552,6 +585,25 @@ object MonitoringServiceController {
     fun setPreviewSurfaceProvider(provider: Preview.SurfaceProvider?) {
         pendingPreviewProvider = provider
         boundPreview?.setSurfaceProvider(provider)
+    }
+
+    /**
+     * Ownership-checked detach: only clears when the currently attached
+     * provider is [provider] (or when [provider] is null and nothing newer
+     * attached). Prevents a stale disposed surface from unbinding a live one
+     * after rapid tab switches.
+     */
+    fun clearPreviewSurfaceProvider(provider: Preview.SurfaceProvider?) {
+        if (pendingPreviewProvider == provider) {
+            pendingPreviewProvider = null
+        }
+        // Only detach from the bound preview when it still serves this
+        // provider; otherwise a newer surface already took over.
+        boundPreview?.let { preview ->
+            if (provider == null && pendingPreviewProvider == null) {
+                preview.setSurfaceProvider(null)
+            }
+        }
     }
 
     /**
@@ -573,6 +625,32 @@ object MonitoringServiceController {
         boundPreview?.targetRotation = rotation
     }
 
+    /**
+     * Re-applies recording parameters loaded after the FGS bind (the monitor
+     * starts the service from cached settings, then loads fresh ones). Safe
+     * to call any time; only affects future segments/exports.
+     */
+    fun refreshRecordingParams(
+        cameraName: String,
+        preRollSeconds: Int,
+        postRollSeconds: Int,
+        videoQuality: String,
+        clipTimestamp: Boolean = false,
+        clipTimestampPosition: String = ClipStampPosition.bottomRight,
+        clipTimestampCameraName: Boolean = false,
+        privacyMasking: Boolean = false,
+        privacyMaskEffect: String = "solid",
+        exclusionZones: List<io.securitycam.level2.detection.DetectionZone> = emptyList(),
+    ) {
+        val service = activeService ?: return
+        Log.i(TAG, "refreshRecordingParams cameraName=$cameraName")
+        VideoClipRecorder.configure(
+            service, cameraName, preRollSeconds, postRollSeconds, videoQuality,
+            clipTimestamp, clipTimestampPosition, clipTimestampCameraName,
+            privacyMasking, privacyMaskEffect, exclusionZones,
+        )
+    }
+
     /** Pins the newly-bound Camera; primes zoom range from its cameraInfo. */
     fun onCameraBound(camera: Camera) {
         boundCamera = camera
@@ -587,7 +665,7 @@ object MonitoringServiceController {
 
     /**
      * Applies a zoom ratio clamped to the camera's [minZoomRatio, maxZoomRatio]
-     * range. Fire-and-forget on the controller executor; the ratio flow is
+     * range. Fire-and-forget on the camera executor; the ratio flow is
      * updated on success so the badge/gesture state stays honest.
      */
     fun setZoomRatio(ratio: Float) {
@@ -596,7 +674,19 @@ object MonitoringServiceController {
         val clamped = ratio.coerceIn(state.minZoomRatio, state.maxZoomRatio)
         camera.cameraControl.setZoomRatio(clamped).addListener({
             _zoomRatio.value = clamped
-        }, executor)
+        }, cameraExecutor)
+    }
+
+    /**
+     * Applies a pinch factor against the camera's *current* zoom state (read
+     * on the caller thread from the bound camera), not against a possibly
+     * stale UI-observed ratio. Fixes read-modify-write races where rapid
+     * gestures compounded on an outdated base.
+     */
+    fun applyZoomFactor(factor: Float) {
+        val camera = boundCamera ?: return
+        val state = currentZoomState(camera) ?: return
+        setZoomRatio(state.zoomRatio * factor)
     }
 
     fun previewActive(): Boolean = boundPreview != null
@@ -699,16 +789,19 @@ object MonitoringServiceController {
     }
 
     private fun startLiveView(context: Context) {
+        // Settings load (Keystore IO) + encoder setup block; keep all of it
+        // off the main thread (called synchronously from onStartCommand).
+        Thread({ startLiveViewBlocking(context) }, "level2-liveview-start").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun startLiveViewBlocking(context: Context) {
         try {
-            // Keystore-backed settings load is blocking IO; keep it off the
-            // main thread (we're called synchronously from onStartCommand).
-            val lv = java.util.concurrent.CompletableFuture
-                .supplyAsync {
-                    kotlinx.coroutines.runBlocking {
-                        SettingsStore(context, EncryptedSecretStore(context)).load().liveView
-                    }
-                }
-                .get(5, java.util.concurrent.TimeUnit.SECONDS)
+            val lv = kotlinx.coroutines.runBlocking {
+                SettingsStore(context, EncryptedSecretStore(context)).load().liveView
+            }
             if (!lv.enabled) return
 
             val packetizer = RtpPacketizer()
@@ -818,7 +911,7 @@ object MonitoringServiceController {
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setTargetRotation(rotations.analysis)
                     .build()
-                analysis.setAnalyzer(executor) { image: ImageProxy ->
+                analysis.setAnalyzer(analysisExecutor) { image: ImageProxy ->
                     // The buffer must be returned even if conversion/publish
                     // throws, or CameraX analysis stalls permanently.
                     try {
@@ -826,7 +919,10 @@ object MonitoringServiceController {
                         if (liveViewActive) {
                             try {
                                 val pts = System.nanoTime() / 1000
-                                liveViewEncoder?.feedVideoFrame(image.image!!, pts)
+                                val mediaImage = image.image
+                                if (mediaImage != null) {
+                                    liveViewEncoder?.feedVideoFrame(mediaImage, pts)
+                                }
                             } catch (e: Exception) {
                                 Log.w(TAG, "LiveView feed failed", e)
                             }
@@ -976,7 +1072,7 @@ object MonitoringServiceController {
         Log.i(TAG, "captureStill enter")
         val file = java.io.File(service.cacheDir, "capture-${System.currentTimeMillis()}.jpg")
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
-        capture.takePicture(options, executor, object : ImageCapture.OnImageSavedCallback {
+        capture.takePicture(options, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(results: ImageCapture.OutputFileResults) {
                 val bytes = file.readBytes()
                 file.delete()

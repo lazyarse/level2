@@ -175,8 +175,9 @@ class EmailChannel(
 }
 
 /**
- * Minimal SMTP client (plain, SSL, or STARTTLS with AUTH LOGIN). Enough for
- * alert delivery against real providers; no attachments.
+ * Minimal SMTP client (plain, SSL, or STARTTLS with AUTH LOGIN), with
+ * multipart/mixed JPEG attachments. Enough for alert delivery against real
+ * providers.
  */
 class RawSmtpSender(
     private val settings: EmailChannelSettings,
@@ -190,6 +191,10 @@ class RawSmtpSender(
     companion object {
         /** Base for sandbox preview links (Ethereal.email message pages). */
         const val PREVIEW_BASE_URL = "https://ethereal.email/message/"
+
+        /** RFC 5322 Date header format (`Thu, 11 Sep 2026 01:55:00 GMT`). */
+        internal val RFC_5322_NOW: java.time.format.DateTimeFormatter =
+            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
 
         private val MSGID_REGEX = Regex("""MSGID=([^\s\]]+)""")
 
@@ -284,6 +289,8 @@ class RawSmtpSender(
             append("From: <").append(m.from).append(">\r\n")
             append("To: <").append(m.to).append(">\r\n")
             append("Subject: ").append(subject).append("\r\n")
+            append("Date: ").append(RFC_5322_NOW.format(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC))).append("\r\n")
+            append("Message-ID: <").append(java.util.UUID.randomUUID()).append("@level2>\r\n")
             append("MIME-Version: 1.0\r\n")
         }
         val body = if (m.attachment == null) {

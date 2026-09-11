@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.ChannelConfig
+import io.securitycam.level2.core.isPristinePlaceholder
 import io.securitycam.level2.core.LiveViewSettings
 import io.securitycam.level2.core.TriggerType
 import java.time.Duration
@@ -37,17 +38,33 @@ class SettingsStore(
         val raw = dataStore.data.first()[KEY]
         val settings = if (raw == null) AppSettings.defaults() else tryParse(raw)
         val withChannelSecrets = injectSecrets(settings)
-        val withLiveView = migrateLegacyCooldowns(injectLiveViewSecret(withChannelSecrets))
-        return injectCloudBackupSecret(withLiveView)
+        val (withLiveView, liveViewMigrated) = injectLiveViewSecret(withChannelSecrets)
+        val (withCooldowns, cooldownsMigrated) = migrateLegacyCooldownsOnce(withLiveView)
+        val (final, cloudBackupMigrated) = injectCloudBackupSecret(withCooldowns)
+        // Strip migrated inline passwords from the blob right away (channels
+        // already do this); otherwise the plaintext lingers until the next
+        // manual save. In-memory values are untouched.
+        if (liveViewMigrated || cloudBackupMigrated || cooldownsMigrated) save(final)
+        return final
     }
 
     /**
      * One-way normalization for blobs written before the 2026-08-23 cooldown
      * change: any detector still carrying a shipped legacy default (60s/120s/
      * 5min) is moved to the new 5s baseline. Health keeps its long anti-spam
-     * window. Re-applies harmlessly on every load; user-tuned values that
-     * don't equal a legacy default pass through untouched.
+     * window. Runs at most once per blob (guarded by
+     * [AppSettings.cooldownsMigrated]) so an intentional 60s/120s/5min choice
+     * made after migration is never rewritten on a later load.
+     *
+     * @return the (possibly) migrated settings plus whether the blob must be
+     *   re-saved (migration ran, even if no value matched a legacy default —
+     *   the flag itself still needs persisting).
      */
+    private fun migrateLegacyCooldownsOnce(settings: AppSettings): Pair<AppSettings, Boolean> {
+        if (settings.cooldownsMigrated) return settings to false
+        val migrated = migrateLegacyCooldowns(settings)
+        return migrated.copy(cooldownsMigrated = true) to true
+    }
     private fun migrateLegacyCooldowns(settings: AppSettings): AppSettings {
         val legacy = setOf(60_000L, 120_000L, 300_000L)
         var changed = false
@@ -73,12 +90,16 @@ class SettingsStore(
         if (cb.password.isNotEmpty()) {
             secrets.write(cloudBackupSecretKey(), cb.password)
         }
-        pruneRemovedChannelSecrets(settings)
-        for (c in settings.channelConfigs) {
+        // Never-configured placeholder accounts are dropped from the blob.
+        // Pruning against the filtered ids also wipes any lingering secret
+        // of a placeholder the user emptied after configuring.
+        val live = settings.channelConfigs.filterNot { it.isPristinePlaceholder() }
+        pruneRemovedChannelSecrets(live.map { it.id }.toSet())
+        for (c in live) {
             persistChannelSecrets(c)
         }
         val sanitized = settings.copyWith(
-            channelConfigs = settings.channelConfigs.map { c ->
+            channelConfigs = live.map { c ->
                 c.copyWith(settingsJson = stripSecrets(c))
             },
             liveView = lv.copy(password = ""),
@@ -90,15 +111,32 @@ class SettingsStore(
     /** Raw persisted blob (tests/diagnostics). */
     suspend fun rawJson(): String? = dataStore.data.first()[KEY]
 
+    /** Stashed corrupt blob from the last failed parse, if any. */
+    suspend fun corruptBackupJson(): String? = dataStore.data.first()[CORRUPT_BACKUP_KEY]
+
     /** Seeds the raw blob directly, bypassing secret-stripping (test hook,
      * mirrors Dart's SharedPreferences.setMockInitialValues). */
     suspend fun seedRaw(settings: AppSettings) {
         dataStore.edit { it[KEY] = mapToJsonString(settings.toJson()) }
     }
 
+    /** Seeds a literal blob string (test hook for legacy shapes that current
+     * serializers can no longer produce, e.g. inline passwords). */
+    suspend fun seedRawJson(json: String) {
+        dataStore.edit { it[KEY] = json }
+    }
+
     private suspend fun tryParse(raw: String): AppSettings = try {
         AppSettings.fromJson(jsonStringToMap(raw))
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        // A corrupt blob used to reset to defaults silently, destroying the
+        // only copy of the user's config. Log the failure with the blob size
+        // and stash the raw text under a backup key before falling back, so
+        // the data survives for diagnosis/recovery.
+        android.util.Log.w("SettingsStore", "settings blob corrupt (${raw.length} chars); using defaults", e)
+        runCatching {
+            dataStore.edit { it[CORRUPT_BACKUP_KEY] = raw }
+        }
         AppSettings.defaults()
     }
 
@@ -139,34 +177,34 @@ class SettingsStore(
 
     private fun liveViewSecretKey(): String = "liveview.password"
 
-    private suspend fun injectLiveViewSecret(settings: AppSettings): AppSettings {
+    private suspend fun injectLiveViewSecret(settings: AppSettings): Pair<AppSettings, Boolean> {
         val lv = settings.liveView
         val inline = lv.password
         if (inline.isNotEmpty()) {
             secrets.write(liveViewSecretKey(), inline)
-            return settings
+            return settings to true
         }
         val stored = secrets.read(liveViewSecretKey())
         if (!stored.isNullOrEmpty()) {
-            return settings.copyWith(liveView = lv.copy(password = stored))
+            return settings.copyWith(liveView = lv.copy(password = stored)) to false
         }
-        return settings
+        return settings to false
     }
 
     private fun cloudBackupSecretKey(): String = "cloudbackup.password"
 
-    private suspend fun injectCloudBackupSecret(settings: AppSettings): AppSettings {
+    private suspend fun injectCloudBackupSecret(settings: AppSettings): Pair<AppSettings, Boolean> {
         val cb = settings.cloudBackup
         val inline = cb.password
         if (inline.isNotEmpty()) {
             secrets.write(cloudBackupSecretKey(), inline)
-            return settings
+            return settings to true
         }
         val stored = secrets.read(cloudBackupSecretKey())
         if (!stored.isNullOrEmpty()) {
-            return settings.copyWith(cloudBackup = cb.copy(password = stored))
+            return settings.copyWith(cloudBackup = cb.copy(password = stored)) to false
         }
-        return settings
+        return settings to false
     }
 
     /**
@@ -197,15 +235,11 @@ class SettingsStore(
      * config without its secret. Deleting unknown keys is a no-op, so the
      * union over all known secret fields is safe.
      */
-    private suspend fun pruneRemovedChannelSecrets(next: AppSettings) {
+    private suspend fun pruneRemovedChannelSecrets(nextIds: Set<String>) {
         val raw = dataStore.data.first()[KEY] ?: return
-        val prev = try {
-            tryParse(raw)
-        } catch (_: Exception) {
-            return
-        }
-        val removed = prev.channelConfigs.map { it.id }.toSet() -
-            next.channelConfigs.map { it.id }.toSet()
+        // Raw blob ids — not tryParse, whose placeholder filter would hide
+        // the very ids being pruned.
+        val removed = rawChannelIds(raw) - nextIds
         if (removed.isEmpty()) return
         val secretFields = ChannelRegistry.factories.keys.flatMapTo(mutableSetOf()) { type ->
             runCatching { ChannelRegistry.buildChannelSettings(type, emptyMap()) }
@@ -218,19 +252,44 @@ class SettingsStore(
         }
     }
 
-    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {        val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
+    /** Channel ids straight from the persisted blob (no placeholder filtering). */
+    private fun rawChannelIds(raw: String): Set<String> = try {
+        val ids = mutableSetOf<String>()
+        val arr = JSONObject(raw).optJSONArray("channelConfigs") ?: return emptySet()
+        for (i in 0 until arr.length()) {
+            arr.optJSONObject(i)?.optString("id")?.takeIf { it.isNotEmpty() }?.let(ids::add)
+        }
+        ids
+    } catch (_: Exception) {
+        emptySet()
+    }
+    private fun stripSecrets(config: ChannelConfig): Map<String, Any?> = try {
+        val typed = ChannelRegistry.buildChannelSettings(config.type, config.settingsJson)
         if (typed.secretFields.isEmpty()) {
             config.settingsJson
         } else {
             config.settingsJson.filterKeys { it !in typed.secretFields }
         }
     } catch (_: Exception) {
-        config.settingsJson
+        // Unknown type (forward-version data): the typed secret list is
+        // unavailable, so fail closed on secret-shaped keys rather than
+        // persisting a possible inline credential in plaintext.
+        android.util.Log.w(
+            "SettingsStore",
+            "stripping suspect keys for unknown channel type ${config.type}",
+        )
+        config.settingsJson.filterKeys { key ->
+            SUSPECT_SECRET_SUBSTRINGS.none { key.contains(it, ignoreCase = true) }
+        }
     }
 
     companion object {
         const val FILE_NAME = "settings"
         val KEY: Preferences.Key<String> = stringPreferencesKey("app_settings_v1")
+
+        /** Backup key holding the last corrupt blob seen by [tryParse]. */
+        val CORRUPT_BACKUP_KEY: Preferences.Key<String> =
+            stringPreferencesKey("app_settings_corrupt_backup")
 
         /**
          * Process-wide singleton keyed by file path: constructing multiple
@@ -253,6 +312,11 @@ class SettingsStore(
         }
 
         fun secretKey(channelId: String, field: String): String = "channel.$channelId.$field"
+
+        /** Key fragments treated as credentials when the channel type is unknown. */
+        private val SUSPECT_SECRET_SUBSTRINGS = listOf(
+            "password", "passwd", "secret", "token", "apikey", "passphrase", "privatekey",
+        )
 
         private fun jsonStringToMap(raw: String): Map<String, Any?> =
             jsonToAny(JSONObject(raw)) as Map<String, Any?>

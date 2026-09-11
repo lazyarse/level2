@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level2.event.DeletedMedia
 import io.securitycam.level2.event.RecordedEvent
 import java.time.Instant
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -156,5 +158,53 @@ class EventStoreTest {
         val rows = store.between(base.minusSeconds(1), base.plusSeconds(60), limit = 3)
 
         assertEquals(3, rows.size)
+    }
+
+    @Test
+    fun corruptTimestampRowIsSkippedNotFatal() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val store = RoomEventLog(db.eventDao())
+        store.record(event(base))
+        db.eventDao().insert(
+            EventEntity(
+                timestamp = "not-a-timestamp",
+                cameraName = "Hallway",
+                triggerType = "motion",
+                score = 0.1,
+                snapshotName = null,
+                videoName = null,
+                channelStatuses = null,
+                triggerTypes = null,
+            ),
+        )
+
+        val rows = store.recent()
+
+        assertEquals(1, rows.size)
+        assertEquals(base, rows.single().timestamp)
+    }
+
+    @Test
+    fun concurrentFlipsForDifferentChannelsBothLand() = runBlocking {
+        val store = log()
+        val id = store.record(event(base))
+
+        kotlinx.coroutines.coroutineScope {
+            val a = async {
+                repeat(20) { store.flipChannelStatus(id, "email", "delivered") }
+            }
+            val b = async {
+                repeat(20) { store.flipChannelStatus(id, "telegram", "delivered") }
+            }
+            a.await()
+            b.await()
+        }
+
+        val row = store.recent().single()
+        assertEquals("delivered", row.channelStatuses["email"])
+        assertEquals("delivered", row.channelStatuses["telegram"])
     }
 }

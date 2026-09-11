@@ -79,3 +79,18 @@ data class ChannelDeliveryResult(
     val channelId: String,
     val status: String,
 )
+
+/**
+ * True for never-configured placeholder accounts: one of the multi-account
+ * types, disabled, unlabeled, with no real settings (webhook allows a lone
+ * preset key — the shape of the old shipped `discord` default). Fresh
+ * installs no longer ship these, and loads/saves drop them so legacy empty
+ * cards disappear. Anything the user touched (enabled, labelled, or holding
+ * settings) is kept.
+ */
+internal fun ChannelConfig.isPristinePlaceholder(): Boolean {
+    if (type !in setOf("email", "telegram", "pushover", "webhook")) return false
+    if (enabled || label.isNotBlank()) return false
+    if (settingsJson.isEmpty()) return true
+    return type == "webhook" && settingsJson.keys.all { it == "preset" }
+}

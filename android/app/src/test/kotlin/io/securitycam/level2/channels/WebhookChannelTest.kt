@@ -271,9 +271,86 @@ class WebhookChannelTest {
             "ntfy topic is missing from the URL",
             WebhookChannel(id = "w", settings = WebhookChannelSettings(preset = "ntfy", url = "https://ntfy.sh")).validate(),
         )
+        assertEquals(
+            "ntfy topic is missing from the URL",
+            WebhookChannel(id = "w", settings = WebhookChannelSettings(preset = "ntfy", url = "https://ntfy.sh/")).validate(),
+        )
         assertNull(
             WebhookChannel(id = "w", settings = WebhookChannelSettings(preset = "ntfy", url = "https://ntfy.sh/mytopic")).validate(),
         )
+    }
+
+    @Test
+    fun discordAcceptsQuerySuffixes() {
+        assertNull(
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(
+                    preset = "discord",
+                    url = "https://discord.com/api/webhooks/12345/abcdefghijk?wait=true",
+                ),
+            ).validate(),
+        )
+        assertNull(
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(
+                    preset = "discord",
+                    url = "https://ptb.discord.com/api/webhooks/12345/abc-def_1?thread_id=99",
+                ),
+            ).validate(),
+        )
+    }
+
+    @Test
+    fun slackAcceptsRealTokenShapes() {
+        assertNull(
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(
+                    preset = "slack",
+                    url = "https://hooks.slack.com/services/TABC12345/BDEF67890/XyZ12_ab-CD34",
+                ),
+            ).validate(),
+        )
+    }
+
+    @Test
+    fun teamsAcceptsWorkflowUrls() {
+        assertNull(
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(
+                    preset = "teams",
+                    url = "https://prod-12.westus.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?api-version=2016-06-01",
+                ),
+            ).validate(),
+        )
+        assertNull(
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(
+                    preset = "teams",
+                    url = "https://example.webhook.office.com/webhookbot/xxx",
+                ),
+            ).validate(),
+        )
+    }
+
+    @Test
+    fun sendTrimsSurroundingWhitespaceFromUrl() = runBlocking {
+        val server = serverWith(code = 200, body = "{}")
+        try {
+            channel(
+                preset = "custom",
+                url = "https://example.com/hook ",
+                mockBase = server.url("/").toString(),
+            ).send(message())
+            assertEquals(1, server.requestCount)
+            assertEquals("/hook", server.takeRequest().path)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test

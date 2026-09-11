@@ -206,6 +206,42 @@ class SettingsTest {
     }
 
     @Test
+    fun fromJsonDropsPristinePlaceholderAccounts() {
+        val restored = AppSettings.fromJson(
+            jsonOf(
+                "channelConfigs" to listOf(
+                    mapOf("id" to "log", "type" to "log", "enabled" to true),
+                    mapOf("id" to "telegram", "type" to "telegram", "enabled" to false),
+                    mapOf("id" to "email", "type" to "email", "enabled" to false),
+                    mapOf(
+                        "id" to "discord",
+                        "type" to "webhook",
+                        "enabled" to false,
+                        "settings" to mapOf("preset" to "discord"),
+                    ),
+                    mapOf(
+                        "id" to "email-2",
+                        "type" to "email",
+                        "enabled" to false,
+                        "settings" to mapOf("host" to "smtp.example.com"),
+                    ),
+                    mapOf(
+                        "id" to "pushover",
+                        "type" to "pushover",
+                        "enabled" to false,
+                        "label" to "Work",
+                    ),
+                    mapOf("id" to "email-3", "type" to "email", "enabled" to true),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("log", "email-2", "pushover", "email-3"),
+            restored.channelConfigs.map { it.id },
+        )
+    }
+
+    @Test
     fun legacyJsonWithOnlyLogChannelStaysLogOnly() {
         val restored = AppSettings.fromJson(
             jsonOf(

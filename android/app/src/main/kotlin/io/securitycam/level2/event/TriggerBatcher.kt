@@ -54,6 +54,11 @@ class TriggerBatcher(
     @Volatile
     private var disposed = false
 
+    /** Batches dropped by DROP_OLDEST backpressure (diagnostics/tests). */
+    @Volatile
+    var droppedBatches: Long = 0
+        private set
+
     fun add(event: TriggerEvent) {
         if (disposed) return
         scope.launch {
@@ -102,8 +107,11 @@ class TriggerBatcher(
             // the reference; dispose() cancels a still-pending timer.
             timer = null
             if (pending.isEmpty()) return
-            batchOpenedAt = openedAt!!
             events = ArrayList(pending)
+            // Captured local: openedAt is set exactly when the first pending
+            // trigger arrives, but a null-safe fallback beats a !! crash if
+            // the invariant ever breaks (uses the batch's first trigger time).
+            batchOpenedAt = openedAt ?: events.first().timestamp
             snapshotFuture = pendingSnapshot
             videoFuture = pendingVideo
             pending.clear()
@@ -115,14 +123,32 @@ class TriggerBatcher(
         val videoName = videoFuture?.await()
         // A concurrent dispose() may have run while awaiting; drop the batch.
         if (disposed) return
-        batchFlow.tryEmit(TriggerBatch(batchOpenedAt, events, snapshot, videoName))
+        if (!batchFlow.tryEmit(TriggerBatch(batchOpenedAt, events, snapshot, videoName))) {
+            droppedBatches++
+            android.util.Log.w(
+                "TriggerBatcher",
+                "batch dropped under backpressure (total=$droppedBatches)",
+            )
+        }
     }
 
     suspend fun dispose() {
+        val snapshotFuture: Deferred<Snapshot?>?
+        val videoFuture: Deferred<String?>?
         mutex.withLock {
             disposed = true
             timer?.cancel()
             timer = null
+            snapshotFuture = pendingSnapshot
+            videoFuture = pendingVideo
+            pendingSnapshot = null
+            pendingVideo = null
+            pending.clear()
+            openedAt = null
         }
+        // Cancel in-flight captures so a stuck camera/export can't leak past
+        // disposal; flush() already snapshotted its futures above.
+        runCatching { snapshotFuture?.cancel() }
+        runCatching { videoFuture?.cancel() }
     }
 }

@@ -59,6 +59,12 @@ object VideoClipRecorder {
     private const val AUDIO_SAMPLE_RATE = 16_000
     private const val AUDIO_FRAME_SAMPLES = 1024
     private const val AUDIO_BIT_RATE = 48_000
+
+    /** AAC input dequeue timeout (µs): bounds the old zero-timeout busy-spin. */
+    internal const val INPUT_TIMEOUT_US = 10_000L
+
+    /** Max EOS input retries before failing the encode instead of looping forever. */
+    private const val MAX_EOS_SPINS = 500
     private val audioWindowSamples = 60_000L * AUDIO_SAMPLE_RATE / 1000L
     private val executor = Executors.newSingleThreadExecutor()
     private val exportExecutor = Executors.newSingleThreadExecutor()
@@ -232,13 +238,23 @@ object VideoClipRecorder {
     private fun startRingRecording() {
         val currentRecorder = recorder ?: return
         val dir = ringDir ?: return
+        val appContext = context ?: run {
+            Log.w(TAG, "ring start skipped: no application context")
+            return
+        }
         val file = File(dir, "seg-${System.currentTimeMillis()}.mp4")
         try {
             val options = androidx.camera.video.FileOutputOptions.Builder(file)
                 .setDurationLimitMillis(segmentMs)
                 .build()
+            // Drop the superseded ring-segment key: only the latest completed
+            // segment is retained, so stale wall-clock entries must not linger
+            // and poison the audio-alignment lookup.
+            ringSegment?.let { old ->
+                if (old.path != file.path) segmentStartWallMicros.remove(old.path)
+            }
             segmentStartWallMicros[file.path] = wallMicros()
-            ringRecording = currentRecorder.prepareRecording(context!!, options)
+            ringRecording = currentRecorder.prepareRecording(appContext, options)
                 .start(executor) { event -> handleRingEvent(event, file) }
         } catch (e: Exception) {
             Log.w(TAG, "ring start failed", e)
@@ -289,6 +305,11 @@ object VideoClipRecorder {
                 startPostRollRecording()
             }
             else -> {
+                // Superseded ring segment: evict its wall-clock key so the
+                // audio-alignment map only ever references the live segment.
+                ringSegment?.let { old ->
+                    if (old.path != file.path) segmentStartWallMicros.remove(old.path)
+                }
                 ringSegment = file
                 if (active) startRingRecording()
             }
@@ -337,6 +358,11 @@ object VideoClipRecorder {
     private fun startPostRollRecording() {
         val currentRecorder = recorder ?: run { failExport(); return }
         val dir = ringDir ?: run { failExport(); return }
+        val appContext = context ?: run {
+            Log.w(TAG, "post-roll start skipped: no application context")
+            failExport()
+            return
+        }
         val file = File(dir, "post-${System.currentTimeMillis()}.mp4")
         postRollPending = true
         try {
@@ -344,7 +370,7 @@ object VideoClipRecorder {
                 .setDurationLimitMillis(postRollMs)
                 .build()
             segmentStartWallMicros[file.path] = wallMicros()
-            postRecording = currentRecorder.prepareRecording(context!!, options)
+            postRecording = currentRecorder.prepareRecording(appContext, options)
                 .start(executor) { event ->
                     if (event is VideoRecordEvent.Finalize) {
                         postRecording = null
@@ -474,7 +500,8 @@ object VideoClipRecorder {
         dir.listFiles()?.forEach { file ->
             if (file.name.startsWith("seg-") ||
                 file.name.startsWith("post-") ||
-                file.name.startsWith("final-")
+                file.name.startsWith("final-") ||
+                file.name.startsWith("stamped-")
             ) {
                 file.delete()
             }
@@ -489,6 +516,14 @@ object VideoClipRecorder {
             }
         }
     }
+
+    /**
+     * samples*2 clamped to Int range for ByteArray sizing (a multi-minute
+     * window can never exceed it in practice, but a corrupt timeline must not
+     * wrap to a negative size and crash the export thread).
+     */
+    internal fun clampSamplesToBytes(samples: Long): Int =
+        (samples.coerceIn(0L, Int.MAX_VALUE / 2L) * 2L).toInt()
 
     /** Shared date-time-cameraName scheme (mirrors Dart `mediaFileName`). */
     internal fun videoFileName(triggerAtMs: Long, camName: String): String {
@@ -523,8 +558,9 @@ object VideoClipRecorder {
             val prefixSamples = maxOf(0L, -rawStartSample)
             val slice = audioPcm.slice(startSample, endSample)
             if (slice.isNotEmpty() || prefixSamples > 0L) {
-                val combined = ByteArray(slice.size + (prefixSamples * 2).toInt())
-                System.arraycopy(slice, 0, combined, (prefixSamples * 2).toInt(), slice.size)
+                val prefixBytes = clampSamplesToBytes(prefixSamples)
+                val combined = ByteArray(slice.size + prefixBytes)
+                System.arraycopy(slice, 0, combined, prefixBytes, slice.size)
                 val t1 = SystemClock.elapsedRealtime()
                 audio = try {
                     encodeAac(combined)
@@ -578,7 +614,9 @@ object VideoClipRecorder {
     private fun videoDurationUs(inputs: List<File>): Long {
         var totalUs = 0L
         for (input in inputs) {
-            var lastSampleTimeUs = 0L
+            var firstSampleTimeUs = -1L
+            var lastSampleTimeUs = -1L
+            var sampleCount = 0L
             val extractor = MediaExtractor()
             try {
                 extractor.setDataSource(input.path)
@@ -598,14 +636,16 @@ object VideoClipRecorder {
                     if (size < 0) break
                     val sampleTime = extractor.sampleTime
                     if (sampleTime < 0) break
+                    if (firstSampleTimeUs < 0) firstSampleTimeUs = sampleTime
                     lastSampleTimeUs = sampleTime
+                    sampleCount++
                     extractor.advance()
                 }
             } finally {
                 extractor.release()
             }
-            if (lastSampleTimeUs > 0L) {
-                totalUs += lastSampleTimeUs
+            if (lastSampleTimeUs >= 0 && firstSampleTimeUs >= 0) {
+                totalUs += concatSegmentDurationUs(firstSampleTimeUs, lastSampleTimeUs, sampleCount)
             } else {
                 val retriever = MediaMetadataRetriever()
                 try {
@@ -657,7 +697,9 @@ object VideoClipRecorder {
                 }
                 if (srcTrack < 0) continue
                 extractor.selectTrack(srcTrack)
-                var lastSampleTimeUs = 0L
+                var firstSampleTimeUs = -1L
+                var lastSampleTimeUs = -1L
+                var sampleCount = 0L
                 val buffer = ByteBuffer.allocate(256 * 1024)
                 val bufferInfo = MediaCodec.BufferInfo()
                 while (true) {
@@ -665,21 +707,23 @@ object VideoClipRecorder {
                     if (size < 0) break
                     val sampleTime = extractor.sampleTime
                     if (sampleTime < 0) break
+                    if (firstSampleTimeUs < 0) firstSampleTimeUs = sampleTime
                     lastSampleTimeUs = sampleTime
+                    sampleCount++
                     bufferInfo.offset = 0
                     bufferInfo.size = size
-                    bufferInfo.presentationTimeUs = sampleTime + offsetUs
+                    bufferInfo.presentationTimeUs = sampleTime - firstSampleTimeUs.coerceAtLeast(0L) + offsetUs
                     bufferInfo.flags = extractor.sampleFlags
                     muxer.writeSampleData(trackIndex, buffer, bufferInfo)
                     extractor.advance()
                 }
-                if (lastSampleTimeUs > 0L) {
-                    offsetUs += lastSampleTimeUs
+                offsetUs += if (lastSampleTimeUs >= 0 && firstSampleTimeUs >= 0) {
+                    concatSegmentDurationUs(firstSampleTimeUs, lastSampleTimeUs, sampleCount)
                 } else {
                     val retriever = MediaMetadataRetriever()
                     try {
                         retriever.setDataSource(input.path)
-                        offsetUs += (retriever.extractMetadata(
+                        (retriever.extractMetadata(
                             MediaMetadataRetriever.METADATA_KEY_DURATION
                         )?.toLongOrNull() ?: 0L) * 1000L
                     } finally {
@@ -692,9 +736,20 @@ object VideoClipRecorder {
         }
     }
 
+    /**
+     * Segment duration from first/last PTS plus one mean frame interval.
+     * Segments each start their own PTS timeline (often near 0 with
+     * overlapping ranges), so summing raw last-sample times double-counts;
+     * re-basing on (last − first + delta) keeps the concat monotonic.
+     */
+    internal fun concatSegmentDurationUs(firstUs: Long, lastUs: Long, sampleCount: Long): Long {
+        if (lastUs < firstUs || sampleCount <= 0) return 0L
+        val delta = if (sampleCount > 1) (lastUs - firstUs) / (sampleCount - 1) else 0L
+        return (lastUs - firstUs) + delta.coerceAtLeast(0L)
+    }
+
     /** AAC-LC encoded frames for a mono s16le [pcm] slice, PTS from 0. */
-    private fun encodeAac(pcm: ByteArray): AacFrames {
-        val frameBytes = AUDIO_FRAME_SAMPLES * 2
+    private fun encodeAac(pcm: ByteArray): AacFrames {        val frameBytes = AUDIO_FRAME_SAMPLES * 2
         val rate = AUDIO_SAMPLE_RATE
         val codec = MediaCodec.createEncoderByType("audio/mp4a-latm")
         val format = MediaFormat.createAudioFormat("audio/mp4a-latm", rate, 1)
@@ -745,11 +800,14 @@ object VideoClipRecorder {
                     codec.releaseOutputBuffer(outIndex, false)
                 }
             }
-            // Feed all frames (non-blocking), draining opportunistically; the
-            // encoder pipelines asynchronously so this avoids per-frame timeouts.
+            // Feed all frames with a bounded input timeout, draining
+            // opportunistically; the encoder pipelines asynchronously. The old
+            // dequeueInputBuffer(0) busy-spun when the codec was saturated.
+            var starveSpins = 0
             while (feedIdx < totalFrames) {
-                val inputIndex = codec.dequeueInputBuffer(0)
+                val inputIndex = codec.dequeueInputBuffer(INPUT_TIMEOUT_US)
                 if (inputIndex >= 0) {
+                    starveSpins = 0
                     val input = codec.getInputBuffer(inputIndex)!!
                     input.clear()
                     val start = feedIdx * frameBytes
@@ -761,17 +819,31 @@ object VideoClipRecorder {
                     if (len < frameBytes) input.put(pad, 0, frameBytes - len)
                     codec.queueInputBuffer(inputIndex, 0, frameBytes, 0L, 0)
                     feedIdx++
+                } else {
+                    // Codec saturated: back off briefly instead of spinning.
+                    if (++starveSpins % 50 == 0) {
+                        Log.w(TAG, "AAC encoder input starved ($starveSpins spins)")
+                    }
+                    try {
+                        Thread.sleep(1)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw IllegalStateException("AAC encode interrupted")
+                    }
                 }
                 drain()
             }
             var eosQueued = false
+            var eosSpins = 0
             while (!eosQueued) {
-                val eosIndex = codec.dequeueInputBuffer(0)
+                val eosIndex = codec.dequeueInputBuffer(INPUT_TIMEOUT_US)
                 if (eosIndex >= 0) {
                     codec.queueInputBuffer(
                         eosIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM
                     )
                     eosQueued = true
+                } else if (++eosSpins > MAX_EOS_SPINS) {
+                    throw IllegalStateException("AAC encoder never freed an input for EOS")
                 }
                 drain()
             }
@@ -1045,7 +1117,8 @@ private class AudioPcmBuffer(
 
     fun slice(startSample: Long, endSample: Long): ByteArray {
         if (endSample <= startSample) return ByteArray(0)
-        val out = ByteArray(((endSample - startSample) * 2).toInt())
+        val lengthSamples = (endSample - startSample).coerceIn(0L, Int.MAX_VALUE / 2L)
+        val out = ByteArray((lengthSamples * 2L).toInt())
         synchronized(lock) {
             for (chunk in chunks) {
                 if (chunk.startSample >= endSample) break
@@ -1053,12 +1126,15 @@ private class AudioPcmBuffer(
                 if (chunkEnd <= startSample) continue
                 val from = maxOf(chunk.startSample, startSample)
                 val to = minOf(chunkEnd, endSample)
-                val byteOffset = ((from - chunk.startSample) * 2).toInt()
-                val byteLen = ((to - from) * 2).toInt()
-                val outAbsStart = from - startSample
+                val byteOffset = ((from - chunk.startSample).coerceIn(0L, Int.MAX_VALUE / 2L) * 2L).toInt()
+                    .coerceIn(0, chunk.pcm.size)
+                val byteLen = ((to - from).coerceIn(0L, Int.MAX_VALUE / 2L) * 2L).toInt()
+                    .coerceIn(0, chunk.pcm.size - byteOffset)
+                val outByteOffset = ((from - startSample).coerceIn(0L, Int.MAX_VALUE / 2L) * 2L).toInt()
+                if (outByteOffset + byteLen > out.size) continue
                 System.arraycopy(
                     chunk.pcm, byteOffset,
-                    out, (outAbsStart * 2).toInt(), byteLen,
+                    out, outByteOffset, byteLen,
                 )
             }
         }

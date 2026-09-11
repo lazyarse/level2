@@ -82,6 +82,10 @@ interface OutboxDao {
     /** Media references held by pending backup rows (retention pinning). */
     @Query("SELECT mediaPath FROM outbox WHERE kind = 'backup' AND mediaPath IS NOT NULL")
     suspend fun pendingBackupMediaPaths(): List<String>
+
+    /** Drops queued notification rows for events that no longer exist. */
+    @Query("DELETE FROM outbox WHERE kind = 'notify' AND eventId IN (:eventIds)")
+    suspend fun deleteNotifyForEvents(eventIds: List<Long>): Int
 }
 
 /** Minimal queue contract so drain logic is testable without Room. */
@@ -113,12 +117,31 @@ class OutboxStore(private val dao: OutboxDao) : OutboxQueue {
     /** File names pinned by pending backup rows (never retention-purged). */
     suspend fun pendingBackupFileNames(): Set<String> =
         dao.pendingBackupMediaPaths()
-            .map { it.substringAfterLast('/') }
+            .map(::normalizeMediaRef)
             .toSet()
+
+    /** Drops queued notification rows for purged events (no dangling retries). */
+    suspend fun deleteNotifyForEvents(eventIds: List<Long>): Int =
+        if (eventIds.isEmpty()) 0 else dao.deleteNotifyForEvents(eventIds)
 
     companion object {
         const val BATCH_SIZE = 20
 
         fun from(db: AppDatabase): OutboxStore = OutboxStore(db.outboxDao())
+
+        /**
+         * Normalizes a media reference to its bare file name for pin/match
+         * comparisons: strips the "clip:" MediaStore prefix (see
+         * MonitoringRuntime.CLIP_MEDIA_PREFIX, duplicated here to avoid a
+         * storage→monitor dependency) and any directory components (backup
+         * rows may hold absolute paths).
+         */
+        fun normalizeMediaRef(ref: String): String {
+            var base = ref
+            if (base.startsWith("clip:")) base = base.removePrefix("clip:")
+            base = base.substringAfterLast('/')
+            base = base.substringAfterLast('\\')
+            return base
+        }
     }
 }
