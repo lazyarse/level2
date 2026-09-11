@@ -408,4 +408,94 @@ class WebhookChannelTest {
         val fields = WebhookChannelSettings(preset = "ntfy", url = "x", bearerToken = "y").secretFields
         assertTrue(fields.containsAll(listOf("url", "bearerToken")))
     }
+
+    @Test
+    fun overlongTextIsEllipsizedToTheCap() {
+        assertEquals("hi", fitWebhookText("hi"))
+        assertEquals("x".repeat(2000), fitWebhookText("x".repeat(2000)))
+        val fitted = fitWebhookText("x".repeat(2500))
+        assertEquals(WebhookChannel.MAX_TEXT_CHARS, fitted.length)
+        assertTrue(fitted.endsWith("…"))
+    }
+
+    @Test
+    fun discordJsonContentIsTruncated() = runBlocking {
+        val server = serverWith(code = 200, body = "{}")
+        try {
+            channel(mockBase = server.url("/").toString())
+                .send(message().copy(text = "x".repeat(2500)))
+            assertTrue(server.takeRequest().body.readUtf8().contains("…"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun ntfyTextIsTruncated() = runBlocking {
+        val server = serverWith()
+        try {
+            channel(preset = "ntfy", url = "https://ntfy.sh/mytopic", mockBase = server.url("/").toString())
+                .send(message().copy(text = "x".repeat(2500)))
+            val body = server.takeRequest().body.readUtf8()
+            assertEquals(WebhookChannel.MAX_TEXT_CHARS, body.length)
+            assertTrue(body.endsWith("…"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun discordUploadServerErrorThrowsInsteadOfFallingBack() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(500).setBody("boom"))
+        server.start()
+        try {
+            var thrown: Throwable? = null
+            try {
+                channel(mockBase = server.url("/").toString()).send(message(snapshot = snapshot()))
+            } catch (t: IllegalStateException) {
+                thrown = t
+            }
+            assertTrue(thrown?.message.orEmpty().contains("Webhook failed (500)"))
+            assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun discordSanitizesAttachmentFilename() = runBlocking {
+        val server = serverWith(code = 200, body = "{}")
+        try {
+            val evil = Snapshot(
+                bytes = byteArrayOf(1, 2, 3),
+                mimeType = "image/png",
+                name = "a\"\r\nb.png",
+            )
+            channel(mockBase = server.url("/").toString()).send(message(snapshot = evil))
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("filename=\"ab.png\""))
+            assertFalse(body.contains("filename=\"a\""))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun validateRejectsUnknownPresetAndBodyStyle() {
+        assertEquals(
+            "Unknown webhook preset",
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(preset = "discord2", url = "https://example.com/hook"),
+            ).validate(),
+        )
+        assertEquals(
+            "Body style must be json or text",
+            WebhookChannel(
+                id = "w",
+                settings = WebhookChannelSettings(preset = "custom", url = "https://example.com/hook", bodyStyle = "xml"),
+            ).validate(),
+        )
+    }
 }

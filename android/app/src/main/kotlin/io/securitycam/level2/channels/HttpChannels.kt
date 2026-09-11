@@ -68,6 +68,13 @@ internal fun fitSnapshotForUpload(
 }
 
 /**
+ * Strips header metacharacters from attachment filenames (they derive from
+ * user-controlled camera names and land in a quoted-string).
+ */
+internal fun safeAttachmentName(name: String): String =
+    name.replace(Regex("[\\r\\n\"]"), "")
+
+/**
  * Writes [snapshot] to a temp file off-main, runs [block], deletes the file.
  * Replaces the copy-pasted create/write/try/finally-delete in each channel.
  */

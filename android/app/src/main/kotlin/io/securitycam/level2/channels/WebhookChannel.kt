@@ -74,17 +74,18 @@ class WebhookChannel(
     }
 
     private suspend fun sendDiscord(message: AlertMessage) {
+        val text = fitWebhookText(message.text)
         val snapshot = message.snapshot ?: run {
-            sendJson("content" to message.text)
+            sendJson("content" to text)
             return
         }
         withTempSnapshot(snapshot) { tmp ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("content", message.text)
+                .addFormDataPart("content", text)
                 .addFormDataPart(
                     "file",
-                    snapshot.name,
+                    safeAttachmentName(snapshot.name),
                     tmp.asRequestBody(safeMediaType(snapshot.mimeType)),
                 )
                 .build()
@@ -92,7 +93,15 @@ class WebhookChannel(
                 client.newCall(Request.Builder().url(endpoint).post(body).build()).execute()
             }
             response.use {
-                if (!it.isSuccessful) sendJson("content" to message.text)
+                if (!it.isSuccessful && it.code in 400..499) {
+                    // The server rejected the upload itself (bad webhook,
+                    // rejected file): degrade to text so the alert still
+                    // arrives. 5xx errors keep the photo for the outbox
+                    // retry path (mirrors PushoverChannel).
+                    sendJson("content" to text)
+                } else {
+                    check(it.isSuccessful) { "Webhook failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                }
             }
         }
     }
@@ -101,7 +110,7 @@ class WebhookChannel(
         val headers = mutableMapOf("content-type" to "text/plain")
         if (settings.bearerToken.isNotEmpty()) headers["Authorization"] = "Bearer ${settings.bearerToken}"
         if (settings.title.isNotEmpty()) headers["X-Title"] = settings.title
-        post(headers, message.text)
+        post(headers, fitWebhookText(message.text))
     }
 
     private suspend fun sendCustom(message: AlertMessage) {
@@ -146,9 +155,13 @@ class WebhookChannel(
     }
 
     override fun validate(): String? {
+        if (settings.preset !in webhookPresets) return "Unknown webhook preset"
         val url = settings.url.trim()
         if (url.isEmpty()) return "Webhook URL is required"
         if (!url.startsWith("https://")) return "Webhook URL must be https"
+        if (settings.preset == "custom" && settings.bodyStyle != "json" && settings.bodyStyle != "text") {
+            return "Body style must be json or text"
+        }
         when (settings.preset) {
             "discord" -> if (!DISCORD_REGEX.matches(url)) {
                 return "Webhook URL is not a valid Discord webhook URL"
@@ -168,6 +181,9 @@ class WebhookChannel(
     }
 
     companion object {
+        /** Hardening cap on outbound text (Discord rejects content past 2000 chars). */
+        const val MAX_TEXT_CHARS = 2000
+
         // ^https://(?:canary|ptb\.)?discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]+(\?.*)?$
         private val DISCORD_REGEX =
             Regex("^https://(?:canary|ptb\\.)?discord(?:app)?\\.com/api/webhooks/\\d+/[A-Za-z0-9_-]+(\\?[A-Za-z0-9_=&%\\-.]*)?\$")
@@ -180,3 +196,11 @@ class WebhookChannel(
             Regex("^https://([A-Za-z0-9.\\-]+\\.webhook\\.office\\.com/webhookbot/.+|[A-Za-z0-9.\\-]+\\.logic\\.azure\\.com(:\\d+)?/.+)\$")
     }
 }
+
+/**
+ * Fits alert text to the webhook cap: overlong text is rejected with an API
+ * error (which would retry forever), so ellipsize up-front.
+ */
+internal fun fitWebhookText(text: String): String =
+    if (text.length <= WebhookChannel.MAX_TEXT_CHARS) text
+    else text.take(WebhookChannel.MAX_TEXT_CHARS - 1) + "…"
