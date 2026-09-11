@@ -147,15 +147,6 @@ class ShellNavigationTest {
     private lateinit var backDispatcher: OnBackPressedDispatcher
 
     private fun settingsAppWithBack() {
-        val lifecycleOwner = object : LifecycleOwner {
-            val registry = LifecycleRegistry(this)
-            override val lifecycle: Lifecycle get() = registry
-        }
-        lifecycleOwner.registry.currentState = Lifecycle.State.RESUMED
-        val owner = object : OnBackPressedDispatcherOwner, LifecycleOwner by lifecycleOwner {
-            override val onBackPressedDispatcher = OnBackPressedDispatcher()
-        }
-        backDispatcher = owner.onBackPressedDispatcher
         val settingsFactory = viewModelFactory {
             initializer {
                 SettingsViewModel(
@@ -166,7 +157,7 @@ class ShellNavigationTest {
             }
         }
         compose.setContent {
-            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides owner) {
+            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides backOwner()) {
                 SecurityCamApp(settingsFactory = settingsFactory)
             }
         }
@@ -204,5 +195,71 @@ class ShellNavigationTest {
         compose.runOnIdle { backDispatcher.onBackPressed() }
         compose.waitForIdle()
         compose.onNodeWithText("Detection zones").assertDoesNotExist()
+    }
+
+    private class HangingCoordinator(app: android.app.Application) :
+        io.securitycam.level2.identity.FaceEnrollmentCoordinator(
+            store = io.securitycam.level2.identity.KnownFaceStore(
+                java.io.File(app.filesDir, "kf-hang-${System.nanoTime()}"),
+            ),
+            embedder = null,
+            faceFinder = io.securitycam.level2.identity.FaceFinder { null },
+            settingsLoader = { AppSettings() },
+            settingsSaver = { },
+        ) {
+        override suspend fun enroll(label: String): Result<io.securitycam.level2.core.KnownFace> {
+            kotlinx.coroutines.awaitCancellation()
+        }
+    }
+
+    @Test
+    fun systemBackCancelsEnrollment() {
+        val app = androidx.test.core.app.ApplicationProvider
+            .getApplicationContext<android.app.Application>()
+        val instances = mutableListOf<SettingsViewModel>()
+        val settingsFactory = viewModelFactory {
+            initializer {
+                SettingsViewModel(
+                    settingsLoader = { AppSettings() },
+                    settingsSaver = { },
+                    eventsClearer = { _ -> },
+                    enrollmentFactory = { _ -> HangingCoordinator(app) },
+                    cameraActive = { true },
+                ).also { instances.add(it) }
+            }
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides backOwner()) {
+                SecurityCamApp(settingsFactory = settingsFactory)
+            }
+        }
+        compose.waitForIdle()
+
+        compose.runOnIdle { instances.single().startEnrollment("Bob") }
+        compose.waitForIdle()
+        compose.onNodeWithText("Enrol face").assertIsDisplayed()
+
+        compose.runOnIdle { backDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Enrol face").assertDoesNotExist()
+        // Same path as the Cancel button: the job is cancelled and the
+        // ViewModel reports it (the snackbar host lives on the Settings
+        // screen, covered by the send-test snackbar test).
+        org.junit.Assert.assertEquals(
+            "Enrollment cancelled",
+            instances.single().message.value,
+        )
+    }
+
+    private fun backOwner(): OnBackPressedDispatcherOwner {
+        val lifecycleOwner = object : LifecycleOwner {
+            val registry = LifecycleRegistry(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        lifecycleOwner.registry.currentState = Lifecycle.State.RESUMED
+        return object : OnBackPressedDispatcherOwner, LifecycleOwner by lifecycleOwner {
+            override val onBackPressedDispatcher = OnBackPressedDispatcher()
+                .also { backDispatcher = it }
+        }
     }
 }

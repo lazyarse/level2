@@ -69,6 +69,9 @@ fun SecurityCamApp(
     // dismissed automatically when the enrollment finishes (label → null).
     val enrollingLabel by settingsViewModel.enrollingLabel.collectAsState()
     val enrollmentActive = enrollingLabel != null
+    // Same action as the enrollment screen's Cancel button: abandon the
+    // in-flight capture (teardown runs in its finally block).
+    BackHandler(enabled = enrollmentActive) { settingsViewModel.cancelEnrollment() }
     val enrollmentSessionLocal by settingsViewModel.enrollmentSessionLocal.collectAsState()
 
     // Apply screen orientation from settings.
