@@ -113,8 +113,6 @@ import io.securitycam.level2.channels.SirenChannelSettings
 import io.securitycam.level2.channels.TelegramChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.channels.webhookPresets
-import io.securitycam.level2.camera_service.CameraInfo
-import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
@@ -162,12 +160,12 @@ fun SettingsScreen(
         val current = viewModel.draft.filterNotNull().first()
         for (c in current.channelConfigs) {
             when (c.type) {
-                "telegram" -> TelegramChannelSettings.fromJson(c.settingsJson).let {
+                ChannelTypes.TELEGRAM -> TelegramChannelSettings.fromJson(c.settingsJson).let {
                     fields["${c.id}.token"] = it.botToken
                     fields["${c.id}.chat"] = it.chatId
                 }
 
-                "email" -> EmailChannelSettings.fromJson(c.settingsJson).let {
+                ChannelTypes.EMAIL -> EmailChannelSettings.fromJson(c.settingsJson).let {
                     fields["${c.id}.host"] = it.host
                     fields["${c.id}.port"] = it.port.toString()
                     fields["${c.id}.username"] = it.username
@@ -177,7 +175,7 @@ fun SettingsScreen(
                     fields["${c.id}.tls"] = if (it.useTls) "1" else ""
                 }
 
-                "webhook" -> WebhookChannelSettings.fromJson(c.settingsJson).let {
+                ChannelTypes.WEBHOOK -> WebhookChannelSettings.fromJson(c.settingsJson).let {
                     fields["${c.id}.preset"] = it.preset
                     fields["${c.id}.url"] = it.url
                     fields["${c.id}.token"] = it.bearerToken
@@ -185,13 +183,13 @@ fun SettingsScreen(
                     fields["${c.id}.bodystyle"] = it.bodyStyle
                 }
 
-                "pushover" -> PushoverChannelSettings.fromJson(c.settingsJson).let {
+                ChannelTypes.PUSHOVER -> PushoverChannelSettings.fromJson(c.settingsJson).let {
                     fields["${c.id}.appToken"] = it.appToken
                     fields["${c.id}.userKey"] = it.userKey
                     fields["${c.id}.sound"] = it.sound
                 }
 
-                "siren" -> SirenChannelSettings.fromJson(c.settingsJson).let {
+                ChannelTypes.SIREN -> SirenChannelSettings.fromJson(c.settingsJson).let {
                     fields["${c.id}.duration"] = it.durationSeconds.toString()
                     fields["${c.id}.volume"] = it.volume.toString()
                 }
@@ -275,13 +273,9 @@ fun SettingsScreen(
                                 )
                             },
                         )
-                        // CameraManager enumeration is IPC: keep it off the
-                        // composition's main thread.
-                        val cameras by produceState(emptyList<CameraInfo>(), ctx) {
-                            value = kotlinx.coroutines.withContext(
-                                kotlinx.coroutines.Dispatchers.IO
-                            ) { availableCameras(ctx) }
-                        }
+                        // Camera list comes from the ViewModel (loaded once off
+                        // the main thread); empty until enumeration finishes.
+                        val cameras by viewModel.availableCameras.collectAsState()
                         DropdownField(
                             label = "Camera",
                             selected = cameras.firstOrNull { it.id == current.cameraId }?.label
@@ -316,22 +310,22 @@ fun SettingsScreen(
                         CollapsibleSection(
                             "Notification Channels",
                             summary = run {
-                                val nonLog = current.channelConfigs.filter { it.type != "log" }
+                                val nonLog = current.channelConfigs.filter { it.type != ChannelTypes.LOG }
                                 val active = nonLog.count { it.enabled }
                                 "$active/${nonLog.size} active"
                             },
                         ) {
-                            if (current.channelConfigs.none { it.type != "log" }) {
+                            if (current.channelConfigs.none { it.type != ChannelTypes.LOG }) {
                                 BodyText("No notification channels yet — add one below.")
                             }
                             // Email first: it's the primary alert channel. Stable sort
                             // keeps the stored relative order of everything else,
                             // regardless of the persisted blob order.
                             val orderedChannels = current.channelConfigs.sortedBy { config ->
-                                if (config.type == "email") 0 else 1
+                                if (config.type == ChannelTypes.EMAIL) 0 else 1
                             }
                             for (config in orderedChannels) {
-                                if (config.type != "log") {
+                                if (config.type != ChannelTypes.LOG) {
                                     ChannelCard(
                                         config = config,
                                         fields = fields,
@@ -652,22 +646,14 @@ fun SettingsScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    listOf("server" to "Server", "push" to "Push").forEach { (value, label) ->
-                                        val selected = current.liveView.mode == value
-                                        FilterChip(
-                                            selected = selected,
-                                            onClick = {
-                                                viewModel.update { it.copy(liveView = it.liveView.copy(mode = value)) }
-                                            },
-                                            label = { Text(label) },
-                                        )
-                                    }
-                                }
-                                if (current.liveView.mode == "server") {
+                                ChipRow(
+                                    options = listOf(LiveViewModes.SERVER to "Server", LiveViewModes.PUSH to "Push"),
+                                    selected = current.liveView.mode,
+                                    onSelect = { value ->
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(mode = value)) }
+                                    },
+                                )
+                                if (current.liveView.mode == LiveViewModes.SERVER) {
                                     if (current.liveView.username.isBlank() &&
                                         current.liveView.password.isBlank()
                                     ) {
@@ -765,7 +751,7 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                                if (current.liveView.mode == "push") {
+                                if (current.liveView.mode == LiveViewModes.PUSH) {
                                     Spacer(Modifier.height(8.dp))
                                     OutlinedTextField(
                                         value = current.liveView.relayUrl,
@@ -880,22 +866,15 @@ fun SettingsScreen(
                             }
                             if (current.cloudBackup.enabled) {
                                 Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    listOf("webdav" to "WebDAV", "s3" to "S3").forEach { (value, label) ->
-                                        FilterChip(
-                                            selected = current.cloudBackup.backend == value,
-                                            onClick = {
-                                                viewModel.update {
-                                                    it.copy(cloudBackup = it.cloudBackup.copy(backend = value))
-                                                }
-                                            },
-                                            label = { Text(label) },
-                                        )
-                                    }
-                                }
+                                ChipRow(
+                                    options = listOf(CloudBackends.WEBDAV to "WebDAV", CloudBackends.S3 to "S3"),
+                                    selected = current.cloudBackup.backend,
+                                    onSelect = { value ->
+                                        viewModel.update {
+                                            it.copy(cloudBackup = it.cloudBackup.copy(backend = value))
+                                        }
+                                    },
+                                )
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = current.cloudBackup.serverUrl,
@@ -903,11 +882,11 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(serverUrl = v)) }
                                     },
                                     label = {
-                                        Text(if (current.cloudBackup.backend == "s3") "Endpoint URL" else "Server URL")
+                                        Text(if (current.cloudBackup.backend == CloudBackends.S3) "Endpoint URL" else "Server URL")
                                     },
                                     placeholder = {
                                         Text(
-                                            if (current.cloudBackup.backend == "s3") {
+                                            if (current.cloudBackup.backend == CloudBackends.S3) {
                                                 "https://s3.eu-central-1.amazonaws.com"
                                             } else {
                                                 "https://cloud.example.com/remote.php/dav/files/me"
@@ -925,14 +904,14 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(bucketOrPath = v)) }
                                     },
                                     label = {
-                                        Text(if (current.cloudBackup.backend == "s3") "Bucket" else "Remote folder")
+                                        Text(if (current.cloudBackup.backend == CloudBackends.S3) "Bucket" else "Remote folder")
                                     },
                                     singleLine = true,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("cloudBackupBucket"),
                                 )
-                                if (current.cloudBackup.backend == "s3") {
+                                if (current.cloudBackup.backend == CloudBackends.S3) {
                                     OutlinedTextField(
                                         value = current.cloudBackup.region,
                                         onValueChange = { v ->
@@ -952,7 +931,7 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(username = v)) }
                                     },
                                     label = {
-                                        Text(if (current.cloudBackup.backend == "s3") "Access key ID" else "Username")
+                                        Text(if (current.cloudBackup.backend == CloudBackends.S3) "Access key ID" else "Username")
                                     },
                                     singleLine = true,
                                     modifier = Modifier
@@ -965,7 +944,7 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(cloudBackup = it.cloudBackup.copy(password = v)) }
                                     },
                                     label = {
-                                        Text(if (current.cloudBackup.backend == "s3") "Secret access key" else "Password")
+                                        Text(if (current.cloudBackup.backend == CloudBackends.S3) "Secret access key" else "Password")
                                     },
                                     visualTransformation = PasswordVisualTransformation(),
                                     singleLine = true,
@@ -1077,6 +1056,7 @@ fun SettingsScreen(
                                 },
                                 valueRange = 0f..30f,
                                 steps = 29,
+                                modifier = Modifier.testTag("mergeWindowSlider"),
                             )
                             BodyText(
                                 "Analysis stream resolution: higher = better far-face detection " +
@@ -1323,63 +1303,6 @@ private val KnownFaceSaver: Saver<KnownFace?, Any> = listSaver<KnownFace?, Any>(
     },
 )
 
-/** Builds channel configs from field state at save time (Dart `_save`). */
-internal fun buildChannelConfigs(
-    configs: List<io.securitycam.level2.core.ChannelConfig>,
-    fields: Map<String, String>,
-): List<io.securitycam.level2.core.ChannelConfig> = configs.map { c ->
-    fun f(key: String): String = fields["${c.id}.$key"] ?: ""
-    when (c.type) {
-        "telegram" -> c.copy(
-            settingsJson = TelegramChannelSettings(
-                botToken = f("token"),
-                chatId = f("chat"),
-            ).toJson(),
-        )
-
-        "email" -> c.copy(
-            settingsJson = EmailChannelSettings(
-                host = f("host").trim(),
-                port = f("port").trim().toIntOrNull() ?: 587,
-                username = f("username").trim(),
-                // Trimmed: copy-paste habitually trails whitespace, which the
-                // server rejects with a 535; no real password needs it.
-                password = f("password").trim(),
-                from = f("from").trim(),
-                to = f("to").trim(),
-                useTls = f("tls") == "1",
-            ).toJson(),
-        )
-
-        "webhook" -> c.copy(
-            settingsJson = WebhookChannelSettings(
-                preset = f("preset").ifEmpty { "custom" },
-                url = f("url").trim(),
-                bearerToken = f("token"),
-                title = f("title"),
-                bodyStyle = f("bodystyle").ifEmpty { "json" },
-            ).toJson(),
-        )
-
-        "pushover" -> c.copy(
-            settingsJson = PushoverChannelSettings(
-                appToken = f("appToken").trim(),
-                userKey = f("userKey").trim(),
-                sound = f("sound").trim(),
-            ).toJson(),
-        )
-
-        "siren" -> c.copy(
-            settingsJson = SirenChannelSettings(
-                durationSeconds = f("duration").toIntOrNull() ?: 15,
-                volume = f("volume").toFloatOrNull() ?: 0.8f,
-            ).toJson(),
-        )
-
-        else -> c
-    }
-}
-
 /** One recurring exclusion window: enable switch, day toggles, time steppers. */
 @Composable
 private fun ScheduleWindowCard(
@@ -1405,6 +1328,7 @@ private fun ScheduleWindowCard(
                 Switch(
                     checked = window.enabled,
                     onCheckedChange = { onChanged(window.copy(enabled = it)) },
+                    modifier = Modifier.testTag("scheduleWindowEnabled_${window.id}"),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1482,27 +1406,15 @@ private fun DetectorCard(
     onChanged: (DetectorConfig) -> Unit,
 ) {
     var expanded by rememberSaveable("detector_${config.type}") { mutableStateOf(false) }
-    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_detector_${config.type}")
-    Card(modifier = Modifier.padding(vertical = 4.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .padding(12.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .testTag("detectorHeader_${config.type}"),
-            ) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = if (expanded) "collapse_${config.type}" else "expand_${config.type}",
-                    modifier = Modifier.graphicsLayer { rotationZ = chevron },
-                )
-                Spacer(Modifier.width(8.dp))
+    ExpandableCard(
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        headerTestTag = "detectorHeader_${config.type}",
+        expandContentDescription = "expand_${config.type}",
+        collapseContentDescription = "collapse_${config.type}",
+        chevronLabel = "chevron_detector_${config.type}",
+        cardModifier = Modifier.padding(vertical = 4.dp),
+        headerContent = {
                 DetectorType.fromKey(config.type)?.let { dt ->
                     Icon(
                         dt.icon,
@@ -1523,10 +1435,14 @@ private fun DetectorCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    Switch(checked = config.enabled, onCheckedChange = { v -> onChanged(config.copy(enabled = v)) })
+                    Switch(
+                        checked = config.enabled,
+                        onCheckedChange = { v -> onChanged(config.copy(enabled = v)) },
+                        modifier = Modifier.testTag("detectorEnabled_${config.type}"),
+                    )
                 }
-            }
-            if (expanded) {
+            },
+        bodyContent = {
                 DetectorType.fromKey(config.type)?.hint?.let { hint ->
                     Text(
                         hint,
@@ -1581,6 +1497,7 @@ private fun DetectorCard(
                         canIncrement = true,
                         onDecrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames - 1)) },
                         onIncrement = { onChanged(config.copy(persistenceFrames = config.persistenceFrames + 1)) },
+                        modifier = Modifier.testTag("persistence_${config.type}"),
                     )
                     StepperRow(
                         label = "Cooldown: ${config.cooldown.toSeconds()}s",
@@ -1592,6 +1509,7 @@ private fun DetectorCard(
                         onIncrement = {
                             onChanged(config.copy(cooldown = config.cooldown.plusSeconds(15)))
                         },
+                        modifier = Modifier.testTag("cooldown_${config.type}"),
                     )
                 }
                 if (config.type == TriggerType.loitering) {
@@ -1660,9 +1578,8 @@ private fun DetectorCard(
                         Text(channelDisplayName(channel, channels))
                     }
                 }
-            }
-        }
-    }
+            },
+    )
 }
 
 private fun detectorLabel(type: String): String =
@@ -1699,33 +1616,19 @@ private fun ChannelCard(
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
     var confirmDelete by rememberSaveable("delete_${config.id}") { mutableStateOf(false) }
-    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_${config.id}")
     val name = channelDisplayName(config, siblings)
-    Card(
-        modifier = Modifier
+    ExpandableCard(
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        headerTestTag = "channelHeader_${config.id}",
+        expandContentDescription = "expand_${config.id}",
+        collapseContentDescription = "collapse_${config.id}",
+        chevronLabel = "chevron_${config.id}",
+        cardModifier = Modifier
             .padding(vertical = 4.dp)
             .testTag("channelCard_${config.id}"),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .testTag("channelHeader_${config.id}"),
-            ) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = if (expanded) "collapse_${config.id}" else "expand_${config.id}",
-                    modifier = Modifier.graphicsLayer { rotationZ = chevron },
-                )
-                Spacer(Modifier.width(8.dp))
+        contentSpacing = 8.dp,
+        headerContent = {
                 Icon(
                     channelIcon(config.type),
                     contentDescription = name,
@@ -1743,9 +1646,13 @@ private fun ChannelCard(
                         )
                     }
                 }
-                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
-            }
-            if (expanded) {
+                Switch(
+                    checked = config.enabled,
+                    onCheckedChange = onEnabledChange,
+                    modifier = Modifier.testTag("channelEnabled_${config.id}"),
+                )
+            },
+        bodyContent = {
                 ChannelBody(
                     config = config,
                     fields = fields,
@@ -1756,9 +1663,8 @@ private fun ChannelCard(
                     factories = factories,
                     testPreviewUrl = testPreviewUrl,
                 )
-            }
-        }
-    }
+            },
+    )
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -1810,18 +1716,18 @@ private fun ChannelBody(
             )
         }
         when (config.type) {
-                "telegram" -> {
-                    SecretField("Bot token", config.id, fields, "${config.id}.token", setField)
-                    Field("Chat ID", config.id, fields, "${config.id}.chat", setField)
+                ChannelTypes.TELEGRAM -> {
+                    ChannelTextField("Bot token", config.id, fields, "${config.id}.token", setField, isSecret = true)
+                    ChannelTextField("Chat ID", config.id, fields, "${config.id}.chat", setField)
                 }
 
-                "email" -> {
-                    Field("SMTP host", config.id, fields, "${config.id}.host", setField, KeyboardType.Email)
-                    NumberField("Port (587 or 465)", config.id, fields, "${config.id}.port", setField)
-                    Field("Username", config.id, fields, "${config.id}.username", setField, KeyboardType.Email)
-                    SecretField("Password / app password", config.id, fields, "${config.id}.password", setField)
-                    Field("From address", config.id, fields, "${config.id}.from", setField, KeyboardType.Email)
-                    Field("To address", config.id, fields, "${config.id}.to", setField, KeyboardType.Email)
+                ChannelTypes.EMAIL -> {
+                    ChannelTextField("SMTP host", config.id, fields, "${config.id}.host", setField, KeyboardType.Email)
+                    ChannelTextField("Port (587 or 465)", config.id, fields, "${config.id}.port", setField, KeyboardType.Number)
+                    ChannelTextField("Username", config.id, fields, "${config.id}.username", setField, KeyboardType.Email)
+                    ChannelTextField("Password / app password", config.id, fields, "${config.id}.password", setField, isSecret = true)
+                    ChannelTextField("From address", config.id, fields, "${config.id}.from", setField, KeyboardType.Email)
+                    ChannelTextField("To address", config.id, fields, "${config.id}.to", setField, KeyboardType.Email)
                     SwitchRow(
                         title = "Implicit TLS (SSL, port 465)",
                         subtitle = "Off for port 587 (STARTTLS — Ethereal, Gmail) · on for 465",
@@ -1830,8 +1736,8 @@ private fun ChannelBody(
                     )
                 }
 
-                "webhook" -> {
-                    val preset = fields["${config.id}.preset"]?.ifEmpty { "custom" } ?: "custom"
+                ChannelTypes.WEBHOOK -> {
+                    val preset = fields["${config.id}.preset"]?.ifEmpty { WebhookValues.CUSTOM } ?: WebhookValues.CUSTOM
                     DropdownField(
                         label = "Preset",
                         selected = preset,
@@ -1839,28 +1745,28 @@ private fun ChannelBody(
                         testTag = "webhookPreset_${config.id}",
                         onSelect = { p -> setField("${config.id}.preset", p) },
                     )
-                    SecretField("Webhook URL", config.id, fields, "${config.id}.url", setField)
-                    SecretField("Bearer token", config.id, fields, "${config.id}.token", setField)
-                    if (preset == "ntfy") {
-                        Field("Title", config.id, fields, "${config.id}.title", setField)
+                    ChannelTextField("Webhook URL", config.id, fields, "${config.id}.url", setField, isSecret = true)
+                    ChannelTextField("Bearer token", config.id, fields, "${config.id}.token", setField, isSecret = true)
+                    if (preset == WebhookValues.NTFY) {
+                        ChannelTextField("Title", config.id, fields, "${config.id}.title", setField)
                     }
-                    if (preset == "custom") {
+                    if (preset == WebhookValues.CUSTOM) {
                         SwitchRow(
                             title = "JSON body",
                             subtitle = "",
-                            checked = (fields["${config.id}.bodystyle"] ?: "json") == "json",
-                            onCheckedChange = { v -> setField("${config.id}.bodystyle", if (v) "json" else "text") },
+                            checked = (fields["${config.id}.bodystyle"] ?: WebhookValues.JSON) == WebhookValues.JSON,
+                            onCheckedChange = { v -> setField("${config.id}.bodystyle", if (v) WebhookValues.JSON else WebhookValues.TEXT) },
                         )
                     }
                 }
 
-                "pushover" -> {
-                    SecretField("App token", config.id, fields, "${config.id}.appToken", setField)
-                    SecretField("User key", config.id, fields, "${config.id}.userKey", setField)
-                    Field("Sound", config.id, fields, "${config.id}.sound", setField)
+                ChannelTypes.PUSHOVER -> {
+                    ChannelTextField("App token", config.id, fields, "${config.id}.appToken", setField, isSecret = true)
+                    ChannelTextField("User key", config.id, fields, "${config.id}.userKey", setField, isSecret = true)
+                    ChannelTextField("Sound", config.id, fields, "${config.id}.sound", setField)
                 }
 
-                "siren" -> {
+                ChannelTypes.SIREN -> {
                     val duration = (fields["${config.id}.duration"] ?: "15").toFloatOrNull() ?: 15f
                     Text("Duration: ${duration.toInt()} s")
                     Slider(
@@ -1919,25 +1825,13 @@ private fun ChannelBody(
                     modifier = Modifier.testTag("sendTestError_${config.id}"),
                 )
             }
-            if (config.type == "email" && testPreviewUrl != null) {
+            if (config.type == ChannelTypes.EMAIL && testPreviewUrl != null) {
                 TestPreviewRow(url = testPreviewUrl, channelId = config.id)
             }
     }
 }
 
 private typealias SetField = (String, String) -> Unit
-
-/**
- * Port check the channel validators don't see: [buildChannelConfigs] silently
- * falls back to 587 on garbage input, so flag it here instead. Null (or
- * blank, which also means 587) is fine.
- */
-internal fun emailPortError(channelId: String, fields: Map<String, String>): String? {
-    val raw = fields["$channelId.port"]?.trim().orEmpty()
-    if (raw.isEmpty()) return null
-    val port = raw.toIntOrNull()
-    return if (port == null || port !in 1..65535) "Port must be a number from 1 to 65535" else null
-}
 
 /**
  * Sandbox preview link from the last email test send (Ethereal.email caught
@@ -1975,54 +1869,40 @@ private fun TestPreviewRow(url: String, channelId: String) {
     }
 }
 
+/**
+ * Single channel text field replacing Field/NumberField/SecretField.
+ * Identical rendering/tags: non-secret uses autoCorrect=false (except Number,
+ * whose keyboard never autocorrects); secret adds the show/hide trailing icon.
+ */
 @Composable
-private fun Field(
+private fun ChannelTextField(
     label: String,
     channelId: String,
     fields: Map<String, String>,
     key: String,
     setField: SetField,
     keyboardType: KeyboardType = KeyboardType.Text,
+    isSecret: Boolean = false,
 ) {
-    OutlinedTextField(
-        value = fields[key] ?: "",
-        onValueChange = { setField(key, it) },
-        label = { Text(label) },
-        singleLine = true,
-        // Identifiers, never prose: autocorrect/autocaps would corrupt
-        // hostnames, usernames and addresses (e.g. capitalising an SMTP
-        // username → 535 auth rejection).
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, autoCorrect = false),
-        modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
-    )
-}
-
-@Composable
-private fun NumberField(
-    label: String,
-    channelId: String,
-    fields: Map<String, String>,
-    key: String,
-    setField: SetField,
-) {
-    OutlinedTextField(
-        value = fields[key] ?: "",
-        onValueChange = { setField(key, it) },
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
-    )
-}
-
-@Composable
-private fun SecretField(
-    label: String,
-    channelId: String,
-    fields: Map<String, String>,
-    key: String,
-    setField: SetField,
-) {
+    if (!isSecret) {
+        OutlinedTextField(
+            value = fields[key] ?: "",
+            onValueChange = { setField(key, it) },
+            label = { Text(label) },
+            singleLine = true,
+            // Identifiers, never prose: autocorrect/autocaps would corrupt
+            // hostnames, usernames and addresses (e.g. capitalising an SMTP
+            // username → 535 auth rejection). Number keyboards never
+            // autocorrect, so keep their default options unchanged.
+            keyboardOptions = if (keyboardType == KeyboardType.Number) {
+                KeyboardOptions(keyboardType = keyboardType)
+            } else {
+                KeyboardOptions(keyboardType = keyboardType, autoCorrect = false)
+            },
+            modifier = Modifier.fillMaxWidth().testTag(fieldTag(channelId, label)),
+        )
+        return
+    }
     var visible by rememberSaveable(key) { mutableStateOf(false) }
     OutlinedTextField(
         value = fields[key] ?: "",
@@ -2210,66 +2090,6 @@ private fun ScrollbarThumb(scrollState: ScrollState, modifier: Modifier = Modifi
     }
 }
 
-/** Channel types that support multiple accounts (add/delete in Settings). */
-private val multiAccountTypes = setOf("email", "telegram", "pushover", "webhook")
-
-/** Type glyph for channel cards (mirrors the DetectorCard title-icon pattern). */
-internal fun channelIcon(type: String): androidx.compose.ui.graphics.vector.ImageVector =
-    when (type) {
-        "email" -> Icons.Filled.Email
-        "telegram" -> Icons.Filled.Send
-        "webhook" -> Icons.Filled.Webhook
-        "pushover" -> Icons.Filled.Notifications
-        "siren" -> Icons.Filled.Campaign
-        "log" -> Icons.Filled.Terminal
-        else -> Icons.Filled.NotificationImportant
-    }
-
-/** Channel header display name: raw type ids rendered Title Case. */
-private fun channelTitle(type: String): String = type.split('_', ' ', '-')
-    .filter { it.isNotEmpty() }
-    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
-
-/**
- * Account display name: the custom label when set, else the type title with
- * a same-type index suffix past the first ("Email", "Email 2", …).
- */
-internal fun channelDisplayName(
-    config: io.securitycam.level2.core.ChannelConfig,
-    siblings: List<io.securitycam.level2.core.ChannelConfig>,
-): String {
-    if (config.label.isNotBlank()) return config.label
-    val index = siblings.filter { it.type == config.type }
-        .sortedBy { it.id }
-        .indexOfFirst { it.id == config.id }
-    val base = channelTitle(config.type)
-    return if (index <= 0) base else "$base ${index + 1}"
-}
-
-/** Next free account id for [type]: bare `<type>`, else `<type>-2`, `-3`, … */
-internal fun nextFreeChannelId(
-    type: String,
-    existingIds: Set<String>,
-): String {
-    if (type !in existingIds) return type
-    var n = 2
-    while ("$type-$n" in existingIds) n++
-    return "$type-$n"
-}
-
-/** Drops [channelId] from every detector's channel routes (account deletion). */
-internal fun pruneChannelFromDetectors(
-    detectors: Map<String, io.securitycam.level2.detection.DetectorConfig>,
-    channelId: String,
-): Map<String, io.securitycam.level2.detection.DetectorConfig> =
-    detectors.mapValues { (_, config) ->
-        if (channelId in config.routeToChannelIds) {
-            config.copy(routeToChannelIds = config.routeToChannelIds - channelId)
-        } else {
-            config
-        }
-    }
-
 /** Zones section summary: inclusion/exclusion counts. */
 private fun zonesSummary(settings: AppSettings): String {
     val inc = settings.detectionZones.size
@@ -2350,7 +2170,7 @@ private fun faceRecognitionSummary(settings: AppSettings): String {
 
 private fun cloudBackupSummary(cb: io.securitycam.level2.core.CloudBackupSettings): String {
     if (!cb.enabled) return "off"
-    val backend = if (cb.backend == "s3") "s3" else "webdav"
+    val backend = if (cb.backend == CloudBackends.S3) CloudBackends.S3 else CloudBackends.WEBDAV
     val kinds = buildList {
         if (cb.backupClips) add("clips")
         if (cb.backupSnapshots) add("snaps")
@@ -2360,7 +2180,7 @@ private fun cloudBackupSummary(cb: io.securitycam.level2.core.CloudBackupSetting
 
 private fun liveViewSummary(lv: LiveViewSettings): String {
     if (!lv.enabled) return "off"
-    return if (lv.mode == "server") {
+    return if (lv.mode == LiveViewModes.SERVER) {
         val auth = if (lv.username.isNotEmpty()) " auth" else " · no password"
         "server :${lv.port}$auth"
     } else {

@@ -192,6 +192,10 @@ object MonitoringServiceController {
      * [analysisExecutor] while CameraX callbacks (stills, recorder events) and
      * camera-control listeners run on [cameraExecutor], so a slow frame can
      * never starve capture/recorder callbacks (or vice versa).
+     *
+     * App-lifetime scope: the controller is a process-wide singleton and the
+     * camera can rebind on any session, so these executors are intentionally
+     * never shut down.
      */
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val cameraExecutor = Executors.newSingleThreadExecutor()

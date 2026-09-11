@@ -29,7 +29,6 @@ import org.json.JSONObject
 class SettingsStore(
     context: Context,
     private val secrets: SecretStore,
-    @Suppress("UNUSED_PARAMETER") scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
     private val dataStore = sharedDataStore(context)
 

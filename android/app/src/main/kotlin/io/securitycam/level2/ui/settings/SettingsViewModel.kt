@@ -12,6 +12,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.securitycam.level2.camera_service.MonitoringService
 import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.camera_service.VideoClipRecorder
+import io.securitycam.level2.camera_service.CameraInfo
+import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.KnownFace
@@ -35,9 +37,11 @@ import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
@@ -128,13 +132,21 @@ class SettingsViewModel(
         application?.let { KnownFaceStore(it) }
     }
 
+    /**
+     * Camera enumeration is IPC — loaded once off the main thread so the
+     * settings composition never blocks on CameraManager. Empty until loaded
+     * (and always empty in JVM unit tests where there is no app context).
+     */
+    private val _availableCameras = MutableStateFlow<List<CameraInfo>>(emptyList())
+    val availableCameras: StateFlow<List<CameraInfo>> = _availableCameras.asStateFlow()
+
     /** Thumbnail file for [faceId], or null when storage is unavailable. */
     fun thumbFile(faceId: String): File? =
-        application?.let { KnownFaceStore(it).thumbFileFor(faceId) }
+        faceStore?.thumbFileFor(faceId)
 
     /** Merged-sample count for [faceId] (photos folded into the centroid). */
     fun sampleCount(faceId: String): Int =
-        application?.let { KnownFaceStore(it).sampleCount(faceId) } ?: 0
+        faceStore?.sampleCount(faceId) ?: 0
 
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
@@ -143,6 +155,12 @@ class SettingsViewModel(
         viewModelScope.launch {
             _draft.value = settingsLoader()
             _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
+        }
+        viewModelScope.launch {
+            val app = application ?: return@launch
+            _availableCameras.value = withContext(Dispatchers.IO) {
+                runCatching { availableCameras(app.applicationContext) }.getOrDefault(emptyList())
+            }
         }
     }
 
@@ -500,7 +518,10 @@ class SettingsViewModel(
                 // tap leaked a native TFLite tensor arena per attempt until
                 // allocations failed. Kept separate from MonitoringRuntime's
                 // instance (interpreters aren't thread-safe across consumers).
+                // Same for the face store: one instance per ViewModel so
+                // thumb/sample lookups share the facesDir handle.
                 val enrollmentEmbedder = FaceEmbeddingEngine.load(app)
+                val sharedFaceStore = KnownFaceStore(app)
                 SettingsViewModel(
                     application = app,
                     settingsLoader = {
@@ -512,7 +533,7 @@ class SettingsViewModel(
                     eventsClearer = defaultEventsClearer(app),
                     enrollmentFactory = { onCapture ->
                         FaceEnrollmentCoordinator(
-                            store = KnownFaceStore(app),
+                            store = sharedFaceStore,
                             embedder = enrollmentEmbedder,
                             faceFinder = FaceEnrollmentCoordinator.busFinder(
                                 engineFactory = { MediaPipeFaceEngine(app) },

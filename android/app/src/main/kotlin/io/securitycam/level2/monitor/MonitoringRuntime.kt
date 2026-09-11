@@ -239,7 +239,7 @@ class MonitoringRuntime private constructor(
                 // Per-trigger guard: one bad trigger (batcher/collector bug)
                 // must not kill the collector for all future events.
                 runCatching {
-                    android.util.Log.i(TAG, "trigger type=${it.triggerType} score=${it.score}")
+                    android.util.Log.d(TAG, "trigger type=${it.triggerType} score=${it.score}")
                     _activeTriggerTypes.value = _activeTriggerTypes.value + it.triggerType
                     _triggerEvents.tryEmit(it)
                     batcher.add(it)
@@ -253,9 +253,9 @@ class MonitoringRuntime private constructor(
                 // Per-batch guard: one failing batch (channel crash, IO) must
                 // not end event recording for the rest of the session.
                 runCatching {
-                    android.util.Log.i(TAG, "batch emitted triggers=${it.triggers.size}")
+                    android.util.Log.d(TAG, "batch emitted triggers=${it.triggers.size}")
                     eventPipeline.handleBatch(it)
-                    android.util.Log.i(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
+                    android.util.Log.d(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
                     queueCloudBackups(it)
                 }.onFailure { t ->
                     android.util.Log.w(TAG, "batch handling failed", t)

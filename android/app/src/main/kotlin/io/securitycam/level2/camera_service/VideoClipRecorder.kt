@@ -66,6 +66,9 @@ object VideoClipRecorder {
     /** Max EOS input retries before failing the encode instead of looping forever. */
     private const val MAX_EOS_SPINS = 500
     private val audioWindowSamples = 60_000L * AUDIO_SAMPLE_RATE / 1000L
+    // App-lifetime scope: the recorder is a process-wide singleton serving
+    // every monitoring session, so these executors are intentionally never
+    // shut down.
     private val executor = Executors.newSingleThreadExecutor()
     private val exportExecutor = Executors.newSingleThreadExecutor()
 
@@ -1064,7 +1067,6 @@ object VideoClipRecorder {
             .setDataAndType(contentUri, "video/mp4")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         return try {
             appContext.startActivity(intent)
             null

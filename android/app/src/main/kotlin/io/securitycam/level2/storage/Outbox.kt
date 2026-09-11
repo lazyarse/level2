@@ -90,7 +90,7 @@ interface OutboxDao {
 
 /** Minimal queue contract so drain logic is testable without Room. */
 interface OutboxQueue {
-    suspend fun peekBatch(limit: Int = 20): List<OutboxEntity>
+    suspend fun peekBatch(limit: Int = OutboxStore.BATCH_SIZE): List<OutboxEntity>
     suspend fun markAttempted(id: Long, attempts: Int, lastAttemptAt: Long)
     suspend fun delete(id: Long)
 }
