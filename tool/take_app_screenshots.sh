@@ -9,6 +9,7 @@
 #   monitor  events  settings
 #   detectors  regions  face_recognition  channels  schedule
 #   video_clips  live_view  cloud_backup  events  advanced
+#   alert_log
 #
 # Env overrides:
 #   BUILD_TYPE   debug (default) | staging   APK to install
@@ -36,7 +37,8 @@
 set -uo pipefail
 
 ALL_TARGETS=(monitor events settings detectors regions face_recognition
-  channels schedule video_clips live_view cloud_backup events advanced)
+  channels schedule video_clips live_view cloud_backup events advanced
+  alert_log)
 
 SDK="${ANDROID_HOME:-/home/tpa/code/android-env/android-sdk}"
 ADB="$SDK/platform-tools/adb"
@@ -45,7 +47,7 @@ AVD_NAME="${AVD_NAME:-pixel_34_aosp}"
 
 # Parse args: first arg may be serial (emulator-*) or a target name.
 TARGETS=()
-if [ $# -gt 0 ] && [[ "$1" =~ ^(monitor|events|settings|detectors|regions|face_recognition|channels|schedule|video_clips|live_view|cloud_backup|advanced|all)$ ]]; then
+if [ $# -gt 0 ] && [[ "$1" =~ ^(monitor|events|settings|detectors|regions|face_recognition|channels|schedule|video_clips|live_view|cloud_backup|advanced|alert_log|all)$ ]]; then
   TARGETS=("$@")
 else
   SERIAL="${1:-${SERIAL:-emulator-5554}}"
@@ -464,6 +466,47 @@ for entry in "${SECTIONS[@]}"; do
     sleep 0.3
   fi
 done
+
+if want alert_log; then
+  echo "== capturing alert log viewer =="
+  tap_lowest text "Settings" || die "cannot tap Settings tab"
+  sleep 0.5
+  # Hunt for Advanced like the section loop: off-screen sections are
+  # absent from uiautomator dumps until scrolled into view.
+  found=""
+  for _ in $(seq 1 25); do
+    dump_ui || { scroll_down; sleep 0.5; continue; }
+    if bounds_of content-desc "expand_Advanced" >/dev/null ||
+       bounds_of content-desc "collapse_Advanced" >/dev/null; then
+      found=1; break
+    fi
+    scroll_down; sleep 0.5
+  done
+  [ -n "$found" ] || die "Advanced section never became visible"
+  if bounds_of content-desc "expand_Advanced" >/dev/null; then
+    tap_node content-desc "expand_Advanced" || die "cannot expand Advanced"
+    sleep 0.5
+  fi
+  # Hunt for the entry row inside expanded Advanced. The row text and the
+  # viewer title share "Alert log", but only the row exists at this point.
+  found=""
+  for _ in $(seq 1 25); do
+    dump_ui || { scroll_down; sleep 0.5; continue; }
+    if bounds_of text "Alert log" >/dev/null; then found=1; break; fi
+    scroll_down; sleep 0.5
+  done
+  [ -n "$found" ] || die "Alert log entry never became visible"
+  tap_node text "Alert log" || die "cannot open Alert log viewer"
+  # "Copy" exists only on the viewer (header action).
+  wait_for text "Copy" 15 || die "Alert log viewer did not appear"
+  sleep 0.5
+  shot "$WORK/full.png"
+  crop_png "$WORK/full.png" "$IMG_DIR/settings_alert_log.png" 0 0 "$W" "$NAV_TOP" || die "crop failed for alert log"
+  resize_half "$IMG_DIR/settings_alert_log.png"
+  echo "captured settings_alert_log.png"
+  tap_node content-desc "Back" || die "cannot leave Alert log viewer"
+  sleep 0.5
+fi
 
 generate_gallery() {
   python3 "$REPO_ROOT/tool/gallery_sync.py" "$IMG_DIR" "$GALLERY"

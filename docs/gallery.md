@@ -74,3 +74,8 @@ Event retention and clearing.
 
 Advanced diagnostics and maintenance actions.
 
+### Alert Log
+![Alert Log section](images/settings_alert_log.png)
+
+Alert log viewer with timestamped detector alert entries.
+

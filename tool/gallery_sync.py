@@ -35,6 +35,7 @@ SECTION_CAPTIONS = {
     "cloud_backup":    "Self-hosted backup of clips and snapshots.",
     "events":          "Event retention and clearing.",
     "advanced":        "Advanced diagnostics and maintenance actions.",
+    "alert_log":       "Alert log viewer with timestamped detector alert entries.",
 }
 
 HEADER = (
@@ -47,6 +48,7 @@ SCREEN_ORDER = ["monitor.png", "events.png", "settings.png"]
 SECTION_ORDER = [
     "detectors", "regions", "face_recognition", "channels", "schedule",
     "video_clips", "live_view", "cloud_backup", "events", "advanced",
+    "alert_log",
 ]
 
 IMG_RE = re.compile(r"!\[.*?\]\((images/\S+\.png)\)")
