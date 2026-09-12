@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.ui.events.EventsScreen
 import io.securitycam.level2.ui.events.EventsViewModel
 import io.securitycam.level2.ui.monitor.MonitorScreen
@@ -76,16 +75,10 @@ fun SecurityCamApp(
 
     // Apply screen orientation from settings.
     val activity = LocalContext.current as Activity
-    val settings by settingsViewModel.draft.collectAsState()
-    LaunchedEffect(settings?.screenOrientation) {
-        when (settings?.screenOrientation) {
-            ScreenOrientation.landscape ->
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            ScreenOrientation.sensor ->
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            else ->
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
+    LaunchedEffect(Unit) {
+        // The orientation setting governs capture only (see CameraRotations);
+        // the UI itself stays portrait.
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 
     Scaffold(
@@ -145,6 +138,8 @@ fun SecurityCamApp(
                     onClose = { showZoneEditor = false },
                     frameWidth = analysisDims.first,
                     frameHeight = analysisDims.second,
+                    captureOrientation = settingsViewModel.draft.value?.screenOrientation
+                        ?: io.securitycam.level2.core.ScreenOrientation.sensor,
                 )
             } else if (showAlertLog) {
                 AlertLogScreen(onClose = { showAlertLog = false })

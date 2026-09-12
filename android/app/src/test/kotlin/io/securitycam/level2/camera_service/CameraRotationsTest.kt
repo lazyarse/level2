@@ -1,40 +1,73 @@
 package io.securitycam.level2.camera_service
 
+import io.securitycam.level2.core.ScreenOrientation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * Pins the invariant that protects `bindToLifecycle()` from the 2026-08-23
- * regression: all use cases in a group must declare the SAME target rotation,
- * and every value must be a valid quarter-turn.
+ * Pins the units contract: CameraX takes surface constants (0..3) while the
+ * zone mapper works in degrees. Mixing them throws at bind time
+ * (`Unsupported surface rotation`, seen on-device 2026-09-12), so the two
+ * worlds convert exactly once per layer. Also pins the homogeneity invariant
+ * that protects `bindToLifecycle()` from the 2026-08-23 regression.
  */
 class CameraRotationsTest {
 
     @Test
-    fun allUseCasesShareTheDisplayRotation() {
-        for (display in listOf(0, 90, 180, 270)) {
-            val r = CameraRotations.resolve(display)
-            assertEquals(display, r.analysis)
-            assertEquals(r.analysis, r.preview)
-            assertEquals(r.analysis, r.capture)
-            assertEquals(r.analysis, r.video)
+    fun uniformSharesOneRotationAcrossUseCases() {
+        for (r in 0..3) {
+            val u = CameraRotations.uniform(r)
+            assertEquals(r, u.analysis)
+            assertEquals(r, u.preview)
+            assertEquals(r, u.capture)
+            assertEquals(r, u.video)
         }
     }
 
     @Test
-    fun rotationsAreValidQuarterTurns() {
-        for (display in listOf(-90, 0, 45, 90, 180, 270, 360, 810)) {
-            val r = CameraRotations.resolve(display)
-            assertTrue(
-                "analysis=$display not normalized",
-                r.analysis in CameraRotations.VALID,
+    fun uniformRejectsDegrees() {
+        try {
+            CameraRotations.uniform(90)
+            fail("degrees must not reach CameraX")
+        } catch (_: IllegalArgumentException) {
+            // Expected.
+        }
+    }
+
+    @Test
+    fun captureFollowsFixedModesAndPassesSensorThrough() {
+        for (display in 0..3) {
+            assertEquals(
+                0,
+                CameraRotations.resolveCapture(ScreenOrientation.portrait, display),
             )
-            // Snapping keeps the group uniform even for off-domain inputs
-            // (45 rounds up to 90).
-            assertEquals(r.analysis, r.preview)
-            assertEquals(r.analysis, r.capture)
-            assertEquals(r.analysis, r.video)
+            assertEquals(
+                1,
+                CameraRotations.resolveCapture(ScreenOrientation.landscape, display),
+            )
+            assertEquals(
+                display,
+                CameraRotations.resolveCapture(ScreenOrientation.sensor, display),
+            )
+        }
+        // Out-of-domain display values clamp into the valid constant range.
+        assertEquals(3, CameraRotations.resolveCapture("bogus", 45))
+        assertEquals(0, CameraRotations.resolveCapture("bogus", -1))
+    }
+
+    @Test
+    fun captureDegreesMatchOverlayExpectations() {
+        // The mapper consumes degrees: constant × 90 must be a valid turn.
+        for (display in 0..3) {
+            for (mode in ScreenOrientation.values) {
+                val degrees = CameraRotations.resolveCapture(mode, display) * 90
+                assertTrue(
+                    "mode=$mode display=$display -> $degrees",
+                    degrees in CameraRotations.VALID,
+                )
+            }
         }
     }
 

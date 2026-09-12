@@ -35,6 +35,7 @@ import androidx.lifecycle.LifecycleService
 import io.securitycam.level2.MainActivity
 import io.securitycam.level2.core.ClipStampPosition
 import io.securitycam.level2.core.LiveViewSettings
+import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.storage.EncryptedSecretStore
 import io.securitycam.level2.storage.SettingsStore
 import kotlinx.coroutines.runBlocking
@@ -233,6 +234,18 @@ object MonitoringServiceController {
 
     /** Camera id of the last successful preview-only bind (flip de-dup). */
     @Volatile private var boundPreviewCameraId: String? = null
+
+    /**
+     * Orientation mode the next bind films in (a [ScreenOrientation] value).
+     * Set explicitly on every session start (monitor/preview/enrollment/zone
+     * editor); defaults to sensor-follow (status quo ante). Volatile because
+     * binds happen on CameraX threads.
+     */
+    @Volatile var captureOrientation: String = ScreenOrientation.sensor
+
+    /** Capture rotation for the pending bind: setting-resolved, display-snapped. */
+    private fun captureRotation(service: Context): Int =
+        CameraRotations.resolveCapture(captureOrientation, displayRotation(service))
 
     // Bound Camera handle for zoom (net-new Phase 1.4).
     @Volatile private var boundCamera: Camera? = null
@@ -528,7 +541,7 @@ object MonitoringServiceController {
             cameraProvider = provider
             val selector = cameraSelectorFor(cameraId)
             try {
-                val rotation = displayRotation(service)
+                val rotation = captureRotation(service)
                 val preview = Preview.Builder()
                     .setTargetRotation(rotation)
                     .build()
@@ -903,10 +916,11 @@ object MonitoringServiceController {
             cameraProvider = provider
             val selector = cameraSelectorFor(cameraId)
             try {
-                val rotations = CameraRotations.resolve(displayRotation(service))
+                val rotations = CameraRotations.uniform(captureRotation(service))
                 Log.i(
                     TAG,
-                    "bindCamera rotations: display=${rotations.capture} " +
+                    "bindCamera rotations: capture=${rotations.capture * 90}° " +
+                        "mode=${captureOrientation} " +
                         "sensor=${sensorOrientation(service, cameraId)}",
                 )
                 val analysis = ImageAnalysis.Builder()

@@ -288,6 +288,10 @@ fun SettingsScreen(
                             testTag = "screenOrientationDropdown",
                             onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
                         )
+                        BodyText(
+                            "Controls how the camera films (the app interface stays portrait). " +
+                                "Takes effect when monitoring restarts.",
+                        )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             BodyText(
                                 "Threshold: confidence needed to detect · " +

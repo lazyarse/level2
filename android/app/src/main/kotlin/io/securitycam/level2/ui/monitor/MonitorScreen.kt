@@ -48,6 +48,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.securitycam.level2.camera_service.CameraRotations
 import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.monitor.MonitorState
@@ -65,6 +66,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val cameraLabel by viewModel.cameraLabel.collectAsStateWithLifecycle()
     val screenOrientationLabel by viewModel.screenOrientationLabel.collectAsStateWithLifecycle()
     val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
+    val captureOrientationMode by viewModel.captureOrientationMode.collectAsStateWithLifecycle()
     val detectionZones by viewModel.detectionZones.collectAsStateWithLifecycle()
     val exclusionZones by viewModel.exclusionZones.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
@@ -100,7 +102,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     // tests); rotation 0 is the safe fallback.
     val displayRotation = runCatching { LocalContext.current.display?.rotation }
         .getOrNull() ?: Surface.ROTATION_0
-    val rotationDegrees = when (displayRotation) {
+    val displayRotationDegrees = when (displayRotation) {
         Surface.ROTATION_90 -> 90
         Surface.ROTATION_180 -> 180
         Surface.ROTATION_270 -> 270
@@ -139,7 +141,14 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             }
             ZoneOverlay(
                 zones = detectionZones,
-                rotationDegrees = rotationDegrees,
+                // Capture rotation, not display rotation: zones are stored in
+                // analysis space and the stream films the setting's
+                // orientation while the UI stays portrait. resolveCapture
+                // yields a surface constant; the mapper works in degrees.
+                rotationDegrees = CameraRotations.resolveCapture(
+                    captureOrientationMode,
+                    displayRotationDegrees,
+                ) * 90,
                 modifier = Modifier.fillMaxSize(),
                 show = showZones,
                 exclusionZones = exclusionZones,

@@ -1,16 +1,23 @@
 package io.securitycam.level2.camera_service
 
+import io.securitycam.level2.core.ScreenOrientation
+
 /**
  * Single source of truth for the per-use-case target rotations handed to
  * CameraX.
  *
- * Regression guard (2026-08-23): an experiment fed divergent target rotations
- * (capture/video=90 while preview/analysis=0) into one UseCaseGroup; on some
- * HALs `bindToLifecycle()` then failed session configuration for BOTH retry
- * attempts — monitoring ran with the mic chip only and a black preview.
+ * Two unit systems meet here — keep them straight:
+ * - CameraX `setTargetRotation` takes **surface constants**
+ *   (`ROTATION_0`=0 … `ROTATION_270`=3); anything else (e.g. degrees like 90)
+ *   throws `IllegalArgumentException: Unsupported surface rotation`.
+ *   Verified on-device 2026-09-12.
+ * - [ZoneDisplayMapper] and the UI overlay work in **degrees**.
+ * Convert between them with `* 90` exactly once per layer.
  *
- * Invariant under test: every use case in the group shares ONE rotation
- * value, drawn from the live display rotation, each a valid quarter-turn.
+ * Regression guard (2026-08-23): an experiment fed divergent target rotations
+ * into one UseCaseGroup; on some HALs `bindToLifecycle()` then failed session
+ * configuration for BOTH retry attempts — monitoring ran with the mic chip
+ * only and a black preview. [uniform] keeps the group homogeneous.
  */
 data class UseCaseRotations(
     val analysis: Int,
@@ -23,18 +30,29 @@ object CameraRotations {
 
     val VALID: Set<Int> = setOf(0, 90, 180, 270)
 
-    /**
-     * [displayRotation] is the value CameraX expects for screen-relative
-     * outputs (preview/capture/video); analysis frames get their pixels
-     * rotated manually before publish ([FrameRotation]), but declaring the
-     * same target keeps the group's session configuration homogeneous.
-     */
-    fun resolve(displayRotation: Int): UseCaseRotations {
-        // Snap defensively to the nearest quarter-turn: an out-of-domain value
-        // (e.g. 45 from a misread display) must never reach CameraX.
-        val r = normalize(Math.round(displayRotation / 90f) * 90)
-        return UseCaseRotations(analysis = r, preview = r, capture = r, video = r)
+    /** Homogeneous group rotation: every use case shares one surface constant. */
+    fun uniform(surfaceRotation: Int): UseCaseRotations {
+        require(surfaceRotation in 0..3) { "surface rotation must be 0..3, was $surfaceRotation" }
+        return UseCaseRotations(
+            analysis = surfaceRotation,
+            preview = surfaceRotation,
+            capture = surfaceRotation,
+            video = surfaceRotation,
+        )
     }
+
+    /**
+     * Capture rotation for the orientation setting, as a **surface constant**:
+     * fixed modes ignore the display (the UI stays portrait while capture
+     * films landscape or portrait); `sensor` follows the live display
+     * rotation (status quo ante). UI/mapper layers convert to degrees (×90).
+     */
+    fun resolveCapture(screenOrientation: String, displayRotation: Int): Int =
+        when (screenOrientation) {
+            ScreenOrientation.landscape -> 1 // Surface.ROTATION_90
+            ScreenOrientation.portrait -> 0 // Surface.ROTATION_0
+            else -> displayRotation.coerceIn(0, 3)
+        }
 
     fun normalize(degrees: Int): Int = ((degrees % 360) + 360) % 360
 }

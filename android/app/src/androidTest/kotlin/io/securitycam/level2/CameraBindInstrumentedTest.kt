@@ -45,7 +45,7 @@ class CameraBindInstrumentedTest {
                     val provider = ProcessCameraProvider
                         .getInstance(context)
                         .get(5, TimeUnit.SECONDS)
-                    val r = CameraRotations.resolve(activity.display?.rotation ?: 0)
+                    val r = CameraRotations.uniform(activity.display?.rotation ?: 0)
 
                     val analysis = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)

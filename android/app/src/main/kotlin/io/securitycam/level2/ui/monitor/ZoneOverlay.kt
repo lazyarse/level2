@@ -63,6 +63,44 @@ object ZoneDisplayMapper {
         return Offset(ox + dx * dispW, oy + dy * dispH)
     }
 
+    /**
+     * Exact inverse of [mapPoint] (same geometry, reversed): view-space point
+     * back to normalized analysis-frame coordinates. The zone editor converts
+     * touches through this so stored zones match what [mapPoint] draws.
+     * Clamped to [0..1] like the editor's legacy converter.
+     */
+    fun unmapPoint(
+        vx: Float,
+        vy: Float,
+        rotationDegrees: Int,
+        viewWidth: Float,
+        viewHeight: Float,
+        frameAspect: Float = 4f / 3f,
+        fillCrop: Boolean = false,
+    ): Offset {
+        val rotAspect =
+            if (rotationDegrees == 90 || rotationDegrees == 270) 1f / frameAspect
+            else frameAspect
+        val scale = if (!fillCrop) {
+            min(viewWidth / rotAspect, viewHeight)
+        } else {
+            maxOf(viewWidth / rotAspect, viewHeight)
+        }
+        val dispW = rotAspect * scale
+        val dispH = scale
+        val ox = (viewWidth - dispW) / 2f
+        val oy = (viewHeight - dispH) / 2f
+        val dx = (vx - ox) / dispW
+        val dy = (vy - oy) / dispH
+        val (nx, ny) = when (rotationDegrees) {
+            90 -> dy to 1f - dx
+            270 -> 1f - dy to dx
+            180 -> 1f - dx to 1f - dy
+            else -> dx to dy
+        }
+        return Offset(nx.coerceIn(0f, 1f), ny.coerceIn(0f, 1f))
+    }
+
     /** Builds the display-space Path for a zone (rects → closed box). */
     fun zonePath(
         zone: DetectionZone,
