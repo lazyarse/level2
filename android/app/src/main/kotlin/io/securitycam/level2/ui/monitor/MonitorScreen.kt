@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,7 +48,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.securitycam.level2.camera_service.CameraRotations
 import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.monitor.MonitorState
@@ -65,9 +63,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
     val cameraLabel by viewModel.cameraLabel.collectAsStateWithLifecycle()
-    val screenOrientationLabel by viewModel.screenOrientationLabel.collectAsStateWithLifecycle()
     val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
-    val captureOrientationMode by viewModel.captureOrientationMode.collectAsStateWithLifecycle()
     val detectionZones by viewModel.detectionZones.collectAsStateWithLifecycle()
     val exclusionZones by viewModel.exclusionZones.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
@@ -110,34 +106,20 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         else -> 0
     }
     var showZones by rememberSaveable { mutableStateOf(false) }
+    val orientationLabel =
+        if (displayRotationDegrees % 180 == 0) "Portrait" else "Landscape"
     val displayLabel = listOfNotNull(
         cameraName.ifEmpty { null },
         cameraLabel.ifEmpty { null },
-        screenOrientationLabel.ifEmpty { null },
+        orientationLabel.ifEmpty { null },
     ).joinToString(" | ")
 
     Column(Modifier.fillMaxSize()) {
-        // Landscape capture in a portrait UI: the stream needs a landscape
-        // box (PreviewView derotates for its target, not the display, so a
-        // portrait box shows it sideways). Centered letterbox; portrait mode
-        // keeps the full-bleed box exactly as before.
-        val landscapeCapture =
-            captureOrientationMode == io.securitycam.level2.core.ScreenOrientation.landscape
         Box(
-            Modifier.fillMaxWidth().weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (landscapeCapture) {
-                            Modifier.aspectRatio(LANDSCAPE_PREVIEW_ASPECT)
-                        } else {
-                            Modifier.fillMaxSize()
-                        },
-                    )
-                    .zoomGestures(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .zoomGestures(
                     onApplyFactor = { factor ->
                         // Factor goes straight to the controller, which applies
                         // it against the camera's live zoom state — never
@@ -158,14 +140,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             }
             ZoneOverlay(
                 zones = detectionZones,
-                // Capture rotation, not display rotation: zones are stored in
-                // analysis space and the stream films the setting's
-                // orientation while the UI stays portrait. resolveCapture
-                // yields a surface constant; the mapper works in degrees.
-                rotationDegrees = CameraRotations.resolveCapture(
-                    captureOrientationMode,
-                    displayRotationDegrees,
-                ) * 90,
+                rotationDegrees = displayRotationDegrees,
                 modifier = Modifier.fillMaxSize(),
                 show = showZones,
                 exclusionZones = exclusionZones,
@@ -230,7 +205,6 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     .align(Alignment.TopStart)
                     .padding(top = 56.dp),
             )
-            }
         }
         MonitorStatusBar(
             cameraName = displayLabel,

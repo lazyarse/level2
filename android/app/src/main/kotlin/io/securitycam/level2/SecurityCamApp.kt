@@ -1,7 +1,5 @@
 package io.securitycam.level2
 
-import android.app.Activity
-import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +16,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.ui.events.EventsScreen
 import io.securitycam.level2.ui.events.EventsViewModel
@@ -73,14 +69,6 @@ fun SecurityCamApp(
     BackHandler(enabled = enrollmentActive) { settingsViewModel.cancelEnrollment() }
     val enrollmentSessionLocal by settingsViewModel.enrollmentSessionLocal.collectAsState()
 
-    // Apply screen orientation from settings.
-    val activity = LocalContext.current as Activity
-    LaunchedEffect(Unit) {
-        // The orientation setting governs capture only (see CameraRotations);
-        // the UI itself stays portrait.
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-    }
-
     Scaffold(
         bottomBar = {
             if (!showZoneEditor && !showAlertLog && !enrollmentActive) {
@@ -108,8 +96,6 @@ fun SecurityCamApp(
                     onCancel = { settingsViewModel.cancelEnrollment() },
                     onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
                     canFlipCamera = enrollmentSessionLocal,
-                    landscapeCapture = settingsViewModel.draft.value?.screenOrientation ==
-                        io.securitycam.level2.core.ScreenOrientation.landscape,
                 )
             } else if (showZoneEditor) {
                 // Live camera behind the editor so zones land on real
@@ -140,8 +126,6 @@ fun SecurityCamApp(
                     onClose = { showZoneEditor = false },
                     frameWidth = analysisDims.first,
                     frameHeight = analysisDims.second,
-                    captureOrientation = settingsViewModel.draft.value?.screenOrientation
-                        ?: io.securitycam.level2.core.ScreenOrientation.sensor,
                 )
             } else if (showAlertLog) {
                 AlertLogScreen(onClose = { showAlertLog = false })

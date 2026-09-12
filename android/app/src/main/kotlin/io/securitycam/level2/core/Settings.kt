@@ -122,20 +122,6 @@ object PrivacyMaskEffect {
     }
 }
 
-/** Screen orientation lock (Android only). */object ScreenOrientation {
-    const val portrait = "portrait"
-    const val landscape = "landscape"
-    const val sensor = "sensor"
-
-    val values = listOf(portrait, landscape, sensor)
-
-    fun label(value: String): String = when (value) {
-        landscape -> "Landscape"
-        sensor -> "Auto (sensor)"
-        else -> "Portrait"
-    }
-}
-
 /** Cloud backup settings (WebDAV / S3-compatible; see backup/ design doc). */
 data class CloudBackupSettings(
     val enabled: Boolean = false,
@@ -202,7 +188,6 @@ data class AppSettings(
     /** One of [PrivacyMaskEffect] values: "solid", "pixelate", "blur". */
     val privacyMaskEffect: String = PrivacyMaskEffect.solid,
     val analysisResolution: String = AnalysisResolution.balanced,
-    val screenOrientation: String = ScreenOrientation.portrait,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
     val monitorPreview: Boolean = false,
     val detectionZones: List<DetectionZone> = emptyList(),
@@ -236,7 +221,6 @@ data class AppSettings(
         privacyMasking: Boolean? = null,
         privacyMaskEffect: String? = null,
         analysisResolution: String? = null,
-        screenOrientation: String? = null,
         detectionZones: List<DetectionZone>? = null,
         exclusionZones: List<DetectionZone>? = null,
         scheduleExclusions: List<ScheduleWindow>? = null,
@@ -262,7 +246,6 @@ data class AppSettings(
         privacyMasking = privacyMasking ?: this.privacyMasking,
         privacyMaskEffect = privacyMaskEffect ?: this.privacyMaskEffect,
         analysisResolution = analysisResolution ?: this.analysisResolution,
-        screenOrientation = screenOrientation ?: this.screenOrientation,
         monitorPreview = monitorPreview ?: this.monitorPreview,
         detectionZones = detectionZones ?: this.detectionZones,
         exclusionZones = exclusionZones ?: this.exclusionZones,
@@ -292,7 +275,6 @@ data class AppSettings(
         json["privacyMasking"] = privacyMasking
         json["privacyMaskEffect"] = privacyMaskEffect
         json["analysisResolution"] = analysisResolution
-        json["screenOrientation"] = screenOrientation
         json["monitorPreview"] = monitorPreview
         json["detectionZones"] = detectionZones.map { it.toJson() }
         json["exclusionZones"] = exclusionZones.map { it.toJson() }
@@ -548,8 +530,6 @@ data class AppSettings(
                     ?: defaults.privacyMaskEffect,
                 analysisResolution = json["analysisResolution"] as? String
                     ?: defaults.analysisResolution,
-                screenOrientation = json["screenOrientation"] as? String
-                    ?: defaults.screenOrientation,
                 monitorPreview = json["monitorPreview"] as? Boolean
                     ?: defaults.monitorPreview,
                 detectionZones = (json["detectionZones"] as? List<*>)

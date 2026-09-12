@@ -18,7 +18,6 @@ import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.SchedulePolicy
-import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.storage.AppDatabase
 import io.securitycam.level2.storage.EncryptedSecretStore
@@ -160,13 +159,7 @@ class MonitorViewModel(
     private val _cameraId = MutableStateFlow("0")
     val cameraId: StateFlow<String> = _cameraId.asStateFlow()
 
-    /**
-     * Orientation mode the camera films in ([ScreenOrientation] value).
-     * The UI stays portrait; binds resolve this to a capture rotation.
-     */
-    private val _captureOrientationMode =
-        MutableStateFlow(ScreenOrientation.sensor)
-    val captureOrientationMode: StateFlow<String> = _captureOrientationMode.asStateFlow()
+
 
     /** Whether the monitoring session renders the live preview (battery saver). */
     private val _monitorPreview = MutableStateFlow(false)
@@ -175,8 +168,7 @@ class MonitorViewModel(
     private val _cameraLabel = MutableStateFlow("")
     val cameraLabel: StateFlow<String> = _cameraLabel.asStateFlow()
 
-    private val _screenOrientationLabel = MutableStateFlow("")
-    val screenOrientationLabel: StateFlow<String> = _screenOrientationLabel.asStateFlow()
+
 
     private val _detectionZones = MutableStateFlow<List<DetectionZone>>(emptyList())
     val detectionZones: StateFlow<List<DetectionZone>> = _detectionZones.asStateFlow()
@@ -226,8 +218,8 @@ class MonitorViewModel(
                 _monitorPreview.value = settings.monitorPreview
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
-                _captureOrientationMode.value = settings.screenOrientation
-                updateDisplayLabels(settings.cameraId, settings.screenOrientation)
+
+                updateDisplayLabels(settings.cameraId)
             } catch (t: Throwable) {
                 Log.w(TAG, "init settings load failed", t)
             }
@@ -313,12 +305,8 @@ class MonitorViewModel(
         return cameras.firstOrNull { it.id == cameraId }?.label ?: cameraId
     }
 
-    private fun orientationLabel(orientation: String): String =
-        ScreenOrientation.label(orientation).let { if (it == "Auto (sensor)") "Auto" else it }
-
-    private suspend fun updateDisplayLabels(cameraId: String, orientation: String) {
+    private suspend fun updateDisplayLabels(cameraId: String) {
         _cameraLabel.value = resolveCameraLabel(cameraId)
-        _screenOrientationLabel.value = orientationLabel(orientation)
     }
 
     /** Reload settings from disk so the UI reflects changes made in Settings. */
@@ -331,9 +319,9 @@ class MonitorViewModel(
                 _monitorPreview.value = settings.monitorPreview
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
-                _captureOrientationMode.value = settings.screenOrientation
+
                 scheduleSettings = settings
-                updateDisplayLabels(settings.cameraId, settings.screenOrientation)
+                updateDisplayLabels(settings.cameraId)
             }
         }
     }
@@ -353,7 +341,7 @@ class MonitorViewModel(
                 val updated = current.copy(monitorPreview = next)
                 settingsSaver(updated)
                 scheduleSettings = updated
-                _captureOrientationMode.value = updated.screenOrientation
+
             }
         }
     }
@@ -410,10 +398,7 @@ class MonitorViewModel(
             exclusionZones = clip?.exclusionZones ?: emptyList(),
         )
         val exclusionsJson = exclusionsToJson(sentParams.exclusionZones)
-        // The bind reads capture orientation asynchronously (provider
-        // future), so seed from cache now and refresh once fresh settings
-        // land below; last write wins before the bind resolves.
-        MonitoringServiceController.captureOrientation = _captureOrientationMode.value
+
         // Wave 4 honest startup: the service bind is fire-and-forget, so a
         // synchronous throw is the only immediate signal — anything later is
         // confirmed via serviceHealth before leaving Starting.
@@ -454,8 +439,8 @@ class MonitorViewModel(
                 _cameraId.value = settings.cameraId
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
-                _captureOrientationMode.value = settings.screenOrientation
-                MonitoringServiceController.captureOrientation = settings.screenOrientation
+
+
                 refreshSentParams(sentParams, settings)
             } catch (t: Throwable) {
                 Log.w(TAG, "settings load failed", t)
@@ -595,7 +580,6 @@ class MonitorViewModel(
         }
         _error.value = null
         _state.value = MonitorState.Previewing
-        MonitoringServiceController.captureOrientation = _captureOrientationMode.value
         MonitoringService.startPreview(getApplication(), _cameraId.value)
     }
 
@@ -618,11 +602,11 @@ class MonitorViewModel(
                 val updated = settings.copy(cameraId = nextId)
                 settingsSaver(updated)
                 scheduleSettings = updated
-                _captureOrientationMode.value = updated.screenOrientation
+
                 // Restart below must bind the NEW camera: start()/startPreview()
                 // read the cached id synchronously.
                 _cameraId.value = nextId
-                updateDisplayLabels(nextId, updated.screenOrientation)
+                updateDisplayLabels(nextId)
                 // Restart monitoring/preview with the new camera if currently active
                 val currentState = _state.value
                 if (currentState == MonitorState.Monitoring) {

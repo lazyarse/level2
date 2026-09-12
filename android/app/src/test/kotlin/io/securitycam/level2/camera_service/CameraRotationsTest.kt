@@ -1,6 +1,5 @@
 package io.securitycam.level2.camera_service
 
-import io.securitycam.level2.core.ScreenOrientation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -33,41 +32,6 @@ class CameraRotationsTest {
             fail("degrees must not reach CameraX")
         } catch (_: IllegalArgumentException) {
             // Expected.
-        }
-    }
-
-    @Test
-    fun captureFollowsFixedModesAndPassesSensorThrough() {
-        for (display in 0..3) {
-            assertEquals(
-                0,
-                CameraRotations.resolveCapture(ScreenOrientation.portrait, display),
-            )
-            assertEquals(
-                1,
-                CameraRotations.resolveCapture(ScreenOrientation.landscape, display),
-            )
-            assertEquals(
-                display,
-                CameraRotations.resolveCapture(ScreenOrientation.sensor, display),
-            )
-        }
-        // Out-of-domain display values clamp into the valid constant range.
-        assertEquals(3, CameraRotations.resolveCapture("bogus", 45))
-        assertEquals(0, CameraRotations.resolveCapture("bogus", -1))
-    }
-
-    @Test
-    fun captureDegreesMatchOverlayExpectations() {
-        // The mapper consumes degrees: constant × 90 must be a valid turn.
-        for (display in 0..3) {
-            for (mode in ScreenOrientation.values) {
-                val degrees = CameraRotations.resolveCapture(mode, display) * 90
-                assertTrue(
-                    "mode=$mode display=$display -> $degrees",
-                    degrees in CameraRotations.VALID,
-                )
-            }
         }
     }
 

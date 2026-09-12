@@ -119,7 +119,6 @@ import io.securitycam.level2.core.ClipStampPosition
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.LiveViewSettings
 import io.securitycam.level2.core.ScheduleWindow
-import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.core.VideoQuality
 import io.securitycam.level2.core.DetectorType
 import io.securitycam.level2.core.TriggerType
@@ -280,17 +279,6 @@ fun SettingsScreen(
                             options = cameras.map { it.id to it.label },
                             testTag = "cameraDropdown",
                             onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
-                        )
-                        DropdownField(
-                            label = "Screen orientation",
-                            selected = ScreenOrientation.label(current.screenOrientation),
-                            options = ScreenOrientation.values.map { it to ScreenOrientation.label(it) },
-                            testTag = "screenOrientationDropdown",
-                            onSelect = { o -> viewModel.update { it.copy(screenOrientation = o) } },
-                        )
-                        BodyText(
-                            "Controls how the camera films (the app interface stays portrait). " +
-                                "Takes effect when monitoring restarts.",
                         )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             BodyText(

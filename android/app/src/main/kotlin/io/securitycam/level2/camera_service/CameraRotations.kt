@@ -1,7 +1,5 @@
 package io.securitycam.level2.camera_service
 
-import io.securitycam.level2.core.ScreenOrientation
-
 /**
  * Single source of truth for the per-use-case target rotations handed to
  * CameraX.
@@ -40,19 +38,6 @@ object CameraRotations {
             video = surfaceRotation,
         )
     }
-
-    /**
-     * Capture rotation for the orientation setting, as a **surface constant**:
-     * fixed modes ignore the display (the UI stays portrait while capture
-     * films landscape or portrait); `sensor` follows the live display
-     * rotation (status quo ante). UI/mapper layers convert to degrees (×90).
-     */
-    fun resolveCapture(screenOrientation: String, displayRotation: Int): Int =
-        when (screenOrientation) {
-            ScreenOrientation.landscape -> 1 // Surface.ROTATION_90
-            ScreenOrientation.portrait -> 0 // Surface.ROTATION_0
-            else -> displayRotation.coerceIn(0, 3)
-        }
 
     /**
      * Muxer orientation hint (degrees) for recorded clips: sensor orientation

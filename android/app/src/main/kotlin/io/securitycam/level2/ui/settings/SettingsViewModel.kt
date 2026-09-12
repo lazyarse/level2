@@ -278,10 +278,6 @@ class SettingsViewModel(
                 _enrollmentSessionLocal.value = weStartedCamera
                 try {
                     if (weStartedCamera) {
-                        // The bind films the draft's orientation mode.
-                        MonitoringServiceController.captureOrientation =
-                            _draft.value?.screenOrientation
-                                ?: io.securitycam.level2.core.ScreenOrientation.sensor
                         startCameraSession(sessionCameraId)
                         check(awaitFramesFlowing()) { "Camera did not start" }
                         // Heal a flip that landed before the service was up.
@@ -359,9 +355,6 @@ class SettingsViewModel(
      */
     fun beginZonePreview() {
         if (cameraActive()) return
-        MonitoringServiceController.captureOrientation =
-            _draft.value?.screenOrientation
-                ?: io.securitycam.level2.core.ScreenOrientation.sensor
         startCameraSession(_draft.value?.cameraId ?: "0")
         zonePreviewSessionLocal = true
     }

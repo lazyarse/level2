@@ -8,7 +8,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,18 +53,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import android.view.Surface
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import io.securitycam.level2.camera_service.CameraRotations
-import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
 import io.securitycam.level2.ui.monitor.PreviewSurface
-import io.securitycam.level2.ui.monitor.LANDSCAPE_PREVIEW_ASPECT
-import io.securitycam.level2.ui.monitor.ZoneDisplayMapper
 import io.securitycam.level2.ui.theme.AppButtonShape
 
 private val ZonePalette = listOf(
@@ -96,10 +89,10 @@ private fun zoneColor(mode: ZoneEditorMode, index: Int): Color =
  * with an Inclusion/Exclusion mode toggle: both lists are edited in place
  * (exclusions rendered in red) and reported together via [onSave].
  *
- * Geometry: stored zones are normalized to the analysis frame; both
- * directions convert through [ZoneDisplayMapper] with the capture rotation
- * ([mapPoint] for draw, [unmapPoint] for touches), so drawn zones land
- * exactly where they appear on screen AND match detector coordinates.
+ * Geometry: the preview letterboxes (FIT_CENTER) and all screen↔normalized
+ * mapping goes through [fitCenterBox], so drawn zones land exactly where
+ * they appear on screen AND match detector coordinates (which are normalized
+ * to the analysis frame of [frameWidth]×[frameHeight]).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -113,24 +106,9 @@ fun ZoneEditorScreen(
     initialTripwireZones: List<DetectionZone> = emptyList(),
     frameWidth: Int = 320,
     frameHeight: Int = 240,
-    captureOrientation: String = ScreenOrientation.sensor,
 ) {
     val vm = remember { ZoneEditorViewModel(initialZones, initialExclusions, initialTripwireZones) }
     var confirmClear by remember { mutableStateOf(false) }
-    // Capture rotation keys both directions: touches unmap into
-    // analysis-normalized storage, stored zones map back for draw. R=0
-    // reproduces the legacy fitCenterBox/screenToNorm math exactly.
-    val displayRotationDegrees = runCatching { LocalContext.current.display?.rotation }
-        .getOrNull().let {
-            when (it) {
-                Surface.ROTATION_90 -> 90
-                Surface.ROTATION_180 -> 180
-                Surface.ROTATION_270 -> 270
-                else -> 0
-            }
-        }
-    val captureRotation =
-        CameraRotations.resolveCapture(captureOrientation, displayRotationDegrees) * 90
 
     Scaffold(
         modifier = modifier,
@@ -200,34 +178,7 @@ fun ZoneEditorScreen(
                     }
                 }
             }
-            if (captureRotation == 90) {
-                // Landscape stream in a portrait UI: letterbox a landscape
-                // box so PreviewView geometry matches the zone mapping.
-                Box(
-                    Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EditorCanvas(
-                        vm,
-                        showPreview,
-                        frameWidth,
-                        frameHeight,
-                        captureRotation,
-                        Modifier.fillMaxWidth()
-                            .aspectRatio(LANDSCAPE_PREVIEW_ASPECT)
-                            .padding(8.dp),
-                    )
-                }
-            } else {
-                EditorCanvas(
-                    vm,
-                    showPreview,
-                    frameWidth,
-                    frameHeight,
-                    captureRotation,
-                    Modifier.weight(1f).padding(8.dp),
-                )
-            }
+            EditorCanvas(vm, showPreview, frameWidth, frameHeight, Modifier.weight(1f).padding(8.dp))
             Column(Modifier.padding(12.dp)) {
                 FlowRow {
                     ToolButton(
@@ -403,10 +354,8 @@ private fun EditorCanvas(
     showPreview: Boolean,
     frameWidth: Int,
     frameHeight: Int,
-    captureRotation: Int,
     modifier: Modifier,
 ) {
-    val frameAspect = frameWidth.toFloat() / frameHeight.coerceAtLeast(1).toFloat()
     Box(modifier) {
         if (showPreview) {
             PreviewSurface(Modifier.fillMaxSize(), fillCrop = false)
@@ -421,56 +370,45 @@ private fun EditorCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("zoneCanvas")
-                .pointerInput(Unit, frameWidth, frameHeight, captureRotation) {
+                .pointerInput(Unit, frameWidth, frameHeight) {
+                    val box = fitCenterBox(
+                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                    )
                     detectTapGestures { off ->
-                        val p = ZoneDisplayMapper.unmapPoint(
-                            off.x, off.y, captureRotation,
-                            size.width.toFloat(), size.height.toFloat(), frameAspect,
-                        )
-                        vm.onTap(p.x.toDouble(), p.y.toDouble())
+                        val (nx, ny) = screenToNorm(off.x, off.y, box)
+                        vm.onTap(nx, ny)
                     }
                 }
-                .pointerInput(Unit, frameWidth, frameHeight, captureRotation) {
+                .pointerInput(Unit, frameWidth, frameHeight) {
+                    val box = fitCenterBox(
+                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                    )
                     detectDragGestures(
                         onDragStart = { off ->
-                            val p = ZoneDisplayMapper.unmapPoint(
-                                off.x, off.y, captureRotation,
-                                size.width.toFloat(), size.height.toFloat(), frameAspect,
-                            )
-                            vm.onPanStart(p.x.toDouble(), p.y.toDouble())
+                            val (nx, ny) = screenToNorm(off.x, off.y, box)
+                            vm.onPanStart(nx, ny)
                         },
                         onDrag = { change, _ ->
                             change.consume()
-                            val p = ZoneDisplayMapper.unmapPoint(
-                                change.position.x, change.position.y, captureRotation,
-                                size.width.toFloat(), size.height.toFloat(), frameAspect,
-                            )
-                            vm.onPanUpdate(p.x.toDouble(), p.y.toDouble())
+                            val (nx, ny) = screenToNorm(change.position.x, change.position.y, box)
+                            vm.onPanUpdate(nx, ny)
                         },
                         onDragEnd = { vm.onPanEnd() },
                         onDragCancel = { vm.onPanEnd() },
                     )
                 },
         ) {
-            // Stored zones are analysis-normalized; map them into the canvas
-            // with the same capture rotation the touches were stored with.
-            fun mapZone(nx: Double, ny: Double): Offset =
-                ZoneDisplayMapper.mapPoint(
-                    nx.toFloat(), ny.toFloat(), captureRotation,
-                    size.width, size.height, frameAspect,
-                )
+            val b = fitCenterBox(size.width, size.height, frameWidth, frameHeight)
             vm.zones.forEachIndexed { i, r ->
                 val base = zoneColor(vm.mode, i)
                 val fill = base.copy(alpha = 0.18f)
                 val isSelected = i == vm.selected
                 if (r.shape == DetectionZoneShape.rect && r.points.size >= 4) {
-                    val p0 = mapZone(r.points[0], r.points[1])
-                    val p1 = mapZone(r.points[2], r.points[3])
                     val rect = Rect(
-                        left = minOf(p0.x, p1.x),
-                        top = minOf(p0.y, p1.y),
-                        right = kotlin.math.max(p0.x, p1.x),
-                        bottom = kotlin.math.max(p0.y, p1.y),
+                        left = normToScreen(r.points[0], b.offsetX, b.width),
+                        top = normToScreen(r.points[1], b.offsetY, b.height),
+                        right = normToScreen(r.points[2], b.offsetX, b.width),
+                        bottom = normToScreen(r.points[3], b.offsetY, b.height),
                     )
                     drawRect(fill, topLeft = rect.topLeft, size = rect.size)
                     drawRect(base, topLeft = rect.topLeft, size = rect.size, style = Stroke(width = 2f))
@@ -484,7 +422,10 @@ private fun EditorCanvas(
                     val path = Path()
                     var k = 0
                     while (k + 1 < r.points.size) {
-                        val p = mapZone(r.points[k], r.points[k + 1])
+                        val p = Offset(
+                            normToScreen(r.points[k], b.offsetX, b.width),
+                            normToScreen(r.points[k + 1], b.offsetY, b.height),
+                        )
                         if (k == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
                         k += 2
                     }
@@ -494,7 +435,12 @@ private fun EditorCanvas(
                     if (isSelected) {
                         k = 0
                         while (k + 1 < r.points.size) {
-                            drawHandle(mapZone(r.points[k], r.points[k + 1]))
+                            drawHandle(
+                                Offset(
+                                    normToScreen(r.points[k], b.offsetX, b.width),
+                                    normToScreen(r.points[k + 1], b.offsetY, b.height),
+                                ),
+                            )
                             k += 2
                         }
                     }
@@ -505,7 +451,10 @@ private fun EditorCanvas(
                     val path = Path()
                     var k = 0
                     while (k + 1 < p.size) {
-                        val pt = mapZone(p[k], p[k + 1])
+                        val pt = Offset(
+                            normToScreen(p[k], b.offsetX, b.width),
+                            normToScreen(p[k + 1], b.offsetY, b.height),
+                        )
                         if (k == 0) path.moveTo(pt.x, pt.y) else path.lineTo(pt.x, pt.y)
                         k += 2
                     }
@@ -513,13 +462,11 @@ private fun EditorCanvas(
                 }
             }
             vm.dragRect?.let { dr ->
-                val d0 = mapZone(dr[0], dr[1])
-                val d1 = mapZone(dr[2], dr[3])
                 val drRect = Rect(
-                    left = minOf(d0.x, d1.x),
-                    top = minOf(d0.y, d1.y),
-                    right = kotlin.math.max(d0.x, d1.x),
-                    bottom = kotlin.math.max(d0.y, d1.y),
+                    left = normToScreen(dr[0], b.offsetX, b.width),
+                    top = normToScreen(dr[1], b.offsetY, b.height),
+                    right = normToScreen(dr[2], b.offsetX, b.width),
+                    bottom = normToScreen(dr[3], b.offsetY, b.height),
                 )
                 drawRect(
                     Color.White,
@@ -531,6 +478,33 @@ private fun EditorCanvas(
         }
     }
 }
+
+/** Letterboxed display area of a FIT_CENTER preview inside its view. */
+internal data class DisplayBox(val offsetX: Float, val offsetY: Float, val width: Float, val height: Float)
+
+/**
+ * Geometry for mapping between screen space and frame-normalized coordinates:
+ * FIT_CENTER scales the frame uniformly to fit and centers it, so the visible
+ * content occupies exactly this box inside the canvas.
+ */
+internal fun fitCenterBox(canvasW: Float, canvasH: Float, frameW: Int, frameH: Int): DisplayBox {
+    if (canvasW <= 0f || canvasH <= 0f || frameW <= 0 || frameH <= 0) {
+        return DisplayBox(0f, 0f, canvasW.coerceAtLeast(1f), canvasH.coerceAtLeast(1f))
+    }
+    val gain = minOf(canvasW / frameW, canvasH / frameH)
+    val w = frameW * gain
+    val h = frameH * gain
+    return DisplayBox((canvasW - w) / 2f, (canvasH - h) / 2f, w, h)
+}
+
+/** Screen point → normalized [0..1] frame coordinates, clamped to the image. */
+internal fun screenToNorm(x: Float, y: Float, box: DisplayBox): Pair<Double, Double> =
+    (((x - box.offsetX) / box.width).toDouble().coerceIn(0.0, 1.0)) to
+        (((y - box.offsetY) / box.height).toDouble().coerceIn(0.0, 1.0))
+
+/** Normalized [0..1] coordinate → screen position along one axis. */
+internal fun normToScreen(norm: Double, offset: Float, extent: Float): Float =
+    offset + (norm * extent).toFloat()
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHandle(c: Offset) {
     drawCircle(Color.White, radius = 5f, center = c)
