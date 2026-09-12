@@ -54,5 +54,14 @@ object CameraRotations {
             else -> displayRotation.coerceIn(0, 3)
         }
 
+    /**
+     * Muxer orientation hint (degrees) for recorded clips: sensor orientation
+     * minus the bound video rotation. Both inputs are sensor/constant-domain —
+     * callers must convert the surface constant (×90) first; feeding the raw
+     * constant yields garbage like 89° (seen on-device 2026-09-12).
+     */
+    fun orientationHintFor(sensorOrientationDegrees: Int, videoRotationConst: Int): Int =
+        (sensorOrientationDegrees - videoRotationConst * 90 + 360) % 360
+
     fun normalize(degrees: Int): Int = ((degrees % 360) + 360) % 360
 }

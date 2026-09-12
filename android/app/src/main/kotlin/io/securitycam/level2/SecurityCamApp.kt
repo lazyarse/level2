@@ -108,6 +108,8 @@ fun SecurityCamApp(
                     onCancel = { settingsViewModel.cancelEnrollment() },
                     onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
                     canFlipCamera = enrollmentSessionLocal,
+                    landscapeCapture = settingsViewModel.draft.value?.screenOrientation ==
+                        io.securitycam.level2.core.ScreenOrientation.landscape,
                 )
             } else if (showZoneEditor) {
                 // Live camera behind the editor so zones land on real

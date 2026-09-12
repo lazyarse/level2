@@ -967,7 +967,10 @@ object MonitoringServiceController {
                 val videoCapture =
                     VideoClipRecorder.buildVideoCapture(rotations.video)
                 VideoClipRecorder.setOrientationHintDegrees(
-                    (sensorOrientation(service, cameraId) - rotations.video + 360) % 360
+                    CameraRotations.orientationHintFor(
+                        sensorOrientation(service, cameraId),
+                        rotations.video,
+                    )
                 )
                 val preview = if (allowPreview) {
                     Preview.Builder()

@@ -72,6 +72,18 @@ class CameraRotationsTest {
     }
 
     @Test
+    fun orientationHintConvertsConstantToDegrees() {
+        // Back sensor (90°): portrait capture plays with hint 90 (status
+        // quo ante), landscape capture needs hint 0 — never 89°.
+        assertEquals(90, CameraRotations.orientationHintFor(90, 0))
+        assertEquals(0, CameraRotations.orientationHintFor(90, 1))
+        assertEquals(270, CameraRotations.orientationHintFor(90, 2))
+        assertEquals(180, CameraRotations.orientationHintFor(90, 3))
+        // Front sensor (270°) stays in range.
+        assertEquals(180, CameraRotations.orientationHintFor(270, 1))
+    }
+
+    @Test
     fun normalizeFoldsNegativesAndFullTurns() {
         assertEquals(0, CameraRotations.normalize(0))
         assertEquals(270, CameraRotations.normalize(-90))

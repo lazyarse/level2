@@ -33,6 +33,13 @@ import io.securitycam.level2.camera_service.MonitoringServiceController
  * screen). Pass false for FIT_CENTER letterboxing — the zone editor needs
  * uncropped geometry so drawn zones map 1:1 onto analyzed frames.
  */
+
+/**
+ * Landscape aspect assumed for the camera stream when a landscape-aspect
+ * preview box is needed (landscape capture in a portrait UI). Matches the
+ * analysis frame default (4:3) that zone geometry is computed against.
+ */
+internal const val LANDSCAPE_PREVIEW_ASPECT = 4f / 3f
 @Composable
 fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
     val context = LocalContext.current

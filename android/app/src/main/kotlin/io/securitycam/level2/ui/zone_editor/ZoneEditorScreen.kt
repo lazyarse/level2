@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +64,7 @@ import io.securitycam.level2.core.ScreenOrientation
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
 import io.securitycam.level2.ui.monitor.PreviewSurface
+import io.securitycam.level2.ui.monitor.LANDSCAPE_PREVIEW_ASPECT
 import io.securitycam.level2.ui.monitor.ZoneDisplayMapper
 import io.securitycam.level2.ui.theme.AppButtonShape
 
@@ -198,14 +200,34 @@ fun ZoneEditorScreen(
                     }
                 }
             }
-            EditorCanvas(
-                vm,
-                showPreview,
-                frameWidth,
-                frameHeight,
-                captureRotation,
-                Modifier.weight(1f).padding(8.dp),
-            )
+            if (captureRotation == 90) {
+                // Landscape stream in a portrait UI: letterbox a landscape
+                // box so PreviewView geometry matches the zone mapping.
+                Box(
+                    Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EditorCanvas(
+                        vm,
+                        showPreview,
+                        frameWidth,
+                        frameHeight,
+                        captureRotation,
+                        Modifier.fillMaxWidth()
+                            .aspectRatio(LANDSCAPE_PREVIEW_ASPECT)
+                            .padding(8.dp),
+                    )
+                }
+            } else {
+                EditorCanvas(
+                    vm,
+                    showPreview,
+                    frameWidth,
+                    frameHeight,
+                    captureRotation,
+                    Modifier.weight(1f).padding(8.dp),
+                )
+            }
             Column(Modifier.padding(12.dp)) {
                 FlowRow {
                     ToolButton(

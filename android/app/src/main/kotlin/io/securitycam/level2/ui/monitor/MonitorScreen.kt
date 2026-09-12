@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -116,11 +117,27 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     ).joinToString(" | ")
 
     Column(Modifier.fillMaxSize()) {
+        // Landscape capture in a portrait UI: the stream needs a landscape
+        // box (PreviewView derotates for its target, not the display, so a
+        // portrait box shows it sideways). Centered letterbox; portrait mode
+        // keeps the full-bleed box exactly as before.
+        val landscapeCapture =
+            captureOrientationMode == io.securitycam.level2.core.ScreenOrientation.landscape
         Box(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .zoomGestures(
+            Modifier.fillMaxWidth().weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (landscapeCapture) {
+                            Modifier.aspectRatio(LANDSCAPE_PREVIEW_ASPECT)
+                        } else {
+                            Modifier.fillMaxSize()
+                        },
+                    )
+                    .zoomGestures(
                     onApplyFactor = { factor ->
                         // Factor goes straight to the controller, which applies
                         // it against the camera's live zoom state — never
@@ -213,6 +230,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
                     .align(Alignment.TopStart)
                     .padding(top = 56.dp),
             )
+            }
         }
         MonitorStatusBar(
             cameraName = displayLabel,

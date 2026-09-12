@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import io.securitycam.level2.ui.monitor.LANDSCAPE_PREVIEW_ASPECT
 import io.securitycam.level2.ui.monitor.PreviewSurface
 import io.securitycam.level2.ui.theme.AppButtonShape
 
@@ -43,6 +44,7 @@ fun FaceEnrollmentScreen(
     modifier: Modifier = Modifier,
     onFlipCamera: () -> Unit = {},
     canFlipCamera: Boolean = true,
+    landscapeCapture: Boolean = false,
 ) {
     Scaffold(
         modifier = modifier,
@@ -72,7 +74,13 @@ fun FaceEnrollmentScreen(
                 PreviewSurface(
                     Modifier
                         .fillMaxWidth()
-                        .aspectRatio(3f / 4f)
+                        .aspectRatio(
+                            if (landscapeCapture) {
+                                LANDSCAPE_PREVIEW_ASPECT
+                            } else {
+                                3f / 4f
+                            },
+                        )
                         .clip(RoundedCornerShape(16.dp))
                         .testTag("enrollmentPreview"),
                 )
