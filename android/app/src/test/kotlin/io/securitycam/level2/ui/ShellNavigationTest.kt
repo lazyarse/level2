@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -126,8 +127,11 @@ class ShellNavigationTest {
         compose.waitForIdle()
         assertEquals(1, instances.size)
         assertEquals(1, loads)
-        compose.onAllNodesWithText("Motion", substring = false)
+        // List rows show detector icons only — no type-label text.
+        compose.onAllNodesWithTag("eventDetectors_1_motion")
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+        compose.onAllNodesWithText("Motion", substring = false)
+            .fetchSemanticsNodes().let { assertEquals(0, it.size) }
         compose.onAllNodesWithText("Confidence: High", substring = true)
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
 
@@ -138,8 +142,10 @@ class ShellNavigationTest {
 
         assertEquals("view-model must survive tab switches", 1, instances.size)
         assertEquals("initial load must not re-run on return", 1, loads)
-        compose.onAllNodesWithText("Motion", substring = false)
+        compose.onAllNodesWithTag("eventDetectors_1_motion")
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+        compose.onAllNodesWithText("Motion", substring = false)
+            .fetchSemanticsNodes().let { assertEquals(0, it.size) }
         compose.onAllNodesWithText("Confidence: High", substring = true)
             .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
     }

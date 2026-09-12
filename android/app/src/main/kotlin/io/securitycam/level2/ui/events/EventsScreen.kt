@@ -386,6 +386,7 @@ private fun EventRow(
     showPlayButton: Boolean,
 ) {
     val statuses = event.channelStatuses.entries.joinToString(", ") { (k, v) -> "$k=$v" }
+    // First line shows icons only; the label survives as thumbnail/dialog title.
     val typeLabel = if (event.triggerTypes.isEmpty()) {
         triggerLabel(event.triggerType)
     } else {
@@ -437,10 +438,6 @@ private fun EventRow(
                     types = detectorTypes,
                     tagPrefix = "eventDetectors",
                     eventId = event.id,
-                )
-                Text(
-                    typeLabel,
-                    style = MaterialTheme.typography.bodyLarge,
                 )
             }
             Text(

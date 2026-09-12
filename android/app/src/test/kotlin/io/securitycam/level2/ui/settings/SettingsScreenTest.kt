@@ -498,6 +498,16 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun detectorsSectionExplainsThresholdSensitivity() {
+        setContent(Harness())
+        expandSection("Detectors")
+
+        compose.onNodeWithText("lower values are more sensitive", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun disabledDetectorCardStillUnfolds() {
         // Dog ships disabled; the fold-down must open anyway so it can be
         // pre-configured before enabling.

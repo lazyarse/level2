@@ -282,7 +282,8 @@ fun SettingsScreen(
                         )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             BodyText(
-                                "Threshold: confidence needed to detect · " +
+                                "Threshold: confidence needed to detect " +
+                                    "(lower values are more sensitive) · " +
                                     "Persistence: consecutive frames before triggering · " +
                                     "Cooldown: minimum gap between triggers",
                             )

@@ -1,6 +1,7 @@
 package io.securitycam.level2.ui.events
 
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -44,11 +45,12 @@ class EventsScreenTest {
         ts: Instant,
         snapshotName: String? = null,
         videoName: String? = null,
+        triggerType: String = "motion",
     ) = RecordedEventRow(
         id = id,
         timestamp = ts,
         cameraName = "Hallway",
-        triggerType = "motion",
+        triggerType = triggerType,
         score = 0.8,
         snapshotName = snapshotName,
         videoName = videoName,
@@ -113,6 +115,28 @@ class EventsScreenTest {
         compose.onNodeWithTag("eventDetectors_2_motion").assertExists()
         // No header for the empty gap day.
         compose.onAllNodesWithTag("dayHeader_2026-01-04").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun listRowsShowDetectorIconsWithoutTypeLabelText() {
+        setContent(
+            listOf(
+                row(1, Instant.parse("2026-01-05T12:00:00Z"), triggerType = "motion"),
+                row(2, Instant.parse("2026-01-05T11:00:00Z"), triggerType = "vehicle"),
+            ),
+        )
+
+        compose.waitForIdle()
+        // Icons remain as the trigger representation.
+        compose.onNodeWithTag("eventDetectors_1_motion").assertExists()
+        compose.onNodeWithTag("eventDetectors_2_vehicle").assertExists()
+        // The first-line type words are gone.
+        compose.onAllNodesWithText("Motion", substring = true).fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onAllNodesWithText("Vehicle", substring = true).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
     }
