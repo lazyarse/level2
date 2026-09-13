@@ -85,6 +85,8 @@ Prefer the fastest platform that can validate the change:
   (`android/app/build.gradle.kts`): `git describe --tags --dirty` drives the name,
   commit count drives the code. Never hand-edit them — cut a release by pushing a
   `vX.Y.Z` tag.
+- **Never `git push` to `origin` or `gh`.** Commit locally; pushing is the user's
+  call, always explicit and case-by-case.
 - Release builds (`assembleRelease`/`bundleRelease`) fail on a dirty working tree;
   staging/debug/unit tests stay permissive.
 - Builds outside a git repo fall back to `0.0.0-untagged` / versionCode `1`.
