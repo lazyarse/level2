@@ -386,25 +386,22 @@ fun SettingsScreen(
                             )
                         }
                         CollapsibleSection("Video clips", summary = if (current.recordVideo) "on" else "off") {
-                            BodyText(
-                                "Android only: each event captures footage before and after the " +
-                                    "trigger and saves it to your gallery.",
-                            )
-                            Spacer(Modifier.height(8.dp))
                             SwitchRow(
                                 title = "Record video locally",
                                 subtitle = "Save a clip to your gallery for each event. Off saves storage and battery.",
                                 checked = current.recordVideo,
                                 onCheckedChange = { v -> viewModel.update { it.copy(recordVideo = v) } },
                             )
+                            Spacer(Modifier.height(8.dp))
                             DropdownField(
-                                label = "Resolution",
+                                label = "Video resolution",
                                 selected = VideoQuality.label(current.videoQuality),
                                 options = VideoQuality.values.map { it to VideoQuality.label(it) },
                                 enabled = current.recordVideo,
                                 testTag = "videoQualityDropdown",
                                 onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
                             )
+                            Spacer(Modifier.height(8.dp))
                             Text("Pre-roll: ${current.preRollSeconds}s")
                             Slider(
                                 value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
@@ -416,6 +413,7 @@ fun SettingsScreen(
                                 enabled = current.recordVideo,
                                 modifier = Modifier.testTag("preRollSlider"),
                             )
+                            Spacer(Modifier.height(8.dp))
                             Text("Post-roll: ${current.postRollSeconds}s")
                             Slider(
                                 value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
@@ -427,6 +425,36 @@ fun SettingsScreen(
                                 enabled = current.recordVideo,
                                 modifier = Modifier.testTag("postRollSlider"),
                             )
+                            Spacer(Modifier.height(8.dp))
+                            SwitchRow(
+                                title = "Privacy mask",
+                                subtitle = "Obscure exclusion zones in recorded clips",
+                                checked = current.privacyMasking,
+                                onCheckedChange = { v ->
+                                    viewModel.update { it.copy(privacyMasking = v) }
+                                },
+                            )
+                            if (current.privacyMasking) {
+                                Spacer(Modifier.height(8.dp))
+                                DropdownField(
+                                    label = "Mask effect",
+                                    selected = io.securitycam.level2.core.PrivacyMaskEffect.label(current.privacyMaskEffect),
+                                    options = io.securitycam.level2.core.PrivacyMaskEffect.values.map {
+                                        it to io.securitycam.level2.core.PrivacyMaskEffect.label(it)
+                                    },
+                                    testTag = "privacyMaskEffect",
+                                    onSelect = { e ->
+                                        viewModel.update { it.copy(privacyMaskEffect = e) }
+                                    },
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Watermark",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                            )
                             SwitchRow(
                                 title = "Date/time stamp",
                                 subtitle = "Burn the date/time into recorded clips",
@@ -436,6 +464,7 @@ fun SettingsScreen(
                                 },
                             )
                             if (current.clipTimestamp) {
+                                Spacer(Modifier.height(8.dp))
                                 SwitchRow(
                                     title = "Include camera name",
                                     subtitle = "Prefix the stamp with the camera name",
@@ -446,6 +475,7 @@ fun SettingsScreen(
                                         }
                                     },
                                 )
+                                Spacer(Modifier.height(8.dp))
                                 DropdownField(
                                     label = "Stamp position",
                                     selected = ClipStampPosition.label(current.clipTimestampPosition),
@@ -455,27 +485,6 @@ fun SettingsScreen(
                                     testTag = "clipStampPosition",
                                     onSelect = { p ->
                                         viewModel.update { it.copy(clipTimestampPosition = p) }
-                                    },
-                                )
-                            }
-                            SwitchRow(
-                                title = "Privacy mask",
-                                subtitle = "Obscure exclusion zones in recorded clips",
-                                checked = current.privacyMasking,
-                                onCheckedChange = { v ->
-                                    viewModel.update { it.copy(privacyMasking = v) }
-                                },
-                            )
-                            if (current.privacyMasking) {
-                                DropdownField(
-                                    label = "Mask effect",
-                                    selected = io.securitycam.level2.core.PrivacyMaskEffect.label(current.privacyMaskEffect),
-                                    options = io.securitycam.level2.core.PrivacyMaskEffect.values.map {
-                                        it to io.securitycam.level2.core.PrivacyMaskEffect.label(it)
-                                    },
-                                    testTag = "privacyMaskEffect",
-                                    onSelect = { e ->
-                                        viewModel.update { it.copy(privacyMaskEffect = e) }
                                     },
                                 )
                             }
