@@ -111,11 +111,21 @@ object VideoClipRecorder {
     // Export coordination: on a trigger the current ring segment is stopped;
     // its Finalize becomes the pre-roll tail, then a post-roll recording is
     // started whose Finalize runs the concat + MediaStore insert. While a
-    // wave keeps triggering, [extending] chains fresh post-roll segments so
-    // the clip stays live until [endExport] is called.
+    // wave keeps triggering (or shorter than the merge window), fresh post-roll
+    // segments keep chaining so the clip stays live until [endExport] is
+    // called.
     @Volatile private var exportPending = false
     @Volatile private var postRollPending = false
-    @Volatile private var extending = false
+    /**
+     * True once [endExport] ran (the batch closed = the wave is over): the
+     * clip must finalize. While false and monitoring is still active, a
+     * duration-limited post-roll that finalizes on its own (no trigger since)
+     * chains the next one instead of completing early — otherwise a wave whose
+     * triggers are spaced past the post-roll length (the 5s detector cooldown
+     * vs 5s post-roll) would freeze the clip at its first segment and the rest
+     * of the wave would join the same batch with no video.
+     */
+    @Volatile private var exportClosing = false
     private var preFile: File? = null
     private var tailFile: File? = null
     private val postFiles = ArrayList<File>()
@@ -316,8 +326,9 @@ object VideoClipRecorder {
                 postRollPending = false
                 postFiles.add(file)
                 // Defensive branch: the post-roll normally finalizes through
-                // its own inline callback, not here. Chain when extending.
-                if (extending && active) {
+                // its own inline callback, not here. Chain while the batch may
+                // still be open.
+                if (active && !exportClosing) {
                     startPostRollRecording()
                 } else {
                     completeExport()
@@ -380,7 +391,7 @@ object VideoClipRecorder {
         result: (String?) -> Unit,
     ) {
         exporting = true
-        extending = false
+        exportClosing = false
         exportTriggerMs = triggerAtMs
         cameraName = camName
         exportResult = result
@@ -408,7 +419,7 @@ object VideoClipRecorder {
      */
     fun extendExport() {
         if (!active || !exporting) return
-        extending = true
+        exportClosing = false
         if (postRollPending) {
             try {
                 postRecording?.stop()
@@ -420,7 +431,7 @@ object VideoClipRecorder {
     /** Wave over: stop extending so the in-flight tail finalizes and exports. */
     fun endExport() {
         if (!active || !exporting) return
-        extending = false
+        exportClosing = true
         if (postRollPending) {
             try {
                 postRecording?.stop()
@@ -452,7 +463,7 @@ object VideoClipRecorder {
                         if (!file.exists() || file.length() == 0L) {
                             file.delete()
                             failExport()
-                        } else if (extending && active) {
+                        } else if (active && !exportClosing) {
                             postFiles.add(file)
                             startPostRollRecording()
                         } else {
