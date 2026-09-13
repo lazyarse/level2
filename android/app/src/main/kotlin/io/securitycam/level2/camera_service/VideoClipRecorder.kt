@@ -65,6 +65,15 @@ object VideoClipRecorder {
 
     /** Max EOS input retries before failing the encode instead of looping forever. */
     private const val MAX_EOS_SPINS = 500
+    /**
+     * Minimum age (ms) of an in-flight post-roll before [extendExport] /
+     * [endExport] will stop it. Stopping a just-started recording — before
+     * CameraX has encoded its first keyframe and started the muxer (took
+     * ~240 ms in practice) — finalizes it as ERROR_NO_VALID_DATA with a
+     * 0-byte file; the young guard defers the cut to the segment's natural
+     * duration limit instead.
+     */
+    private const val POST_MIN_STOP_AGE_MS = 1_000L
     private val audioWindowSamples = 60_000L * AUDIO_SAMPLE_RATE / 1000L
     // App-lifetime scope: the recorder is a process-wide singleton serving
     // every monitoring session, so these executors are intentionally never
@@ -126,6 +135,12 @@ object VideoClipRecorder {
      * of the wave would join the same batch with no video.
      */
     @Volatile private var exportClosing = false
+    /**
+     * Monotonic start time of the in-flight post-roll (elapsedRealtime, ms).
+     * Set when a post-roll recording begins; [extendExport]/[endExport] skip
+     * stopping it until it is [POST_MIN_STOP_AGE_MS] old.
+     */
+    @Volatile private var postStartWallMs = 0L
     private var preFile: File? = null
     private var tailFile: File? = null
     private val postFiles = ArrayList<File>()
@@ -311,8 +326,16 @@ object VideoClipRecorder {
         if (!ok) {
             file.delete()
             if (postRollPending) {
+                // Dropped a segment with no valid data (e.g. stopped before its
+                // first keyframe → ERROR_NO_VALID_DATA). Never kill the clip
+                // over a dead sliver: chain a replacement while the batch may
+                // still be open, else finalize with what we have.
                 postRollPending = false
-                failExport()
+                if (active && !exportClosing) {
+                    startPostRollRecording()
+                } else {
+                    completeExport()
+                }
             } else if (exportPending) {
                 exportPending = false
                 startPostRollRecording()
@@ -420,7 +443,7 @@ object VideoClipRecorder {
     fun extendExport() {
         if (!active || !exporting) return
         exportClosing = false
-        if (postRollPending) {
+        if (postRollPending && postRollIsMature()) {
             try {
                 postRecording?.stop()
             } catch (_: Exception) {
@@ -432,13 +455,18 @@ object VideoClipRecorder {
     fun endExport() {
         if (!active || !exporting) return
         exportClosing = true
-        if (postRollPending) {
+        if (postRollPending && postRollIsMature()) {
             try {
                 postRecording?.stop()
             } catch (_: Exception) {
             }
         }
     }
+
+    /** True once the in-flight post-roll has produced its first frames and can
+     *  be cut without risking a no-valid-data (empty) finalize. */
+    private fun postRollIsMature(): Boolean =
+        SystemClock.elapsedRealtime() - postStartWallMs >= POST_MIN_STOP_AGE_MS
 
     private fun startPostRollRecording() {
         val currentRecorder = recorder ?: run { failExport(); return }
@@ -461,8 +489,18 @@ object VideoClipRecorder {
                         postRecording = null
                         postRollPending = false
                         if (!file.exists() || file.length() == 0L) {
+                            // No valid data (e.g. a stop landed before the first
+                            // keyframe → ERROR_NO_VALID_DATA). Dropping a dead
+                            // sliver must never kill the clip: chain a
+                            // replacement while the batch may still be open,
+                            // else finalize with the segments we have.
                             file.delete()
-                            failExport()
+                            Log.w(TAG, "post-roll had no valid data: chaining/complete")
+                            if (active && !exportClosing) {
+                                startPostRollRecording()
+                            } else {
+                                completeExport()
+                            }
                         } else if (active && !exportClosing) {
                             postFiles.add(file)
                             startPostRollRecording()
@@ -472,6 +510,7 @@ object VideoClipRecorder {
                         }
                     }
                 }
+            postStartWallMs = SystemClock.elapsedRealtime()
         } catch (e: Exception) {
             postRollPending = false
             postRecording = null
