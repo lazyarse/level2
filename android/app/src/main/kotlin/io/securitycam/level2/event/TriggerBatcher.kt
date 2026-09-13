@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -171,15 +172,19 @@ class TriggerBatcher(
         var videoFuture: Deferred<String?>? = null
         var batchOpenedAt: Instant = Instant.EPOCH
         var hasVideo = false
+        var staleTimer: Job? = null
+        var staleHardTimer: Job? = null
         mutex.withLock {
-            // flush() runs INSIDE the timer coroutine, so cancelling `timer`
-            // here would cancel this very coroutine: the next real suspension
-            // point (awaiting a capture below) would throw
-            // CancellationException and silently drop the batch. Just drop
-            // the references; dispose() cancels a still-pending timer.
             // A stale timer (its batch already closed/reopened, or superseded
             // by a newer one) must not flush the current batch.
             if (g != generation) return@withLock
+            // Snapshot the timer refs before nulling — we cancel them below
+            // the lock.  We must NOT cancel `timer` if it is THIS coroutine
+            // (flushIfCurrent runs inside the window-timer job): cancelling
+            // ourselves would throw CancellationException at the next
+            // suspension point and silently drop the batch.
+            staleTimer = timer
+            staleHardTimer = hardTimer
             timer = null
             hardTimer = null
             if (pending.isEmpty()) return@withLock
@@ -198,6 +203,13 @@ class TriggerBatcher(
             generation++  // close this batch's epoch; stale timers now no-op
         }
         if (events.isEmpty()) return null
+        // Cancel stale timers that are NOT the current coroutine.  The hard
+        // timer is always a different job and must be cancelled to avoid
+        // leaking a coroutine (and blocking runBlocking / the runtime's
+        // scope) for the full maxBatchDuration after the batch flushes.
+        val currentJob = currentCoroutineContext()[Job]
+        staleTimer?.takeIf { it !== currentJob }?.cancel()
+        staleHardTimer?.takeIf { it !== currentJob }?.cancel()
         // The wave has quieted: finalize the clip (end its extended tail) so
         // the export completes instead of chaining more post-roll segments.
         if (hasVideo) {
