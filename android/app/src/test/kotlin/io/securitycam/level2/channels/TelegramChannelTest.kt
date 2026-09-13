@@ -107,7 +107,11 @@ class TelegramChannelTest {
     @Test
     fun sendThrowsOnNonOkTextResponse() = runBlocking {
         val server = MockWebServer()
-        server.enqueue(MockResponse().setResponseCode(400).setBody("{\"ok\":false}"))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(400)
+                .setBody("{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}"),
+        )
         server.start()
         try {
             val c = newChannel(server.url("/").toString())
@@ -120,6 +124,7 @@ class TelegramChannelTest {
                 thrown = t
             }
             assertTrue(thrown?.message.orEmpty().contains("Telegram sendMessage failed"))
+            assertTrue(thrown?.message.orEmpty().contains("Bad Request: chat not found"))
         } finally {
             server.shutdown()
         }

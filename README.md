@@ -33,8 +33,12 @@ and a **Test** button fires a trial alert.
   **from**/**to** addresses.
 - **Telegram** — create a bot with [@BotFather](https://t.me/BotFather) to get a
   **bot token** (see the official
-  [bot tutorial](https://core.telegram.org/bots/tutorial)), then message your bot
-  once and paste its **chat ID**. Alerts arrive as photos with a caption.
+  [bot tutorial](https://core.telegram.org/bots/tutorial)). Message your bot once
+  (press **Start** — a bot cannot initiate a conversation, which Telegram rejects
+  with 403). Then find its **chat ID** from
+  `curl "https://api.telegram.org/bot<TOKEN>/getUpdates"` → copy the `chat.id`
+  from the latest update (a private group's ID works too — add the bot and post
+  once). Alerts arrive as photos with a caption.
 - **Pushover** — create an application on pushover.net to get an **app token**;
   your **user key** is on your dashboard. Optionally set a **sound**, **priority**
   (-2…2) and emergency re-alert retry/expiry seconds.

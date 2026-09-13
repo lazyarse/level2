@@ -81,8 +81,9 @@ class TelegramChannel(
             client.newCall(Request.Builder().url(endpoint("sendMessage")).post(body).build()).execute()
         }
         response.use {
-            if (!isOk(it.body?.string())) {
-                error("Telegram sendMessage failed (${it.code})")
+            val respBody = it.body?.string()
+            if (!isOk(respBody)) {
+                error("Telegram sendMessage failed (${it.code}): ${telegramError(respBody)}")
             }
         }
     }
@@ -92,6 +93,14 @@ class TelegramChannel(
         // Telegram replies {"ok":true,...}; a targeted match avoids pulling a
         // JSON parser into the unit-test classpath.
         return OK_REGEX.containsMatchIn(body)
+    }
+
+    /** Surfaces Telegram's human-readable reason (e.g. "bot can't initiate
+     *  conversation with a user") instead of a bare error code. */
+    private fun telegramError(body: String?): String {
+        if (body == null) return "no response body"
+        val m = DESCRIPTION_REGEX.find(body)
+        return m?.groupValues?.get(1) ?: body.take(200)
     }
 
     override suspend fun sendTest() {
@@ -122,5 +131,6 @@ class TelegramChannel(
         // \d+:[A-Za-z0-9_-]+
         private val TOKEN_REGEX = Regex("^\\d+:[A-Za-z0-9_-]+$")
         private val OK_REGEX = Regex("\"ok\"\\s*:\\s*true")
+        private val DESCRIPTION_REGEX = Regex("\"description\"\\s*:\\s*\"([^\"]*)\"")
     }
 }
