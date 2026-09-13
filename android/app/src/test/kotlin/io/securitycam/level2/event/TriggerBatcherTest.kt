@@ -166,4 +166,124 @@ class TriggerBatcherTest {
         collector.cancel()
         batcher.dispose()
     }
+
+    @Test
+    fun slidingWindowKeepsAContinuousWaveInOneBatch() = runBlocking {
+        // A wave whose triggers keep arriving within `window` of each other
+        // must stay ONE batch, unlike the fixed-window split this replaces.
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(120),
+            captureSnapshot = { null },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        delay(100)
+        batcher.add(trigger("motion", t0.plusMillis(200)))
+        delay(100)
+        batcher.add(trigger("motion", t0.plusMillis(300)))
+        delay(100)
+        batcher.add(trigger("motion", t0.plusMillis(400)))
+        delay(100) // last trigger's window (120ms) hasn't elapsed → not flushed
+        assertEquals(0, batches.size)
+        delay(60) // window since the last trigger elapses → flushed
+        assertEquals(1, batches.size)
+        assertEquals(4, batches.single().triggers.size)
+        assertEquals(t0, batches.single().timestamp)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun aQuietGapAfterTheWindowStartsANewBatch() = runBlocking {
+        // Once no trigger has arrived for `window`, the wave is over: a later
+        // trigger must open a separate batch.
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(100),
+            captureSnapshot = { null },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        delay(200)
+        batcher.add(trigger("baby_cry", t0.plusMillis(300)))
+        delay(200)
+        assertEquals(2, batches.size)
+        assertEquals(listOf("motion"), batches[0].triggers.map { it.triggerType })
+        assertEquals(listOf("baby_cry"), batches[1].triggers.map { it.triggerType })
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun onTriggerExtendedFiresForEachTriggerJoiningAnOpenBatch() = runBlocking {
+        val extended = mutableListOf<Instant>()
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(100),
+            captureSnapshot = { null },
+            onTriggerExtended = { extended.add(Instant.now()) },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        batcher.add(trigger("motion", t0.plusMillis(30)))
+        batcher.add(trigger("motion", t0.plusMillis(60)))
+        delay(200)
+        assertEquals(1, batches.size)
+        // The first trigger opened the batch; the next two extended it.
+        assertEquals(2, extended.size)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun onBatchCloseFiresWhenEachBatchFlushes() = runBlocking {
+        var closes = 0
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(100),
+            captureSnapshot = { null },
+            captureVideo = { _ ->
+                // Export resolves only AFTER close is signalled, mirroring the
+                // recorder: it keeps recording until onBatchClose finalizes it.
+                while (closes < 1) delay(5)
+                "clip.mp4"
+            },
+            onBatchClose = { closes++ },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        delay(250)
+        assertEquals(1, batches.size)
+        assertEquals(1, closes)
+        assertEquals("clip.mp4", batches.single().videoName)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun maxBatchDurationForceFlushesEvenWhileTriggersKeepArriving() = runBlocking {
+        // Perpetual motion (fan, swaying trees) must not produce ONE endless
+        // event: the hard cap closes the batch and a new one opens.
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(150),
+            captureSnapshot = { null },
+            maxBatchDuration = Duration.ofMillis(300),
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        repeat(16) { i ->
+            batcher.add(trigger("motion", t0.plusMillis(i * 60L)))
+            delay(60)
+        }
+        delay(300)
+        assert(batches.size >= 2) { "expected ≥2 capped batches, got ${batches.size}" }
+        collector.cancel()
+        batcher.dispose()
+    }
 }

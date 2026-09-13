@@ -496,8 +496,8 @@ class SettingsTest {
     }
 
     @Test
-    fun notificationMergeWindowDefaultIsThreeSeconds() {
+    fun notificationMergeWindowDefaultIsFifteenSeconds() {
         val s = AppSettings.defaults()
-        assertEquals(Duration.ofSeconds(3), s.notificationMergeWindow)
+        assertEquals(Duration.ofSeconds(15), s.notificationMergeWindow)
     }
 }

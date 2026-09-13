@@ -26,16 +26,28 @@ data class TriggerBatch(
 )
 
 /**
- * Merges triggers within a window into one batch (port of
- * `lib/event/trigger_batcher.dart`). A snapshot capture starts on the first
- * trigger of a batch; an optional clip export starts too and resolves to its
- * display name once the post-roll tail is recorded.
+ * Merges triggers within a sliding window into one batch (port of
+ * `lib/event/trigger_batcher.dart`). Each new trigger while a batch is open
+ * slides the window forward — a continuous wave stays ONE batch — until the
+ * last trigger is older than [window] (or the batch exceeds
+ * [maxBatchDuration], so perpetual motion can't produce a single endless
+ * event). A snapshot capture starts on the first trigger of a batch; an
+ * optional clip export starts too and resolves to its display name once the
+ * post-roll tail is recorded. [onTriggerExtended] lets the clip keep
+ * recording while the wave continues; [onBatchClose] finalizes it when the
+ * wave quiets.
  */
 class TriggerBatcher(
     private val scope: CoroutineScope,
     private val window: Duration,
     private val captureSnapshot: suspend () -> Snapshot?,
     private val captureVideo: suspend (Instant) -> String? = { null },
+    /** Called when a trigger joins an already-open batch (wave continues). */
+    private val onTriggerExtended: (() -> Unit)? = null,
+    /** Called when a batch is about to close, before its captures are awaited. */
+    private val onBatchClose: (() -> Unit)? = null,
+    /** Hard cap on one batch's lifetime; the batch force-flushes past it. */
+    private val maxBatchDuration: Duration = Duration.ofSeconds(120),
 ) {
     private val batchFlow = MutableSharedFlow<TriggerBatch>(
         extraBufferCapacity = 16,
@@ -49,7 +61,17 @@ class TriggerBatcher(
     private val pending = ArrayList<TriggerEvent>()
     private var pendingSnapshot: Deferred<Snapshot?>? = null
     private var pendingVideo: Deferred<String?>? = null
+
+    /** Sliding window timer (re-armed on every trigger while a batch is open). */
     private var timer: Job? = null
+    /** Hard batch-length timer (armed once per batch). */
+    private var hardTimer: Job? = null
+    /**
+     * Batch epoch. Bumped when a batch opens (and again when it closes) so a
+     * stale timer from a superseded batch — e.g. the old hard timer after a
+     * new batch started — no-ops instead of flushing the wrong batch.
+     */
+    private var generation = 0L
 
     @Volatile
     private var disposed = false
@@ -84,29 +106,83 @@ class TriggerBatcher(
                             null
                         }
                     }
-                    timer = scope.launch {
-                        delay(window.toMillis())
-                        flush()
+                    generation++
+                    armBatchTimers(generation)
+                } else {
+                    // Wave continues: keep the clip recording and slide the
+                    // flush window forward from this newest trigger.
+                    try {
+                        onTriggerExtended?.invoke()
+                    } catch (_: Exception) {
                     }
+                    armWindowTimer(generation)
                 }
                 pending.add(event)
             }
         }
     }
 
-    private suspend fun flush() {
-        val events: List<TriggerEvent>
-        val snapshotFuture: Deferred<Snapshot?>?
-        val videoFuture: Deferred<String?>?
-        val batchOpenedAt: Instant
+    /** (Re)arms the clean-flush timer, cancelling any pending one first. */
+    private fun armWindowTimer(g: Long) {
+        timer?.cancel()
+        timer = scope.launch {
+            delay(window.toMillis())
+            flushIfCurrent(g)
+        }
+    }
+
+    /** Arms both the sliding window timer and the hard batch-length timer. */
+    private fun armBatchTimers(g: Long) {
+        timer?.cancel()
+        hardTimer?.cancel()
+        timer = scope.launch {
+            delay(window.toMillis())
+            flushIfCurrent(g)
+        }
+        hardTimer = scope.launch {
+            delay(maxBatchDuration.toMillis())
+            flushIfCurrent(g)
+        }
+    }
+
+    private suspend fun flushIfCurrent(g: Long) {
+        val batch = drainIfCurrent(g) ?: return
+        if (!batchFlow.tryEmit(batch)) {
+            droppedBatches++
+            android.util.Log.w(
+                "TriggerBatcher",
+                "batch dropped under backpressure (total=$droppedBatches)",
+            )
+        }
+    }
+
+    /**
+     * Drains the current open batch (if any) without emitting it, returning
+     * the [TriggerBatch] so the caller can persist it. Used by the monitor's
+     * stop path: a wave interrupted mid-window must still record its event
+     * (and its clip, once the in-flight export resolves). Mirrors
+     * [flushIfCurrent] but hands the batch back instead of emitting.
+     */
+    suspend fun drainIfCurrent(): TriggerBatch? = drainIfCurrent(generation)
+
+    private suspend fun drainIfCurrent(g: Long): TriggerBatch? {
+        var events: List<TriggerEvent> = emptyList()
+        var snapshotFuture: Deferred<Snapshot?>? = null
+        var videoFuture: Deferred<String?>? = null
+        var batchOpenedAt: Instant = Instant.EPOCH
+        var hasVideo = false
         mutex.withLock {
             // flush() runs INSIDE the timer coroutine, so cancelling `timer`
             // here would cancel this very coroutine: the next real suspension
             // point (awaiting a capture below) would throw
             // CancellationException and silently drop the batch. Just drop
-            // the reference; dispose() cancels a still-pending timer.
+            // the references; dispose() cancels a still-pending timer.
+            // A stale timer (its batch already closed/reopened, or superseded
+            // by a newer one) must not flush the current batch.
+            if (g != generation) return@withLock
             timer = null
-            if (pending.isEmpty()) return
+            hardTimer = null
+            if (pending.isEmpty()) return@withLock
             events = ArrayList(pending)
             // Captured local: openedAt is set exactly when the first pending
             // trigger arrives, but a null-safe fallback beats a !! crash if
@@ -114,22 +190,27 @@ class TriggerBatcher(
             batchOpenedAt = openedAt ?: events.first().timestamp
             snapshotFuture = pendingSnapshot
             videoFuture = pendingVideo
+            hasVideo = videoFuture != null
             pending.clear()
             pendingSnapshot = null
             pendingVideo = null
             openedAt = null
+            generation++  // close this batch's epoch; stale timers now no-op
+        }
+        if (events.isEmpty()) return null
+        // The wave has quieted: finalize the clip (end its extended tail) so
+        // the export completes instead of chaining more post-roll segments.
+        if (hasVideo) {
+            try {
+                onBatchClose?.invoke()
+            } catch (_: Exception) {
+            }
         }
         val snapshot = snapshotFuture?.await()
         val videoName = videoFuture?.await()
         // A concurrent dispose() may have run while awaiting; drop the batch.
-        if (disposed) return
-        if (!batchFlow.tryEmit(TriggerBatch(batchOpenedAt, events, snapshot, videoName))) {
-            droppedBatches++
-            android.util.Log.w(
-                "TriggerBatcher",
-                "batch dropped under backpressure (total=$droppedBatches)",
-            )
-        }
+        if (disposed) return null
+        return TriggerBatch(batchOpenedAt, events, snapshot, videoName)
     }
 
     suspend fun dispose() {
@@ -139,6 +220,8 @@ class TriggerBatcher(
             disposed = true
             timer?.cancel()
             timer = null
+            hardTimer?.cancel()
+            hardTimer = null
             snapshotFuture = pendingSnapshot
             videoFuture = pendingVideo
             pendingSnapshot = null

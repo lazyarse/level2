@@ -138,6 +138,13 @@ class MonitoringRuntime private constructor(
         /** Upper bound for a still capture before the batch proceeds without it. */
         private const val CAPTURE_TIMEOUT_MS = 15_000L
 
+        /**
+         * Hard cap on a continuous wave's batch/clip (see TriggerBatcher's
+         * maxBatchDuration): perpetual motion (fan, swaying trees, screen
+         * glare) can't produce a single never-ending event.
+         */
+        private val MAX_BATCH_DURATION: Duration = Duration.ofSeconds(120)
+
         /** mediaPath prefix marking a MediaStore clip display name. */
         const val CLIP_MEDIA_PREFIX = "clip:"
 
@@ -231,6 +238,9 @@ class MonitoringRuntime private constructor(
                 window = settings.notificationMergeWindow,
                 captureSnapshot = { runtime.captureSnapshot() },
                 captureVideo = { triggerAt -> runtime.captureVideo(triggerAt) },
+                onTriggerExtended = { VideoClipRecorder.extendExport() },
+                onBatchClose = { VideoClipRecorder.endExport() },
+                maxBatchDuration = MAX_BATCH_DURATION,
             )
             runtime.frameDispatcher =
                 AnalysisDispatcher<AnalysisFrame>(runtime.runtimeScope, process = { runtime.pipeline.processFrame(it) })
@@ -320,8 +330,14 @@ class MonitoringRuntime private constructor(
         _activeTriggerTypes.value = emptySet()
         runCatching { CameraFrameBus.remove(frameListener) }
         runCatching { CameraEvents.removeMicPcmListener(micListener) }
+        // A wave interrupted mid-window must still record its event (and link
+        // its clip once the in-flight export resolves), so drain the open
+        // batch into the collector BEFORE cancelling it / disposing the
+        // batcher — which would otherwise cancel the captures and lose both
+        // the row and the video link.
         runCatching { triggerJob?.cancel() }
         triggerJob = null
+        runCatching { batcher.drainIfCurrent()?.let { emitForStop(it) } }
         runCatching { batchJob?.cancel() }
         batchJob = null
         runCatching { healthJob?.cancel() }
@@ -336,6 +352,21 @@ class MonitoringRuntime private constructor(
         runCatching { if (::scopedRegistry.isInitialized) scopedRegistry.unregister(TriggerType.face) }
         faceRoster = emptyList()
         runCatching { runtimeScope.coroutineContext[Job]?.cancel() }
+    }
+
+    /** Handles a batch drained on stop just like the collector does. */
+    private suspend fun emitForStop(batch: TriggerBatch) {
+        runCatching {
+            android.util.Log.d(TAG, "batch emitted (stop) triggers=${batch.triggers.size}")
+            eventPipeline.handleBatch(batch)
+            android.util.Log.d(
+                TAG,
+                "event recorded (stop) type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}",
+            )
+            queueCloudBackups(batch)
+        }.onFailure { t ->
+            android.util.Log.w(TAG, "stop batch handling failed", t)
+        }
     }
 
     private val frameListener: (bgr: ByteArray, width: Int, height: Int) -> Unit =
@@ -395,7 +426,13 @@ class MonitoringRuntime private constructor(
     }
 
     private suspend fun captureVideo(triggerAt: Instant): String? {
-        return withTimeoutOrNull(CAPTURE_TIMEOUT_MS + settings.postRollSeconds * 1000L) {
+        // A continuous wave can hold the batch open for up to MAX_BATCH_DURATION
+        // plus its post-roll tail and the (possible staring) mux; budget well
+        // past that so a long clip is never cut short by the timeout.
+        val budget = MAX_BATCH_DURATION.toMillis() +
+            (settings.preRollSeconds + settings.postRollSeconds) * 1000L +
+            60_000L
+        return withTimeoutOrNull(budget) {
             suspendCancellableCoroutine { cont ->
                 VideoClipRecorder.exportClip(
                     triggerAtMs = triggerAt.toEpochMilli(),

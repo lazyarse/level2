@@ -110,14 +110,29 @@ object VideoClipRecorder {
 
     // Export coordination: on a trigger the current ring segment is stopped;
     // its Finalize becomes the pre-roll tail, then a post-roll recording is
-    // started whose Finalize runs the concat + MediaStore insert.
+    // started whose Finalize runs the concat + MediaStore insert. While a
+    // wave keeps triggering, [extending] chains fresh post-roll segments so
+    // the clip stays live until [endExport] is called.
     @Volatile private var exportPending = false
     @Volatile private var postRollPending = false
+    @Volatile private var extending = false
     private var preFile: File? = null
     private var tailFile: File? = null
-    private var postFile: File? = null
+    private val postFiles = ArrayList<File>()
     private var exportTriggerMs = 0L
     private var exportResult: ((String?) -> Unit)? = null
+
+    /** An export request that arrived while another was in flight. */
+    private class PendingExport(
+        val triggerAtMs: Long,
+        val preRollSeconds: Int,
+        val postRollSeconds: Int,
+        val camName: String,
+        val result: (String?) -> Unit,
+    )
+
+    /** Queued exports drained in order after the current one completes. */
+    private val pendingExports = java.util.ArrayDeque<PendingExport>()
 
     // Audio for clip muxing: mic timeline -> wall clock, per-segment wall starts,
     // and the rolling PCM buffer fed by the native-owned mic.
@@ -299,8 +314,14 @@ object VideoClipRecorder {
         when {
             postRollPending -> {
                 postRollPending = false
-                postFile = file
-                completeExport()
+                postFiles.add(file)
+                // Defensive branch: the post-roll normally finalizes through
+                // its own inline callback, not here. Chain when extending.
+                if (extending && active) {
+                    startPostRollRecording()
+                } else {
+                    completeExport()
+                }
             }
             exportPending -> {
                 exportPending = false
@@ -322,7 +343,11 @@ object VideoClipRecorder {
     /**
      * Captures the pre-roll ring plus [postRollSeconds] of footage and stores
      * the clip; [result] receives the display name, or null when unavailable
-     * (not monitoring, or an export already in progress).
+     * (not monitoring). While a wave keeps triggering, [extendExport] chains
+     * more post-roll segments into the same clip, and [endExport] finalizes
+     * it; a clip ever couple of triggers, so close events are never lost.
+     * When an export is already in flight the request is queued and served
+     * after it completes.
      */
     fun exportClip(
         triggerAtMs: Long,
@@ -331,18 +356,36 @@ object VideoClipRecorder {
         camName: String,
         result: (String?) -> Unit,
     ) {
-        val currentRecorder = recorder
-        if (!active || exporting || currentRecorder == null || ringDir == null) {
-            Log.w(TAG, "exportClip rejected: active=$active exporting=$exporting " +
-                "recorder=${currentRecorder != null} ringDir=${ringDir != null} triggerAt=$triggerAtMs")
+        if (!active || recorder == null || ringDir == null) {
+            Log.w(TAG, "exportClip rejected: active=$active " +
+                "recorder=${recorder != null} ringDir=${ringDir != null} triggerAt=$triggerAtMs")
             result(null)
             return
         }
+        if (exporting) {
+            Log.i(TAG, "exportClip queued behind in-flight export (triggerAt=$triggerAtMs)")
+            pendingExports.addLast(
+                PendingExport(triggerAtMs, preRollSeconds, postRollSeconds, camName, result),
+            )
+            return
+        }
+        beginExport(triggerAtMs, preRollSeconds, postRollSeconds, camName, result)
+    }
+
+    private fun beginExport(
+        triggerAtMs: Long,
+        preRollSeconds: Int,
+        postRollSeconds: Int,
+        camName: String,
+        result: (String?) -> Unit,
+    ) {
         exporting = true
+        extending = false
         exportTriggerMs = triggerAtMs
         cameraName = camName
         exportResult = result
         preFile = ringSegment
+        postFiles.clear()
         val current = ringRecording
         if (current == null) {
             tailFile = null
@@ -354,6 +397,34 @@ object VideoClipRecorder {
             } catch (e: Exception) {
                 exportPending = false
                 failExport()
+            }
+        }
+    }
+
+    /**
+     * Keeps the current clip open while its wave keeps triggering: chains
+     * fresh post-roll segments (stopping the tail in flight so a new one
+     * starts from the newest trigger) until [endExport] finalizes it.
+     */
+    fun extendExport() {
+        if (!active || !exporting) return
+        extending = true
+        if (postRollPending) {
+            try {
+                postRecording?.stop()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** Wave over: stop extending so the in-flight tail finalizes and exports. */
+    fun endExport() {
+        if (!active || !exporting) return
+        extending = false
+        if (postRollPending) {
+            try {
+                postRecording?.stop()
+            } catch (_: Exception) {
             }
         }
     }
@@ -381,8 +452,11 @@ object VideoClipRecorder {
                         if (!file.exists() || file.length() == 0L) {
                             file.delete()
                             failExport()
+                        } else if (extending && active) {
+                            postFiles.add(file)
+                            startPostRollRecording()
                         } else {
-                            postFile = file
+                            postFiles.add(file)
                             completeExport()
                         }
                     }
@@ -397,7 +471,7 @@ object VideoClipRecorder {
 
     private fun completeExport() {
         val name = videoFileName(exportTriggerMs, cameraName)
-        val inputs = listOfNotNull(preFile, tailFile, postFile)
+        val inputs = (listOfNotNull(preFile, tailFile) + postFiles)
             .filter { it.exists() && it.length() > 0L }
         val finalFile = File(ringDir, "final-${System.currentTimeMillis()}.mp4")
         val audioStart = audioStartMicros()
@@ -476,26 +550,39 @@ object VideoClipRecorder {
         }
         preFile = null
         tailFile = null
-        postFile = null
+        postFiles.clear()
         ringSegment = null
         val cb = exportResult
         exportResult = null
         exporting = false
         cb?.invoke(stored)
-        if (active) startRingRecording()
+        // Serve any export queued while this one was recording — the wave
+        // that hit during the tail must still keep its clip. The ring loop
+        // only restarts when no export is left to run.
+        val next = pendingExports.pollFirst()
+        if (next != null && active && recorder != null && ringDir != null) {
+            beginExport(next.triggerAtMs, next.preRollSeconds, next.postRollSeconds, next.camName, next.result)
+        } else if (active) {
+            startRingRecording()
+        }
     }
 
     private fun failExport() {
-        Log.w(TAG, "failExport: cleaning up pre=${preFile?.name} tail=${tailFile?.name} post=${postFile?.name}")
-        deleteQuietly(preFile, tailFile, postFile)
+        Log.w(TAG, "failExport: cleaning up pre=${preFile?.name} tail=${tailFile?.name} post=${postFiles.size} files")
+        deleteQuietly(preFile, tailFile, *postFiles.toTypedArray())
         preFile = null
         tailFile = null
-        postFile = null
+        postFiles.clear()
         val cb = exportResult
         exportResult = null
         exporting = false
         cb?.invoke(null)
-        if (active) startRingRecording()
+        val next = pendingExports.pollFirst()
+        if (next != null && active && recorder != null && ringDir != null) {
+            beginExport(next.triggerAtMs, next.preRollSeconds, next.postRollSeconds, next.camName, next.result)
+        } else if (active) {
+            startRingRecording()
+        }
     }
 
     private fun clearTempFiles() {

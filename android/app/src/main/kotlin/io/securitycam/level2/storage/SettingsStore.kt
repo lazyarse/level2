@@ -39,11 +39,12 @@ class SettingsStore(
         val withChannelSecrets = injectSecrets(settings)
         val (withLiveView, liveViewMigrated) = injectLiveViewSecret(withChannelSecrets)
         val (withCooldowns, cooldownsMigrated) = migrateLegacyCooldownsOnce(withLiveView)
-        val (final, cloudBackupMigrated) = injectCloudBackupSecret(withCooldowns)
+        val (withMerge, mergeWindowMigrated) = migrateLegacyMergeWindowOnce(withCooldowns)
+        val (final, cloudBackupMigrated) = injectCloudBackupSecret(withMerge)
         // Strip migrated inline passwords from the blob right away (channels
         // already do this); otherwise the plaintext lingers until the next
         // manual save. In-memory values are untouched.
-        if (liveViewMigrated || cloudBackupMigrated || cooldownsMigrated) save(final)
+        if (liveViewMigrated || cloudBackupMigrated || cooldownsMigrated || mergeWindowMigrated) save(final)
         return final
     }
 
@@ -77,6 +78,27 @@ class SettingsStore(
             }
         }
         return if (changed) settings.copyWith(detectorConfigs = configs) else settings
+    }
+
+    /**
+     * One-way upgrade for blobs written before the 2026-09-13 merge-window
+     * change: a window below the new 15 s default (the old shipped 3 s) meant
+     * a continuous wave — whose detector cooldowns re-fire every ~5 s — was
+     * split into many short events. Runs at most once per blob (guarded by
+     * [AppSettings.mergeWindowUpgraded]) so an intentional short window
+     * chosen after the change is never rewritten on a later load.
+     *
+     * @return the (possibly) upgraded settings plus whether the blob must be
+     *   re-saved (the flag itself still needs persisting).
+     */
+    private fun migrateLegacyMergeWindowOnce(settings: AppSettings): Pair<AppSettings, Boolean> {
+        if (settings.mergeWindowUpgraded) return settings to false
+        val bumped = if (settings.notificationMergeWindow.toMillis() < 15_000L) {
+            settings.copyWith(notificationMergeWindow = Duration.ofSeconds(15))
+        } else {
+            settings
+        }
+        return bumped.copy(mergeWindowUpgraded = true) to true
     }
 
     /** Saves settings with all channel secrets stripped into the secret store. */

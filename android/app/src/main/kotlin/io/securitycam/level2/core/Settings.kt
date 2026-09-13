@@ -171,7 +171,7 @@ data class AppSettings(
     val cameraId: String = "0",
     val detectorConfigs: Map<String, DetectorConfig> = emptyMap(),
     val channelConfigs: List<ChannelConfig> = emptyList(),
-    val notificationMergeWindow: Duration = Duration.ofSeconds(3),
+    val notificationMergeWindow: Duration = Duration.ofSeconds(15),
     val retentionDays: Int = 7,
     val preRollSeconds: Int = 5,
     val postRollSeconds: Int = 5,
@@ -203,6 +203,12 @@ data class AppSettings(
      * 120s / 5min cooldown chosen after migration is never rewritten to 5s.
      */
     val cooldownsMigrated: Boolean = false,
+    /**
+     * One-way flag: the pre-2026-09-13 merge-window upgrade has run. Guards
+     * [SettingsStore.migrateLegacyMergeWindow] so an intentional short window
+     * chosen after the change is never bumped again.
+     */
+    val mergeWindowUpgraded: Boolean = false,
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -229,6 +235,7 @@ data class AppSettings(
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
         cooldownsMigrated: Boolean? = null,
+        mergeWindowUpgraded: Boolean? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraId = cameraId ?: this.cameraId,
@@ -255,6 +262,7 @@ data class AppSettings(
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
         cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
+        mergeWindowUpgraded = mergeWindowUpgraded ?: this.mergeWindowUpgraded,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -284,6 +292,7 @@ data class AppSettings(
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
         json["cooldownsMigrated"] = cooldownsMigrated
+        json["mergeWindowUpgraded"] = mergeWindowUpgraded
         return json
     }
 
@@ -554,6 +563,7 @@ data class AppSettings(
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
                 cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
+                mergeWindowUpgraded = json["mergeWindowUpgraded"] as? Boolean ?: false,
             )
         }
     }

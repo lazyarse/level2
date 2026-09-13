@@ -255,7 +255,10 @@ class MonitorViewModel(
 
     companion object {
         private const val TAG = "MonitorViewModel"
-        private const val TRIGGER_ICON_DURATION_MS = 4000L
+        // Must exceed the motion cooldown (5s, see Settings) so a continuous
+        // wave's re-triggers re-pulse the icon before it clears — otherwise
+        // the icon blinks off between triggers during a wave.
+        private const val TRIGGER_ICON_DURATION_MS = 7000L
         private const val RUNTIME_STOP_TIMEOUT_MS = 3_000L
 
         // Memoized per-process: SettingsStore wraps an AndroidKeyStore-backed
