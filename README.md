@@ -21,6 +21,27 @@ ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug       # debug APK
 
 On-device integration tests need an AOSP emulator (see `AGENTS.md` for emulator discipline).
 
+## Notifications
+
+Alerts are delivered through pluggable channels, each configured under
+**Settings → Channels** in the app. Multiple accounts per type are supported,
+and a **Test** button fires a trial alert.
+
+- **Email** — the app speaks SMTP directly. Enter your provider's **SMTP host**,
+  **port** (587 for STARTTLS, 465 for implicit TLS), **username**, **password**
+  (an app-specific password if your provider requires one, e.g. Gmail), and the
+  **from**/**to** addresses.
+- **Telegram** — create a bot with [@BotFather](https://t.me/BotFather) to get a
+  **bot token** (see the official
+  [bot tutorial](https://core.telegram.org/bots/tutorial)), then message your bot
+  once and paste its **chat ID**. Alerts arrive as photos with a caption.
+- **Pushover** — create an application on pushover.net to get an **app token**;
+  your **user key** is on your dashboard. Optionally set a **sound**, **priority**
+  (-2…2) and emergency re-alert retry/expiry seconds.
+- **Webhook** — pick a **preset** (Discord, ntfy, Slack, Teams, custom), paste the
+  **webhook URL** (https only), and optionally a **bearer token**. Custom hooks
+  post JSON or plain text; the ntfy preset also takes a **title**.
+
 ## License
 
 AGPL-3.0 (see `LICENSE`). The app bundles YOLO-family / YAMNet-class models which are
