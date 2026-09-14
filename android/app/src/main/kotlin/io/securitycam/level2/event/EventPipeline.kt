@@ -149,6 +149,7 @@ class EventPipeline(
     }
 
     private fun targetsFor(triggers: List<TriggerEvent>): List<ChannelConfig> {
+        val anyKnownDetector = triggers.any { detectorConfigs.containsKey(it.detectorId) }
         val anyEmptyRoutes = triggers.any { t ->
             val config = detectorConfigs[t.detectorId]
             config != null && config.routeToChannelIds.isEmpty()
@@ -156,7 +157,10 @@ class EventPipeline(
         return channelConfigs.values
             .filter { c -> c.enabled || c.type == "log" }
             .filter { c ->
-                anyEmptyRoutes ||
+                // Every active detector's alert is logged unconditionally:
+                // the log feed is not a per-detector route option.
+                (c.type == "log" && anyKnownDetector) ||
+                    anyEmptyRoutes ||
                     triggers.any { t ->
                         val config = detectorConfigs[t.detectorId]
                         config != null && config.routeToChannelIds.contains(c.id)

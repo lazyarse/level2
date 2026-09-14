@@ -598,6 +598,8 @@ class SettingsScreenTest {
         compose.onAllNodesWithText("email-2", substring = false).fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
+        // The alert-log feed is not a per-detector route option anymore.
+        compose.onNodeWithTag("detectorRoute_motion_log").assertDoesNotExist()
     }
 
     @Test

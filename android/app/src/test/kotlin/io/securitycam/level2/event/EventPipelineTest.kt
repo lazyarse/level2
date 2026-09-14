@@ -331,6 +331,26 @@ class EventPipelineTest {
     }
 
     @Test
+    fun logChannelAlwaysTargetedEvenWhenDetectorRoutesExcludeIt() = runBlocking {
+        val log = FakeChannel("log", "log")
+        val tg = FakeChannel("telegram", "telegram")
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig(), "log" to logConfig())
+        builder.detectors = mapOf("motion" to config("motion", routes = listOf("telegram")))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> tg }, "log" to { _: ChannelConfig -> log })
+        val p = builder.build()
+
+        p.handleBatch(batch(listOf(trigger("motion", "motion"))))
+
+        assertEquals(1, log.sent.size)
+        assertEquals(1, tg.sent.size)
+        assertEquals(
+            mapOf("log" to "delivered", "telegram" to "delivered"),
+            builder.recorder.recorded.single().channelStatuses,
+        )
+    }
+
+    @Test
     fun missingDetectorConfigContributesNothing() = runBlocking {
         val tg = FakeChannel("telegram", "telegram")
         val builder = PipelineBuilder()

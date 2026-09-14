@@ -2143,7 +2143,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
         val config = settings.detectorConfigs[type] ?: continue
         DetectorCard(
             config = config,
-            channels = settings.channelConfigs,
+            channels = settings.channelConfigs.filter { it.type != ChannelTypes.LOG },
             onChanged = { next -> onChanged(type, next) },
         )
     }
