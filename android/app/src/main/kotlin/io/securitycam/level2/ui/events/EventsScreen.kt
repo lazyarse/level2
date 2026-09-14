@@ -411,7 +411,7 @@ private fun DayHeader(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onToggle)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 12.dp)
             .testTag("dayHeader_$date"),
     ) {
         Icon(
