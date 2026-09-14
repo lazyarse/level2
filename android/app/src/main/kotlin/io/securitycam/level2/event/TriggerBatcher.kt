@@ -259,9 +259,7 @@ class TriggerBatcher(
                                 "video ready gen=$genCopy batch=$bt video=${name ?: "null"} vidMs=$vidMs",
                             )
                         }
-                        if (!disposed) {
-                            onVideoReady(bt, name)
-                        }
+                        onVideoReady(bt, name)
                     }
                 } catch (_: Exception) {
                 }

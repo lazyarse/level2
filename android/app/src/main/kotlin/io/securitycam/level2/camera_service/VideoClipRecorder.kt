@@ -461,7 +461,7 @@ object VideoClipRecorder {
 
     /** Wave over: stop extending so the in-flight tail finalizes and exports. */
     fun endExport() {
-        if (!active || !exporting) return
+        if (!exporting) return
         exportClosing = true
         if (postRollPending && postRollIsMature()) {
             try {
