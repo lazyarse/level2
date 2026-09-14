@@ -114,6 +114,9 @@ class MonitoringRuntime private constructor(
     @Volatile
     private var stopped = false
 
+    /** Fast-notify: batch timestamp → eventId for late video linking. */
+    private val pendingVideoEventIds = java.util.concurrent.ConcurrentHashMap<Instant, Long>()
+
     /**
      * Runtime-scoped detector factories (Wave 4): this runtime's face
      * override lives here, never on the process-global [DetectorRegistry].
@@ -218,11 +221,12 @@ class MonitoringRuntime private constructor(
             withContext(Dispatchers.IO) { runtime.pipeline.init() }
             runtime.pipeline.setZones(settings.detectionZones, settings.exclusionZones)
             runtime.pipeline.setTripwireZones(settings.tripwireZones)
+            val roomLog = RoomEventLog(AppDatabase.get(appContext).eventDao())
             runtime.eventPipeline = EventPipeline(
                 cameraName = settings.cameraName,
                 detectorConfigs = settings.detectorConfigs,
                 channelConfigs = settings.channelConfigs.associateBy { it.id },
-                recorder = RoomEventLog(AppDatabase.get(appContext).eventDao()),
+                recorder = roomLog,
                 snapshotStore = FileSnapshotStore(
                     File(appContext.filesDir, "snapshots").absolutePath,
                 ),
@@ -241,6 +245,9 @@ class MonitoringRuntime private constructor(
                 onTriggerExtended = { VideoClipRecorder.extendExport() },
                 onBatchClose = { VideoClipRecorder.endExport() },
                 maxBatchDuration = MAX_BATCH_DURATION,
+                onVideoReady = { batchTime, videoName ->
+                    runtime.handleVideoReady(batchTime, videoName)
+                },
             )
             runtime.frameDispatcher =
                 AnalysisDispatcher<AnalysisFrame>(runtime.runtimeScope, process = { runtime.pipeline.processFrame(it) })
@@ -306,8 +313,9 @@ class MonitoringRuntime private constructor(
                 // not end event recording for the rest of the session.
                 runCatching {
                     android.util.Log.d(TAG, "batch emitted triggers=${it.triggers.size}")
-                    eventPipeline.handleBatch(it)
-                    android.util.Log.d(TAG, "event recorded type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
+                    val eventId = eventPipeline.handleBatch(it)
+                    pendingVideoEventIds[it.timestamp] = eventId
+                    android.util.Log.d(TAG, "event recorded id=$eventId type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
                     queueCloudBackups(it)
                 }.onFailure { t ->
                     android.util.Log.w(TAG, "batch handling failed", t)
@@ -337,7 +345,11 @@ class MonitoringRuntime private constructor(
         // the row and the video link.
         runCatching { triggerJob?.cancel() }
         triggerJob = null
-        runCatching { batcher.drainIfCurrent()?.let { emitForStop(it) } }
+        runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                batcher.drainIfCurrent()?.let { emitForStop(it) }
+            }
+        }
         runCatching { batchJob?.cancel() }
         batchJob = null
         runCatching { healthJob?.cancel() }
@@ -358,10 +370,11 @@ class MonitoringRuntime private constructor(
     private suspend fun emitForStop(batch: TriggerBatch) {
         runCatching {
             android.util.Log.d(TAG, "batch emitted (stop) triggers=${batch.triggers.size}")
-            eventPipeline.handleBatch(batch)
+            val eventId = eventPipeline.handleBatch(batch)
+            pendingVideoEventIds[batch.timestamp] = eventId
             android.util.Log.d(
                 TAG,
-                "event recorded (stop) type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}",
+                "event recorded (stop) id=$eventId type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}",
             )
             queueCloudBackups(batch)
         }.onFailure { t ->
@@ -432,7 +445,9 @@ class MonitoringRuntime private constructor(
         val budget = MAX_BATCH_DURATION.toMillis() +
             (settings.preRollSeconds + settings.postRollSeconds) * 1000L +
             60_000L
-        return withTimeoutOrNull(budget) {
+        val startMs = System.currentTimeMillis()
+        android.util.Log.i(TAG, "captureVideo start triggerAt=$triggerAt budget=${budget}ms")
+        val result = withTimeoutOrNull(budget) {
             suspendCancellableCoroutine { cont ->
                 VideoClipRecorder.exportClip(
                     triggerAtMs = triggerAt.toEpochMilli(),
@@ -447,6 +462,13 @@ class MonitoringRuntime private constructor(
                 }
             }
         }
+        val elapsed = System.currentTimeMillis() - startMs
+        if (result == null) {
+            android.util.Log.w(TAG, "captureVideo done triggerAt=$triggerAt elapsed=${elapsed}ms result=null (timeout or export failed, budget=${budget}ms)")
+        } else {
+            android.util.Log.i(TAG, "captureVideo done triggerAt=$triggerAt elapsed=${elapsed}ms video=$result")
+        }
+        return result
     }
 
     /**
@@ -481,6 +503,43 @@ class MonitoringRuntime private constructor(
                     remotePath = RemoteKeys.forMedia(settings.cameraName, video, now),
                 ),
             )
+        }
+    }
+
+    private suspend fun handleVideoReady(batchTime: Instant, videoName: String?) {
+        val eventId = pendingVideoEventIds.remove(batchTime)
+        if (eventId == null) {
+            android.util.Log.w(TAG, "video ready but no eventId for batchTime=$batchTime video=$videoName")
+            return
+        }
+        if (videoName == null) {
+            android.util.Log.i(TAG, "video ready null for eventId=$eventId batchTime=$batchTime (no clip)")
+            return
+        }
+        try {
+            val log = RoomEventLog(AppDatabase.get(context).eventDao())
+            log.updateVideoName(eventId, videoName)
+            android.util.Log.i(TAG, "video linked eventId=$eventId batchTime=$batchTime video=$videoName")
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "video link failed eventId=$eventId video=$videoName", e)
+            return
+        }
+        // Cloud backup for the late clip.
+        val cb = settings.cloudBackup
+        if (!cb.enabled || !cb.backupClips) return
+        try {
+            val store = OutboxStore.from(AppDatabase.get(context))
+            val now = Instant.now().toEpochMilli()
+            store.enqueue(
+                OutboxEntity(
+                    createdAt = now,
+                    kind = OutboxKind.BACKUP,
+                    mediaPath = "$CLIP_MEDIA_PREFIX$videoName",
+                    remotePath = RemoteKeys.forMedia(settings.cameraName, videoName, now),
+                ),
+            )
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "video backup enqueue failed video=$videoName", e)
         }
     }
 }

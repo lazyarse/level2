@@ -76,6 +76,9 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE id = :id")
     suspend fun byId(id: Long): EventEntity?
 
+    @Query("UPDATE events SET video_name = :videoName WHERE id = :id")
+    suspend fun updateVideoName(id: Long, videoName: String)
+
     @Query("UPDATE events SET channel_statuses = :json WHERE id = :id")
     suspend fun updateChannelStatusesRaw(id: Long, json: String)
 

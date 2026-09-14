@@ -49,6 +49,9 @@ class TriggerBatcher(
     private val onBatchClose: (() -> Unit)? = null,
     /** Hard cap on one batch's lifetime; the batch force-flushes past it. */
     private val maxBatchDuration: Duration = Duration.ofSeconds(120),
+    /** Window-based fast notify: when set, the batch emits with videoName=null
+     *  and the clip is linked later via this callback (batchOpenedAt, videoName?). */
+    private val onVideoReady: (suspend (Instant, String?) -> Unit)? = null,
 ) {
     private val batchFlow = MutableSharedFlow<TriggerBatch>(
         extraBufferCapacity = 16,
@@ -91,7 +94,9 @@ class TriggerBatcher(
                     openedAt = event.timestamp
                     pendingSnapshot = scope.async {
                         try {
-                            captureSnapshot()
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                                captureSnapshot()
+                            }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {
@@ -100,7 +105,9 @@ class TriggerBatcher(
                     }
                     pendingVideo = scope.async {
                         try {
-                            captureVideo(event.timestamp)
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                                captureVideo(event.timestamp)
+                            }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {
@@ -210,6 +217,13 @@ class TriggerBatcher(
         val currentJob = currentCoroutineContext()[Job]
         staleTimer?.takeIf { it !== currentJob }?.cancel()
         staleHardTimer?.takeIf { it !== currentJob }?.cancel()
+        val drainStartMs = System.currentTimeMillis()
+        runCatching {
+            android.util.Log.i(
+                "TriggerBatcher",
+                "drain start gen=$g openedAt=$batchOpenedAt events=${events.size} hasVideo=$hasVideo",
+            )
+        }
         // The wave has quieted: finalize the clip (end its extended tail) so
         // the export completes instead of chaining more post-roll segments.
         if (hasVideo) {
@@ -219,7 +233,50 @@ class TriggerBatcher(
             }
         }
         val snapshot = snapshotFuture?.await()
+        val snapMs = System.currentTimeMillis() - drainStartMs
+        if (onVideoReady != null && hasVideo) {
+            val totalMs = System.currentTimeMillis() - drainStartMs
+            runCatching {
+                android.util.Log.i(
+                    "TriggerBatcher",
+                    "drain done gen=$g events=${events.size} snapMs=$snapMs totalMs=$totalMs " +
+                        "video pending (fast notify) disposed=$disposed",
+                )
+            }
+            if (disposed) return null
+            val batch = TriggerBatch(batchOpenedAt, events, snapshot, null)
+            val vf = videoFuture
+            val bt = batchOpenedAt
+            val genCopy = g
+            scope.launch {
+                try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        val name = vf?.await()
+                        val vidMs = System.currentTimeMillis() - drainStartMs
+                        runCatching {
+                            android.util.Log.i(
+                                "TriggerBatcher",
+                                "video ready gen=$genCopy batch=$bt video=${name ?: "null"} vidMs=$vidMs",
+                            )
+                        }
+                        if (!disposed) {
+                            onVideoReady(bt, name)
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            return batch
+        }
         val videoName = videoFuture?.await()
+        val totalMs = System.currentTimeMillis() - drainStartMs
+        runCatching {
+            android.util.Log.i(
+                "TriggerBatcher",
+                "drain done gen=$g events=${events.size} snapMs=$snapMs totalMs=$totalMs " +
+                    "videoName=${videoName ?: "null"} disposed=$disposed",
+            )
+        }
         // A concurrent dispose() may have run while awaiting; drop the batch.
         if (disposed) return null
         return TriggerBatch(batchOpenedAt, events, snapshot, videoName)

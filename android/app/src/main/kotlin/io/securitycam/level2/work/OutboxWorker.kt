@@ -65,13 +65,17 @@ class OutboxWorker(
             sendNotify = { row -> deliverNotify(row, settings.channelConfigs, snapshots) },
             sendBackup = { row -> uploadBackup(row, settings.cloudBackup) },
             onDelivered = { row ->
-                android.util.Log.i("OutboxWorker", "delivered id=${row.id} kind=${row.kind}")
+                android.util.Log.i(
+                    "OutboxWorker",
+                    "delivered id=${row.id} kind=${row.kind} eventId=${row.eventId} channelId=${row.channelId}",
+                )
                 flip(row, eventLog, EventPipeline.STATUS_DELIVERED)
             },
             onExpired = { row ->
                 android.util.Log.w(
                     "OutboxWorker",
-                    "expired id=${row.id} kind=${row.kind} attempts=${row.attempts}",
+                    "expired id=${row.id} kind=${row.kind} eventId=${row.eventId} channelId=${row.channelId} " +
+                        "attempts=${row.attempts}",
                 )
                 flip(row, eventLog, EventPipeline.STATUS_FAILED)
             },

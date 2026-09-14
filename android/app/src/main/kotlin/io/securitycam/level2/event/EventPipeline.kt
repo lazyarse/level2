@@ -45,7 +45,7 @@ class EventPipeline(
     private val outboxSink: (suspend (OutboxEntity) -> Unit)? = null,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
-    suspend fun handleBatch(batch: TriggerBatch) {
+    suspend fun handleBatch(batch: TriggerBatch): Long {
         val types = batch.triggers.map { it.triggerType }.distinct()
         val single = types.size == 1
         val type = if (single) types.first() else TriggerType.merged
@@ -130,6 +130,7 @@ class EventPipeline(
                 )
             }
         }
+        return eventId
     }
 
     /** Sends with up to [maxAttempts] attempts, backing off between failures. */

@@ -1,5 +1,6 @@
 package io.securitycam.level2.storage
 
+import android.util.Log
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
@@ -106,6 +107,9 @@ class OutboxStore(private val dao: OutboxDao) : OutboxQueue {
     override suspend fun delete(id: Long) = dao.delete(id)
 
     suspend fun enqueue(row: OutboxEntity) {
+        // Timing marker: pairs with OutboxWorker's "delivered"/"expired" logs
+        // so logcat -v time shows the queued wait per (eventId, channel).
+        Log.i(TAG, "enqueued kind=${row.kind} eventId=${row.eventId} channelId=${row.channelId}")
         dao.insert(row)
     }
 
@@ -125,6 +129,8 @@ class OutboxStore(private val dao: OutboxDao) : OutboxQueue {
         if (eventIds.isEmpty()) 0 else dao.deleteNotifyForEvents(eventIds)
 
     companion object {
+        private const val TAG = "OutboxStore"
+
         const val BATCH_SIZE = 20
 
         fun from(db: AppDatabase): OutboxStore = OutboxStore(db.outboxDao())

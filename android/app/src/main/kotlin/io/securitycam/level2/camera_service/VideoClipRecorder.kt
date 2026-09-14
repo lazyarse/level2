@@ -397,12 +397,20 @@ object VideoClipRecorder {
             return
         }
         if (exporting) {
-            Log.i(TAG, "exportClip queued behind in-flight export (triggerAt=$triggerAtMs)")
+            Log.i(
+                TAG, "exportClip queued behind in-flight export " +
+                    "(triggerAt=$triggerAtMs queueDepth=${pendingExports.size + 1})",
+            )
             pendingExports.addLast(
                 PendingExport(triggerAtMs, preRollSeconds, postRollSeconds, camName, result),
             )
             return
         }
+        Log.i(
+            TAG, "exportClip begin triggerAt=$triggerAtMs pre=${preRollSeconds}s " +
+                "post=${postRollSeconds}s cam=$camName ringSeg=${ringSegment?.name} " +
+                "preFile=${ringSegment?.name} ringDir=${ringDir?.name}",
+        )
         beginExport(triggerAtMs, preRollSeconds, postRollSeconds, camName, result)
     }
 
@@ -469,8 +477,14 @@ object VideoClipRecorder {
         SystemClock.elapsedRealtime() - postStartWallMs >= POST_MIN_STOP_AGE_MS
 
     private fun startPostRollRecording() {
-        val currentRecorder = recorder ?: run { failExport(); return }
-        val dir = ringDir ?: run { failExport(); return }
+        val currentRecorder = recorder ?: run {
+            Log.w(TAG, "post-roll start failed: recorder null (active=$active)")
+            failExport(); return
+        }
+        val dir = ringDir ?: run {
+            Log.w(TAG, "post-roll start failed: ringDir null (active=$active)")
+            failExport(); return
+        }
         val appContext = context ?: run {
             Log.w(TAG, "post-roll start skipped: no application context")
             failExport()
@@ -523,8 +537,21 @@ object VideoClipRecorder {
         val name = videoFileName(exportTriggerMs, cameraName)
         val inputs = (listOfNotNull(preFile, tailFile) + postFiles)
             .filter { it.exists() && it.length() > 0L }
-        val finalFile = File(ringDir, "final-${System.currentTimeMillis()}.mp4")
         val audioStart = audioStartMicros()
+        Log.i(
+            TAG, "completeExport name=$name triggerAt=$exportTriggerMs " +
+                "inputs=${inputs.size} (pre=${preFile?.let { "${it.name}:${it.length()}" }} " +
+                "tail=${tailFile?.let { "${it.name}:${it.length()}" }} post=${postFiles.size}) " +
+                "audioStart=${audioStart != null}",
+        )
+        if (inputs.isEmpty()) {
+            Log.w(
+                TAG, "completeExport no valid inputs " +
+                    "(pre=${preFile?.exists()}:${preFile?.length()} " +
+                    "tail=${tailFile?.exists()}:${tailFile?.length()} post=${postFiles.map { "${it.name}:${it.length()}" }})",
+            )
+        }
+        val finalFile = File(ringDir, "final-${System.currentTimeMillis()}.mp4")
         // Heavy work (video+audio mux, AAC encode, MediaStore write) runs off the
         // CameraX executor so the ring loop and Finalize events are never starved
         // by a slow export (notably on constrained emulators). State is only

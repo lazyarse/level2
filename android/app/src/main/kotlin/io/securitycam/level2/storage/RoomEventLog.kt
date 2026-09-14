@@ -37,6 +37,11 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         dao.flipChannelStatusJson(eventId, channelId, status)
     }
 
+    /** Window-based fast notify: links the clip after the mux finishes. */
+    suspend fun updateVideoName(eventId: Long, videoName: String) {
+        dao.updateVideoName(eventId, videoName)
+    }
+
     override suspend fun deleteEvents(olderThan: Instant?): DeletedMedia {
         // deleteEventsCollectingRefs already deletes the rows atomically;
         // the extra delete below the original code had was dead weight.
