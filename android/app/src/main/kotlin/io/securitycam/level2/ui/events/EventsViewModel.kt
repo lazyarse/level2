@@ -106,6 +106,10 @@ class EventsViewModel(
     val hasVideoOpener: Boolean
         get() = videoOpener != null
 
+    /** Calendar "today" in [zone]; feeds day-header labels and the default fold state. */
+    val today: LocalDate
+        get() = todayProvider()
+
     suspend fun loadSnapshot(name: String): Snapshot? = snapshotLoader(name)
 
     fun setViewMode(mode: EventsViewMode) {

@@ -109,12 +109,80 @@ class EventsScreenTest {
         compose.onNodeWithTag("dayHeader_2026-01-05").assertExists()
         compose.onNodeWithTag("dayHeader_2026-01-03").assertExists()
         compose.onNodeWithTag("eventRow_2").assertExists()
-        compose.onNodeWithTag("eventRow_3").assertExists()
-        // Detector icons render inline on the first line of each list row.
         compose.onNodeWithTag("eventDetectors_2").assertExists()
         compose.onNodeWithTag("eventDetectors_2_motion").assertExists()
         // No header for the empty gap day.
         compose.onAllNodesWithTag("dayHeader_2026-01-04").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        // Older days start folded: their rows appear only after tapping the header.
+        compose.onAllNodesWithTag("eventRow_3").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onNodeWithTag("dayHeader_2026-01-03").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("eventRow_3").assertExists()
+    }
+
+    @Test
+    fun tappingDayHeaderTogglesItsSection() {
+        setContent(
+            listOf(
+                row(1, Instant.parse("2026-01-05T12:00:00Z")),
+                row(2, Instant.parse("2026-01-04T12:00:00Z")),
+            ),
+        )
+
+        compose.waitForIdle()
+        // Today starts expanded; a past day starts folded.
+        compose.onNodeWithTag("eventRow_1").assertExists()
+        compose.onAllNodesWithTag("eventRow_2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onNodeWithTag("dayHeader_2026-01-04").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("eventRow_2").assertExists()
+        compose.onNodeWithTag("dayHeader_2026-01-04").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("eventRow_2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+    }
+
+    @Test
+    fun foldedStateSurvivesViewModeSwitch() {
+        val store = MemoryStore()
+        runBlocking {
+            store.save(Snapshot(tinyPng(), "image/png", "snap-1.png"))
+            store.save(Snapshot(tinyPng(), "image/png", "snap-2.png"))
+        }
+        val vm = setContent(
+            listOf(
+                row(1, Instant.parse("2026-01-05T12:00:00Z"), snapshotName = "snap-1.png"),
+                row(2, Instant.parse("2026-01-04T12:00:00Z"), snapshotName = "snap-2.png"),
+            ),
+            store = store,
+        )
+        compose.waitForIdle()
+
+        // Past days start folded; confirm the pre-condition before switching modes.
+        compose.onAllNodesWithTag("eventRow_2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        // Switch to grid: today's tile appears, folded day's tile does not.
+        vm.setViewMode(EventsViewMode.GRID)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("galleryThumb_1")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("galleryThumb_1").assertExists()
+        compose.onAllNodesWithTag("galleryThumb_2").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        // Switch back to list: past day remains folded.
+        vm.setViewMode(EventsViewMode.LIST)
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("eventRow_2").fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
     }

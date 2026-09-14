@@ -1,5 +1,6 @@
 package io.securitycam.level2.ui.events
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +48,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -53,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -207,6 +212,7 @@ fun EventsScreen(
                 }
             }
             val list = sections
+            val today = viewModel.today
             when {
                 list == null -> Box(
                     Modifier.fillMaxSize(),
@@ -220,6 +226,7 @@ fun EventsScreen(
 
                 else -> EventsList(
                     sections = list,
+                    today = today,
                     viewMode = viewMode,
                     loadingOlder = loadingOlder,
                     hasMore = hasMore,
@@ -241,6 +248,7 @@ fun EventsScreen(
 @Composable
 private fun EventsList(
     sections: List<DaySection>,
+    today: LocalDate,
     viewMode: EventsViewMode,
     loadingOlder: Boolean,
     hasMore: Boolean,
@@ -250,6 +258,16 @@ private fun EventsList(
     onLoadOlder: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+
+    // Only today's section starts unfolded; earlier days fold behind their header.
+    // reload() nulls sections, tearing this list down, so each fresh entry resets
+    // to {today} — no explicit re-expansion is needed.
+    val expandedDates = rememberSaveable(
+        saver = Saver(
+            save = { it.value.map(LocalDate::toString) },
+            restore = { restored -> mutableStateOf(restored.map { LocalDate.parse(it) }.toSet()) },
+        ),
+    ) { mutableStateOf(setOf(today)) }
 
     // Infinite scroll: near the bottom, ask the view-model for older pages.
     LaunchedEffect(listState, viewMode, sections) {
@@ -280,49 +298,64 @@ private fun EventsList(
             ) {
                 return@forEach
             }
+            val isExpanded = section.date in expandedDates.value
             stickyHeader(key = "day_${section.date}") {
-                DayHeader(section.date, section.rows.size)
+                DayHeader(
+                    date = section.date,
+                    today = today,
+                    count = section.rows.size,
+                    expanded = isExpanded,
+                    onToggle = {
+                        expandedDates.value = if (isExpanded) {
+                            expandedDates.value - section.date
+                        } else {
+                            expandedDates.value + section.date
+                        }
+                    },
+                )
             }
-            if (viewMode == EventsViewMode.LIST) {
-                itemsIndexed(section.rows, key = { _, row -> "event_${row.id}" }) { index, row ->
-                    EventRow(
-                        event = row,
-                        snapshotLoader = snapshotLoader,
-                        onPlay = onPlay,
-                        showPlayButton = showPlayButton,
-                    )
-                    if (index < section.rows.lastIndex) HorizontalDivider()
-                }
-            } else if (viewMode == EventsViewMode.TIMELINE) {
-                item(key = "timeline_${section.date}") {
-                    TimelineDay(
-                        section = section,
-                        snapshotLoader = snapshotLoader,
-                        onPlay = onPlay,
-                        showPlayButton = showPlayButton,
-                    )
-                }
-            } else {
-                val tiles = section.rows.filter { it.snapshotName != null }
-                tiles.chunked(GRID_COLUMNS).forEachIndexed { chunkIndex, chunk ->
-                    item(key = "grid_${section.date}_$chunkIndex") {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
-                        ) {
-                            chunk.forEach { row ->
-                                GalleryTile(
-                                    row = row,
-                                    snapshotLoader = snapshotLoader,
-                                    onPlay = onPlay,
-                                    showPlayButton = showPlayButton,
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            repeat(GRID_COLUMNS - chunk.size) {
-                                Spacer(Modifier.weight(1f))
+            if (isExpanded) {
+                if (viewMode == EventsViewMode.LIST) {
+                    itemsIndexed(section.rows, key = { _, row -> "event_${row.id}" }) { index, row ->
+                        EventRow(
+                            event = row,
+                            snapshotLoader = snapshotLoader,
+                            onPlay = onPlay,
+                            showPlayButton = showPlayButton,
+                        )
+                        if (index < section.rows.lastIndex) HorizontalDivider()
+                    }
+                } else if (viewMode == EventsViewMode.TIMELINE) {
+                    item(key = "timeline_${section.date}") {
+                        TimelineDay(
+                            section = section,
+                            snapshotLoader = snapshotLoader,
+                            onPlay = onPlay,
+                            showPlayButton = showPlayButton,
+                        )
+                    }
+                } else {
+                    val tiles = section.rows.filter { it.snapshotName != null }
+                    tiles.chunked(GRID_COLUMNS).forEachIndexed { chunkIndex, chunk ->
+                        item(key = "grid_${section.date}_$chunkIndex") {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp),
+                            ) {
+                                chunk.forEach { row ->
+                                    GalleryTile(
+                                        row = row,
+                                        snapshotLoader = snapshotLoader,
+                                        onPlay = onPlay,
+                                        showPlayButton = showPlayButton,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                repeat(GRID_COLUMNS - chunk.size) {
+                                    Spacer(Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -356,21 +389,41 @@ private fun EventsList(
 }
 
 @Composable
-private fun DayHeader(date: LocalDate, count: Int) {
-    val today = LocalDate.now()
+private fun DayHeader(
+    date: LocalDate,
+    today: LocalDate,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
     val label = when (date) {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
         else -> date.format(DateTimeFormatter.ISO_LOCAL_DATE)
     }
+    val chevron by animateFloatAsState(
+        if (expanded) 180f else 0f,
+        label = "day_chevron_$date",
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onToggle)
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("dayHeader_$date"),
     ) {
+        Icon(
+            Icons.Filled.KeyboardArrowDown,
+            contentDescription = if (expanded) {
+                "Collapse $label"
+            } else {
+                "Expand $label"
+            },
+            modifier = Modifier.graphicsLayer { rotationZ = chevron },
+        )
+        Spacer(Modifier.width(8.dp))
         Text(
             if (count == 1) "$label ($count event)" else "$label ($count events)",
             style = MaterialTheme.typography.titleSmall,
