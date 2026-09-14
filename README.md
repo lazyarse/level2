@@ -46,6 +46,31 @@ and a **Test** button fires a trial alert.
   **webhook URL** (https only), and optionally a **bearer token**. Custom hooks
   post JSON or plain text; the ntfy preset also takes a **title**.
 
+## Video clips
+
+Each motion event saves one clip to `Movies/level2` (MediaStore, fallback
+`filesDir/videos/`). The app pre-buffers 5 s (`pre-roll`) and tails 5 s
+(`post-roll`, `Settings → Video clips`) around the trigger; triggers within
+15 s merge into one event, hard-capped at 120 s for perpetual motion.
+
+**Keep monitoring for at least ~5 s after the last trigger.** Technically a
+clip is valid once the post-roll is ≥1 s old (`POST_MIN_STOP_AGE_MS`,
+covering the ~240 ms first-keyframe window); earlier stops still yield a clip
+from the 5 s pre-roll buffer *in steady state* (monitoring ran >5 s before the
+trigger). Stopping within the first second on a freshly started session can
+leave the event with no video.
+
+| Stop Δt | Result |
+|---|---|
+| ~0.5 s | `postRollIsMature()` false → tail runs to 5 s limit — valid (pre + tail) |
+| 1 s | Boundary — clean cut past keyframe — valid |
+| 4 s | Clean cut; late `onVideoReady` links ~8 s later — valid, play button appears late |
+| 5 s | Full post-roll — valid |
+| 15 s window | Fast-notify emits `video=null` immediately, clip linked ~8 s later |
+
+For a continuous wave the event stays open until 15 s of quiet or the 120 s cap,
+then the clip finalizes — expect up to ~2 m8 s to the play button in that case.
+
 ## License
 
 AGPL-3.0 (see `LICENSE`). The app bundles YOLO-family / YAMNet-class models which are
