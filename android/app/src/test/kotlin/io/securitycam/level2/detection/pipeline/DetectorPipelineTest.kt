@@ -5,15 +5,21 @@ import io.securitycam.level2.core.TriggerEvent
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.AudioWindow
+import io.securitycam.level2.detection.ColorBitmap
+import io.securitycam.level2.detection.DetectedBox
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.FrameDetector
 import io.securitycam.level2.detection.GrayscaleBitmap
 import io.securitycam.level2.detection.MotionDetector
+import io.securitycam.level2.detection.audio.AudioEventClassifier
+import io.securitycam.level2.detection.audio.AudioEventScores
 import io.securitycam.level2.detection.audio.MockAudioEventClassifier
 import io.securitycam.level2.detection.buildFrame
 import io.securitycam.level2.detection.buildFrameWithRect
+import io.securitycam.level2.detection.person.DogDetector
+import io.securitycam.level2.detection.person.DogEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
@@ -344,6 +351,68 @@ class DetectorPipelineTest {
         assertEquals(listOf(exclusion), motion.exclusionZones)
         pipeline.dispose()
     }
+
+    @Test
+    fun processAudioSkipsClassificationWhenNoAudioDetectorLive() = runBlocking {
+        val classifier = CountingClassifier()
+        val pipeline = DetectorPipeline(
+            classifier = classifier,
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.motion, enabled = true, threshold = 0.01,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.init()
+        assertFalse(pipeline.hasAudioAnalyzers)
+        pipeline.processAudio(AudioWindow(base, FloatArray(windowSamples), sampleRate))
+        assertEquals(0, classifier.calls)
+        pipeline.dispose()
+    }
+
+    @Test
+    fun processAudioClassifiesWhenAudioDetectorLive() = runBlocking {
+        val classifier = CountingClassifier()
+        val pipeline = DetectorPipeline(
+            classifier = classifier,
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.babyCry, enabled = true, threshold = 0.5,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.init()
+        assertTrue(pipeline.hasAudioAnalyzers)
+        // Empty scores: no trigger, but the classifier must still run.
+        pipeline.processAudio(AudioWindow(base, FloatArray(windowSamples), sampleRate))
+        assertEquals(1, classifier.calls)
+        pipeline.dispose()
+    }
+
+    @Test
+    fun hybridDetectorCountsAsAudioAnalyzer() = runBlocking {
+        val classifier = CountingClassifier()
+        val registry = DetectorRegistry.withDefaults()
+        registry.register(TriggerType.dog) { c -> DogDetector(c, NoopDogEngine()) }
+        val pipeline = DetectorPipeline(
+            classifier = classifier,
+            registry = registry,
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.dog, enabled = true, threshold = 0.5,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.init()
+        assertTrue(pipeline.hasAudioAnalyzers)
+        assertEquals(0, pipeline.audioDetectorCount)
+        pipeline.processAudio(AudioWindow(base, FloatArray(windowSamples), sampleRate))
+        assertEquals(1, classifier.calls)
+        pipeline.dispose()
+    }
 }
 
 /** Gated stub detector: counts how often its sync/async paths are invoked. */
@@ -371,4 +440,29 @@ class GatedStubDetector(
         asyncCalls++
         return DetectionResult(frame.timestamp, triggerType, 1.0, true)
     }
+}
+
+/** Classifier stub: counts classify() invocations; scores are always empty. */
+class CountingClassifier : AudioEventClassifier {
+    var calls = 0
+
+    override val id: String get() = "counting"
+
+    override suspend fun init() {}
+
+    override suspend fun dispose() {}
+
+    override suspend fun classify(window: AudioWindow): AudioEventScores {
+        calls++
+        return AudioEventScores(window.timestamp, emptyMap())
+    }
+}
+
+/** Visual engine stub: never sees a dog. */
+class NoopDogEngine : DogEngine {
+    override suspend fun init() {}
+
+    override suspend fun dispose() {}
+
+    override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = emptyList()
 }

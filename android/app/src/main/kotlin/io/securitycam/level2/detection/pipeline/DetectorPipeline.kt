@@ -59,6 +59,17 @@ class DetectorPipeline(
     val frameDetectorCount: Int get() = frameDetectorsInternal.size
     val audioDetectorCount: Int get() = audioDetectorsInternal.size
 
+    /**
+     * True when any live detector consumes audio scores: standalone audio
+     * detectors plus the score half of hybrid (combined pet) detectors.
+     * When false, [processAudio] skips classification entirely — running
+     * YAMNet on every window with nothing to consume the scores is pure
+     * overhead.
+     */
+    val hasAudioAnalyzers: Boolean
+        get() = audioDetectorsInternal.isNotEmpty() ||
+            frameDetectorsInternal.any { it is HybridDetector }
+
     /** Test seam: injects an extra frame detector after construction. */
     fun debugAddFrameDetector(detector: FrameDetector) {
         frameDetectorsInternal.add(detector)
@@ -150,6 +161,9 @@ class DetectorPipeline(
      * run on every window — the frame half runs gated in processFrame.
      */
     suspend fun processAudio(window: AudioWindow) {
+        // No audio/hybrid detector live: classifying this window would only
+        // burn CPU (a YAMNet inference per window) for scores nobody reads.
+        if (!hasAudioAnalyzers) return
         val scores = classifier.classify(window)
         // Standalone audio detectors plus the score half of hybrid (combined
         // pet) detectors — the frame half runs in processFrame.

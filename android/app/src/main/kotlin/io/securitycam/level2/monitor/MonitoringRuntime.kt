@@ -8,6 +8,7 @@ import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.backup.RemoteKeys
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.DetectorType
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.mediaFileName
 import io.securitycam.level2.detection.AnalysisFrame
@@ -20,6 +21,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.audio.AudioClassifierFactory
 import io.securitycam.level2.detection.audio.AudioEventClassifier
+import io.securitycam.level2.detection.audio.MockAudioEventClassifier
 import io.securitycam.level2.detection.face.FaceDetector
 import io.securitycam.level2.detection.face.FaceEmbedder
 import io.securitycam.level2.detection.face.FaceEmbeddingEngine
@@ -213,8 +215,20 @@ class MonitoringRuntime private constructor(
                 }
             }
             runtime.scopedRegistry = scoped
+            // Skip the YAMNet model load when no enabled detector consumes
+            // audio scores: the classifier would run on every window for
+            // nobody. The mic itself stays up (clip audio + watchdog
+            // liveness); only the model inference is gated.
+            val anyAudioAnalyzer = settings.detectorConfigs.values.any { cfg ->
+                cfg.enabled &&
+                    DetectorType.fromKey(cfg.type)?.consumesAudio == true
+            }
             runtime.pipeline = DetectorPipeline(
-                classifier = classifierLoader(appContext),
+                classifier = if (anyAudioAnalyzer) {
+                    classifierLoader(appContext)
+                } else {
+                    MockAudioEventClassifier()
+                },
                 configs = settings.detectorConfigs.values.toList(),
                 registry = scoped,
             )

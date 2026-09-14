@@ -39,13 +39,21 @@ class MonitorViewModelWave4Test {
         serviceHealth = { healthy },
     ) to settingsGate
 
+    private fun MonitorViewModel.awaitSettled(timeoutMs: Long = 2_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (state.value == MonitorState.Starting && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+    }
+
     @Test
     fun startStaysStartingUntilHealthyBindConfirms() {
         val (vm, gate) = viewModel(healthy = true)
         vm.start()
         assertEquals(MonitorState.Starting, vm.state.value)
         gate.complete(AppSettings.defaults())
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         vm.stop()
     }
@@ -57,7 +65,7 @@ class MonitorViewModelWave4Test {
         vm.start()
         assertEquals(MonitorState.Starting, vm.state.value)
         gate.complete(AppSettings.defaults())
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Error, vm.state.value)
         assertTrue(vm.error.value!!.isNotEmpty())
         // The service intent still fired; only the state is honest.

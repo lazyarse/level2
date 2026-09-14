@@ -33,6 +33,14 @@ class MonitorViewModelWave2Test {
         assertTrue(vm.error.value!!.contains("Switching camera failed"))
     }
 
+    private fun MonitorViewModel.awaitSettled(timeoutMs: Long = 2_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (state.value == MonitorState.Starting && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+    }
+
     @Test
     fun startRefreshesStaleRecordingParamsAfterSettingsLoad() {
         val refreshed = mutableListOf<String>()
@@ -53,7 +61,7 @@ class MonitorViewModelWave2Test {
             serviceHealth = { true },
         )
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         assertEquals(listOf("Porch/9"), refreshed)
     }
@@ -75,7 +83,7 @@ class MonitorViewModelWave2Test {
             serviceHealth = { true },
         )
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         assertTrue(refreshed.isEmpty())
     }

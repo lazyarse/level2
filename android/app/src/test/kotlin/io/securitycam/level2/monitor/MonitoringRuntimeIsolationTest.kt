@@ -1,6 +1,7 @@
 package io.securitycam.level2.monitor
 
 import android.app.Application
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.KnownFace
@@ -10,6 +11,7 @@ import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.DetectorRegistry
 import io.securitycam.level2.detection.MotionDetector
+import io.securitycam.level2.detection.audio.AudioEventClassifier
 import io.securitycam.level2.detection.audio.MockAudioEventClassifier
 import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.detection.face.FaceEmbedder
@@ -72,13 +74,14 @@ class MonitoringRuntimeIsolationTest {
         settings: AppSettings,
         faceStore: KnownFaceStore = KnownFaceStore(File(app.filesDir, "kf-${System.nanoTime()}")),
         faceEngine: MockFaceEngine = MockFaceEngine(),
+        classifierLoader: suspend (Context) -> AudioEventClassifier = { MockAudioEventClassifier() },
     ): MonitoringRuntime = MonitoringRuntime.create(
         context = app,
         settings = settings,
         scope = scope(),
         faceStoreFactory = { faceStore },
         embedderLoader = { FakeEmbedder() },
-        classifierLoader = { MockAudioEventClassifier() },
+        classifierLoader = classifierLoader,
         faceEngineFactory = { faceEngine },
     )
 
@@ -180,5 +183,43 @@ class MonitoringRuntimeIsolationTest {
             bitmap = color.toGrayscale(),
             color = color,
         )
+    }
+
+    @Test
+    fun skipsAudioClassifierLoadWhenNoAudioDetectorLive() = runBlocking {
+        var loads = 0
+        val runtime = create(
+            motionOnlySettings(),
+            classifierLoader = { loads++; MockAudioEventClassifier() },
+        )
+        try {
+            assertEquals(0, loads)
+        } finally {
+            runtime.stop()
+        }
+    }
+
+    @Test
+    fun loadsAudioClassifierWhenAudioDetectorLive() = runBlocking {
+        var loads = 0
+        val settings = motionOnlySettings().copy(
+            detectorConfigs = motionOnlySettings().detectorConfigs + (
+                TriggerType.babyCry to DetectorConfig(
+                    type = TriggerType.babyCry,
+                    enabled = true,
+                    threshold = 0.5,
+                    persistenceFrames = 1,
+                )
+            ),
+        )
+        val runtime = create(
+            settings,
+            classifierLoader = { loads++; MockAudioEventClassifier() },
+        )
+        try {
+            assertEquals(1, loads)
+        } finally {
+            runtime.stop()
+        }
     }
 }

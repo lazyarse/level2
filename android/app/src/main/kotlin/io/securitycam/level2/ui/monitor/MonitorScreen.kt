@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +94,13 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The PreviewView is recreated on every entry to this tab; rebind so a
+    // live feed actually resumes instead of idling on the fresh surface.
+    // No-op unless monitoring with the feed on.
+    LaunchedEffect(Unit) {
+        viewModel.reattachPreview()
     }
 
     // `display` throws on contexts without an associated display (e.g. JVM

@@ -42,11 +42,19 @@ class MonitorViewModelTest {
         serviceHealth = { true },
     )
 
+    private fun MonitorViewModel.awaitSettled(timeoutMs: Long = 2_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (state.value == MonitorState.Starting && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+    }
+
     @Test
     fun start_whenPermissionsGranted_transitionsToMonitoring() {
         val vm = viewModel()
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
     }
 
@@ -75,7 +83,7 @@ class MonitorViewModelTest {
         vm.start()
         vm.start()
         assertEquals(1, startRan.size)
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
     }
 
@@ -84,7 +92,7 @@ class MonitorViewModelTest {
         val stopRan = mutableListOf<Int>()
         val vm = viewModel(stopRan = stopRan)
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         vm.stop()
         assertEquals(MonitorState.Idle, vm.state.value)
         assertEquals(1, stopRan.size)
@@ -129,7 +137,7 @@ class MonitorViewModelTest {
             serviceHealth = { true },
         )
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
 
         kotlinx.coroutines.runBlocking {
@@ -144,7 +152,7 @@ class MonitorViewModelTest {
             excluded = false
             vm.checkScheduleNow()
         }
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         assertTrue(!vm.schedulePaused.value)
         assertEquals(2, startRan.size)
@@ -196,7 +204,7 @@ class MonitorViewModelTest {
         assertEquals(true, saved.single().monitorPreview)
 
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         vm.togglePreview()
         // Monitoring → rebind fired with the new value; persisted again.
@@ -204,6 +212,75 @@ class MonitorViewModelTest {
         assertFalse(vm.monitorPreview.value)
         assertEquals(2, saved.size)
         assertEquals(false, saved.last().monitorPreview)
+    }
+
+    @Test
+    fun refreshSettingsDoesNotResetSessionPreviewToggle() {
+        val saved = mutableListOf<AppSettings>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _, _, _, _, _, _, _ -> },
+            stopMonitoring = {},
+            // The persisted default stays false throughout — simulating a disk
+            // value that hasn't caught up with the session toggle yet.
+            settingsLoader = { AppSettings.defaults().copy(monitorPreview = false) },
+            settingsSaver = { saved.add(it) },
+            scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(vm.monitorPreview.value)
+
+        vm.togglePreview()
+        assertEquals(true, vm.monitorPreview.value)
+        assertEquals(true, saved.single().monitorPreview)
+
+        // A resume-time reload (returning from Events/Settings) reads stale
+        // persisted state; the session toggle must win, not get blacked out.
+        vm.refreshSettings()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(true, vm.monitorPreview.value)
+    }
+
+    @Test
+    fun reattachPreview_rebindsOnlyWhenMonitoringWithFeedOn() {
+        val rebinds = mutableListOf<Boolean>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _, _, _, _, _, _, _ -> },
+            stopMonitoring = {},
+            settingsLoader = { AppSettings.defaults() },
+            previewRebind = { rebinds.add(it) },
+            scheduleCheckInterval = null,
+            surfaceRuntimeStartFailures = false,
+            serviceHealth = { true },
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        // Idle: no-op even with the feed toggled on.
+        vm.togglePreview()
+        assertEquals(true, vm.monitorPreview.value)
+        vm.reattachPreview()
+        assertTrue(rebinds.isEmpty())
+
+        vm.start()
+        vm.awaitSettled()
+        assertEquals(MonitorState.Monitoring, vm.state.value)
+
+        // Monitoring with the feed off: no-op (the toggle itself rebinds).
+        vm.togglePreview()
+        assertEquals(listOf(false), rebinds)
+        vm.reattachPreview()
+        assertEquals(listOf(false), rebinds)
+
+        // Monitoring with the feed on: rebinds to resume the fresh surface.
+        vm.togglePreview()
+        assertEquals(listOf(false, true), rebinds)
+        vm.reattachPreview()
+        assertEquals(listOf(false, true, true), rebinds)
     }
 
     @Test
@@ -219,7 +296,7 @@ class MonitorViewModelTest {
             serviceHealth = { true },
         )
         vm.start()
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSettled()
         assertEquals(MonitorState.Monitoring, vm.state.value)
         kotlinx.coroutines.runBlocking { vm.checkScheduleNow() }
         assertTrue(vm.schedulePaused.value)

@@ -31,6 +31,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -319,7 +321,6 @@ class MonitorViewModel(
                 val settings = settingsLoader()
                 _cameraName.value = settings.cameraName
                 _cameraId.value = settings.cameraId
-                _monitorPreview.value = settings.monitorPreview
                 _detectionZones.value = settings.detectionZones
                 _exclusionZones.value = settings.exclusionZones
 
@@ -340,12 +341,30 @@ class MonitorViewModel(
         if (_state.value == MonitorState.Monitoring) previewRebind(next)
         viewModelScope.launch {
             runCatching {
-                val current = settingsLoader()
-                val updated = current.copy(monitorPreview = next)
-                settingsSaver(updated)
-                scheduleSettings = updated
-
+                // Survive ViewModel/Activity teardown mid-write so a recreated
+                // view model re-seeds from the persisted toggle, not a stale
+                // default.
+                withContext(NonCancellable) {
+                    val current = settingsLoader()
+                    val updated = current.copy(monitorPreview = next)
+                    settingsSaver(updated)
+                    scheduleSettings = updated
+                }
             }
+        }
+    }
+
+    /**
+     * Rebinds the camera when (re-)entering the monitor screen while
+     * monitoring with the feed on. The PreviewView is recreated on every
+     * return (tab switch, activity recreation); CameraX accepts the new
+     * surface but leaves the Preview stream IDLE, so without a rebind the
+     * toggle reads on over a black feed. No-op unless monitoring live
+     * with the feed enabled.
+     */
+    fun reattachPreview() {
+        if (_state.value == MonitorState.Monitoring && _monitorPreview.value) {
+            previewRebind(true)
         }
     }
 

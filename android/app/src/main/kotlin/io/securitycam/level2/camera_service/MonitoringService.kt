@@ -597,15 +597,20 @@ object MonitoringServiceController {
      * after rapid tab switches.
      */
     fun clearPreviewSurfaceProvider(provider: Preview.SurfaceProvider?) {
-        if (pendingPreviewProvider == provider) {
+        // Ownership-checked detach: only the currently attached provider
+        // may clear. A stale dispose (rapid tab switches) must not unbind
+        // a newer live surface — a newer factory would already have
+        // replaced pending.
+        val isCurrent = pendingPreviewProvider == provider
+        if (isCurrent) {
             pendingPreviewProvider = null
         }
-        // Only detach from the bound preview when it still serves this
-        // provider; otherwise a newer surface already took over.
-        boundPreview?.let { preview ->
-            if (provider == null && pendingPreviewProvider == null) {
-                preview.setSurfaceProvider(null)
-            }
+        if (isCurrent) {
+            // Detach the dying surface so the Preview stream deactivates
+            // cleanly. Leaving a destroyed texture attached wedges the
+            // session: the next surface attaches but never resumes (frozen
+            // feed with the toggle still on).
+            boundPreview?.setSurfaceProvider(null)
         }
     }
 
@@ -966,7 +971,13 @@ object MonitoringServiceController {
                             pendingPreviewProvider?.let { p.setSurfaceProvider(it) }
                             Log.i(TAG, "preview use case built rotation=${rotations.preview}")
                         }
-                } else null
+                } else {
+                    // The previous Preview (if any) was unbound above; drop
+                    // the reference so a later surface can't attach to a dead
+                    // use case instead of the next bound one.
+                    boundPreview = null
+                    null
+                }
                 imageAnalysis = analysis
                 imageCapture = capture
                 provider.unbindAll()
