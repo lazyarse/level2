@@ -22,10 +22,12 @@ object SigV4 {
         return mac.doFinal(data.toByteArray(Charsets.UTF_8))
     }
 
+    private fun hex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
     private fun sha256Hex(data: String): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest(data.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        hex(java.security.MessageDigest.getInstance("SHA-256")
+            .digest(data.toByteArray(Charsets.UTF_8)))
 
     fun signingKey(secretKey: String, dateStamp: String, region: String, service: String): ByteArray {
         val kDate = hmacSha256("AWS4$secretKey".toByteArray(Charsets.UTF_8), dateStamp)
@@ -53,7 +55,7 @@ object SigV4 {
         /** S3 requires x-amz-content-sha256 signed; other services don't send it. */
         contentSha256Header: Boolean = true,
     ): SignedRequest {
-        val amzDate = DateTimeFormatter.format(now)
+        val amzDate = amzDateFormat.format(now)
         val dateStamp = amzDate.substringBefore('T')
 
         val headers = sortedMapOf<String, String>(
@@ -89,8 +91,7 @@ object SigV4 {
             sha256Hex(canonicalRequest),
         ).joinToString("\n")
 
-        val signature = hmacSha256(signingKey(secretAccessKey, dateStamp, region, service), stringToSign)
-            .joinToString("") { "%02x".format(it) }
+        val signature = hex(hmacSha256(signingKey(secretAccessKey, dateStamp, region, service), stringToSign))
 
         val authorization =
             "AWS4-HMAC-SHA256 Credential=$accessKeyId/$scope, " +
@@ -102,19 +103,10 @@ object SigV4 {
 
     /** SHA-256 of the empty body — the canonical-request payload hash for GET/HEAD. */
     fun emptyPayloadHash(): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest(ByteArray(0))
-            .joinToString("") { "%02x".format(it) }
+        hex(java.security.MessageDigest.getInstance("SHA-256").digest(ByteArray(0)))
 
     /** `yyyyMMdd'T'HHmmss'Z'` in UTC. */
-    private object DateTimeFormatter {
-        fun format(instant: java.time.Instant): String =
-            java.time.ZoneOffset.UTC.let { utc ->
-                val t = java.time.ZonedDateTime.ofInstant(instant, utc)
-                "%04d%02d%02dT%02d%02d%02dZ".format(
-                    t.year, t.monthValue, t.dayOfMonth,
-                    t.hour, t.minute, t.second,
-                )
-            }
-    }
+    private val amzDateFormat =
+        java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            .withZone(java.time.ZoneOffset.UTC)
 }

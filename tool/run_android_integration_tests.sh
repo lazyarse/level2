@@ -90,7 +90,7 @@ trap 'kill "$LOGCAT_PID" 2>/dev/null' EXIT
 
 echo "== running: am instrument ${INSTR_ARGS[*]} $TEST_PKG/$RUNNER =="
 # Run in the background so this script can react to [itest] logcat markers
-# mid-run (screen off/on coordination) — mirrors the Flutter-era flow.
+# mid-run (screen off/on coordination).
 adb shell am instrument "${INSTR_ARGS[@]}" "$TEST_PKG/$RUNNER" > "$OUT" 2>&1 &
 TEST_PID=$!
 

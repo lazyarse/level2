@@ -8,8 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.securitycam.level2.detection.ColorBitmap
 
 /**
- * Shared helpers for the on-device integration suite (port of the Dart
- * `DeviceHarness` in `integration_test/monitoring_on_device_test.dart`).
+ * Shared helpers for the on-device integration suite.
  *
  * The host runner (`tool/run_android_integration_tests.sh`) pre-grants
  * CAMERA/RECORD_AUDIO/POST_NOTIFICATIONS via `pm grant`, so the real system

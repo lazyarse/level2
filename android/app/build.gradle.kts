@@ -23,7 +23,7 @@ val gitDescribe: String? = runGit("describe", "--tags", "--dirty")
 
 android {
     namespace = "io.securitycam.level2"
-    // 37 = highest installed platform (flutter_secure_storage compiled against 37).
+    // 37 = highest installed platform.
     compileSdk = 37
 
     compileOptions {
@@ -160,7 +160,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")

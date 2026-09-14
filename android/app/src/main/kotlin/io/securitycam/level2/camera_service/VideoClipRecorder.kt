@@ -15,6 +15,7 @@ import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
 import io.securitycam.level2.core.ClipStampPosition
+import io.securitycam.level2.core.mediaFileName
 import android.util.Log
 import androidx.camera.video.PendingRecording
 import androidx.camera.video.FallbackStrategy
@@ -28,7 +29,9 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.Calendar
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -109,9 +112,6 @@ object VideoClipRecorder {
      * re-mux would otherwise discard.
      */
     @Volatile private var orientationHintDegrees: Int = 0
-
-    /** For tests. */
-    internal fun orientationHintForTest(): Int = orientationHintDegrees
 
     fun setOrientationHintDegrees(degrees: Int) {
         orientationHintDegrees = ((degrees % 360) + 360) % 360
@@ -665,19 +665,13 @@ object VideoClipRecorder {
     internal fun clampSamplesToBytes(samples: Long): Int =
         (samples.coerceIn(0L, Int.MAX_VALUE / 2L) * 2L).toInt()
 
-    /** Shared date-time-cameraName scheme (mirrors Dart `mediaFileName`). */
-    internal fun videoFileName(triggerAtMs: Long, camName: String): String {
-        fun two(n: Int) = n.toString().padStart(2, '0')
-        fun three(n: Int) = n.toString().padStart(3, '0')
-        val t = Calendar.getInstance().apply { timeInMillis = triggerAtMs }
-        val date = "${t.get(Calendar.YEAR)}-${two(t.get(Calendar.MONTH) + 1)}-" +
-            two(t.get(Calendar.DAY_OF_MONTH))
-        val time = "${two(t.get(Calendar.HOUR_OF_DAY))}-" +
-            "${two(t.get(Calendar.MINUTE))}-${two(t.get(Calendar.SECOND))}-" +
-            three(t.get(Calendar.MILLISECOND))
-        val safe = camName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        return "${date}_${time}_$safe.mp4"
-    }
+    /** Shared date-time-cameraName scheme via [mediaFileName]. */
+    internal fun videoFileName(triggerAtMs: Long, camName: String): String =
+        mediaFileName(
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(triggerAtMs), ZoneId.systemDefault()),
+            camName,
+            "mp4",
+        )
 
     /**
      * Muxes the concatenated video segments plus (when [audioStartMicros] maps a

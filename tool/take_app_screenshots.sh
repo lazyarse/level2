@@ -63,6 +63,19 @@ want() { # target_name
   done
   return 1
 }
+
+# Any Settings-scoped target (settings sections, alert log viewer, the
+# settings tab itself, or "all") needs the Settings tab tapped first. Only
+# Monitor/Events-only runs skip it.
+needs_settings() {
+  for t in "${TARGETS[@]}"; do
+    case "$t" in
+      monitor|events) ;;
+      *) return 0 ;;
+    esac
+  done
+  return 1
+}
 SERIAL="${SERIAL:-emulator-5554}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMG_DIR="$REPO_ROOT/docs/images"
@@ -391,7 +404,7 @@ if want events; then
   echo "captured events.png"
 fi
 
-if want settings || [ "${#TARGETS[@]}" -gt 1 ]; then
+if needs_settings; then
   tap_lowest text "Settings" || die "cannot tap Settings tab"
   wait_for content-desc "expand_Detectors" 15 || die "Settings tab did not appear"
   sleep 0.5
