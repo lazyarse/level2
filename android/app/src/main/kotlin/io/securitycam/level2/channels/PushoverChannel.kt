@@ -77,19 +77,21 @@ class PushoverChannel(
 
     override suspend fun send(message: AlertMessage) {
         val text = fitMessage(message.text)
-        // Preview pushes carry only the GIF (no snapshot): attach it directly.
-        message.videoPreview?.let { preview ->
-            sendMultipart(text, preview)
-            return
+        // Preview pushes carry both the MP4 (videoPreview) and a still JPEG
+        // (snapshot, frame 0). Pushover attachments are image-only, so the
+        // still goes out; the MP4 would be rejected.
+        message.snapshot?.let { still ->
+            val upload = fitSnapshot(still, MAX_ATTACHMENT_BYTES)
+            if (upload != null) {
+                sendMultipart(text, upload)
+                return
+            }
         }
-        // Oversized originals are downscaled to fit; unsalvageable ones fall
-        // back to the text form (mirrors Telegram's photo→message fallback).
-        val upload = message.snapshot?.let { fitSnapshot(it, MAX_ATTACHMENT_BYTES) }
-        if (message.snapshot != null && upload != null) {
-            sendMultipart(text, upload)
-        } else {
-            postText(text)
-        }
+        // Anything left (unfittable still, MP4-only, or nothing attachable)
+        // falls back to the text form (mirrors Telegram's photo→message
+        // fallback). MP4 videoPreview is never attached: Pushover
+        // attachments are image-only.
+        postText(text)
     }
 
     private suspend fun sendMultipart(text: String, attach: Snapshot) {

@@ -329,15 +329,32 @@ class PushoverChannelTest {
     }
 
     @Test
-    fun videoPreviewIsSentAsAttachment() = runBlocking {
+    fun previewStillIsSentAsAttachmentNotMp4() = runBlocking {
         val server = serverWith()
         try {
             val c = channel(server.url("/").toString())
-            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
-            c.send(message().copy(videoPreview = preview))
+            val still = Snapshot(byteArrayOf(7, 8, 9), "image/jpeg", "preview.jpg")
+            val video = Snapshot(byteArrayOf(1, 2), "video/mp4", "preview.mp4")
+            c.send(message().copy(snapshot = still, videoPreview = video))
             assertEquals(1, server.requestCount)
             val body = server.takeRequest().body.readUtf8()
-            assertTrue(body.contains("preview.gif"))
+            assertTrue(body.contains("preview.jpg"))
+            assertFalse(body.contains("preview.mp4"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun videoPreviewOnlyFallsBackToText() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString())
+            val video = Snapshot(byteArrayOf(1, 2), "video/mp4", "preview.mp4")
+            c.send(message().copy(videoPreview = video))
+            assertEquals(1, server.requestCount)
+            val body = server.takeRequest().body.readUtf8()
+            assertFalse(body.contains("preview.mp4"))
         } finally {
             server.shutdown()
         }
