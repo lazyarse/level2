@@ -48,7 +48,20 @@ class TelegramChannel(
     override suspend fun send(message: AlertMessage) {
         val preview = message.videoPreview
         if (preview != null) {
-            sendAnimation(preview, message.text)
+            // Sheet mode: videoPreview is a JPEG sheet, send as photo; keep GIF via sendAnimation for back-compat
+            if (preview.mimeType == "video/mp4" || preview.mimeType == "image/gif") {
+                sendAnimation(preview, message.text)
+            } else {
+                if (!sendPhoto(preview, message.text)) {
+                    // Fallback to snapshot if sheet photo fails
+                    val photo = message.snapshot
+                    if (photo != null && !sendPhoto(photo, message.text)) {
+                        sendMessage(message.text)
+                    } else if (photo == null) {
+                        sendMessage(message.text)
+                    }
+                }
+            }
             return
         }
         val photo = message.snapshot

@@ -157,6 +157,8 @@ object VideoPreview {
     fun clampWidth(value: Int): Int = value.coerceIn(MIN_WIDTH, MAX_WIDTH)
 }
 
+enum class PreviewMode { VIDEO, SHEET }
+
 /** Cloud backup settings (WebDAV / S3-compatible; see backup/ design doc). */
 data class CloudBackupSettings(
     val enabled: Boolean = false,
@@ -232,6 +234,7 @@ data class AppSettings(
     val tripwireZones: List<DetectionZone> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
+    val previewMode: PreviewMode = PreviewMode.VIDEO,
     /** Frame rate for notification video-previews (clamped to [VideoPreview]). */
     val gifPreviewFps: Int = VideoPreview.DEFAULT_FPS,
     /** Max frame width in px for notification video-previews. */
@@ -273,6 +276,7 @@ data class AppSettings(
         tripwireZones: List<DetectionZone>? = null,
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
+        previewMode: PreviewMode? = null,
         gifPreviewFps: Int? = null,
         gifPreviewMaxWidthPx: Int? = null,
         cooldownsMigrated: Boolean? = null,
@@ -302,6 +306,7 @@ data class AppSettings(
         tripwireZones = tripwireZones ?: this.tripwireZones,
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
+        previewMode = previewMode ?: this.previewMode,
         gifPreviewFps = gifPreviewFps ?: this.gifPreviewFps,
         gifPreviewMaxWidthPx = gifPreviewMaxWidthPx ?: this.gifPreviewMaxWidthPx,
         cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
@@ -334,6 +339,7 @@ data class AppSettings(
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
+        json["previewMode"] = previewMode.name
         json["gifPreviewFps"] = gifPreviewFps
         json["gifPreviewMaxWidthPx"] = gifPreviewMaxWidthPx
         json["cooldownsMigrated"] = cooldownsMigrated
@@ -607,6 +613,7 @@ data class AppSettings(
                 cloudBackup = (json["cloudBackup"] as? Map<*, *>)
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
+                previewMode = (json["previewMode"] as? String)?.let { runCatching { PreviewMode.valueOf(it) }.getOrNull() } ?: defaults.previewMode,
                 gifPreviewFps = VideoPreview.clampFps(
                     (json["gifPreviewFps"] as? Number)?.toInt() ?: defaults.gifPreviewFps,
                 ),

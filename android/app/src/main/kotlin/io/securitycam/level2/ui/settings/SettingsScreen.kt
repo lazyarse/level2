@@ -116,6 +116,7 @@ import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ClipStampPosition
+import io.securitycam.level2.core.PreviewMode
 import io.securitycam.level2.core.VideoPreview
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.LiveViewSettings
@@ -1104,6 +1105,14 @@ fun SettingsScreen(
                                 "Video preview: a short preview of the recorded " +
                                     "clip pushed with each alert when a channel's preview toggle is on.",
                             )
+                            DropdownField(
+                                label = "Preview mode",
+                                selected = if (current.previewMode == PreviewMode.VIDEO) "Video (MP4)" else "Contact sheet (6×10)",
+                                options = listOf(PreviewMode.VIDEO.name to "Video (MP4)", PreviewMode.SHEET.name to "Contact sheet (6×10)"),
+                                testTag = "previewModeDropdown",
+                                onSelect = { v -> viewModel.update { it.copy(previewMode = PreviewMode.valueOf(v)) } },
+                            )
+                            Spacer(Modifier.height(8.dp))
                             Text("Preview frame rate: ${current.gifPreviewFps} fps")
                             Slider(
                                 value = current.gifPreviewFps.toFloat(),

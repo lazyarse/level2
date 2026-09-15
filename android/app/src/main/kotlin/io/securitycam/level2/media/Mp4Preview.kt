@@ -24,8 +24,9 @@ import kotlinx.coroutines.withTimeout
  * conversion is plain JVM.
  */
 data class Preview(
-    val video: Snapshot,
+    val video: Snapshot?,
     val still: Snapshot,
+    val sheet: Snapshot? = null,
 )
 
 class Mp4PreviewGenerator(private val context: Context) {
@@ -171,6 +172,13 @@ class Mp4PreviewGenerator(private val context: Context) {
                 }
                 Log.i("Mp4Preview", "encode done clip=$clipName bytes=${bytes.size}")
                 val stem = clipName.substringBeforeLast('.')
+                // Build 6x10 contact sheet (768x1280 for 128x128 tiles) from all frames
+                val sheetBytes = try {
+                    createSheet(frames, stem)
+                } catch (e: Exception) {
+                    Log.w("Mp4Preview", "sheet failed clip=$clipName", e)
+                    null
+                }
                 val firstFrame = frames[0]
                 val stillBmp = Bitmap.createBitmap(
                     firstFrame.argb, firstFrame.width, firstFrame.height,
@@ -188,6 +196,9 @@ class Mp4PreviewGenerator(private val context: Context) {
                     Log.w("Mp4Preview", "still jpeg empty clip=$clipName")
                     return@runCatching null
                 }
+                val sheetSnapshot = sheetBytes?.let { b ->
+                    Snapshot(bytes = b, mimeType = "image/jpeg", name = "${stem}_sheet.jpg")
+                }
                 Preview(
                     video = Snapshot(
                         bytes = bytes,
@@ -199,11 +210,40 @@ class Mp4PreviewGenerator(private val context: Context) {
                         mimeType = "image/jpeg",
                         name = "$stem.jpg",
                     ),
+                    sheet = sheetSnapshot,
                 )
             } finally {
                 retriever.release()
             }
         }.onFailure { Log.w("Mp4Preview", "generate failed for $clipName", it) }.getOrNull()
+    }
+
+    private fun createSheet(frames: List<Mp4Encoder.Frame>, stem: String): ByteArray {
+        if (frames.isEmpty()) return ByteArray(0)
+        val cols = 6
+        val rows = (frames.size + cols - 1) / cols
+        val tileW = frames[0].width
+        val tileH = frames[0].height
+        val sheetW = cols * tileW
+        val sheetH = rows * tileH
+        val sheet = Bitmap.createBitmap(sheetW, sheetH, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(sheet)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply { isFilterBitmap = true }
+        for (idx in frames.indices) {
+            val f = frames[idx]
+            val tile = Bitmap.createBitmap(f.argb, f.width, f.height, Bitmap.Config.ARGB_8888)
+            val col = idx % cols
+            val row = idx / cols
+            val dst = android.graphics.Rect(col * tileW, row * tileH, (col + 1) * tileW, (row + 1) * tileH)
+            canvas.drawBitmap(tile, null, dst, paint)
+            tile.recycle()
+        }
+        return ByteArrayOutputStream().use { out ->
+            sheet.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            sheet.recycle()
+            out.toByteArray()
+        }
     }
 
     private fun clipSource(name: String): ClipSource {

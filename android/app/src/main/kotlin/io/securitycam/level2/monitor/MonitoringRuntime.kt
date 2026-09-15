@@ -658,14 +658,20 @@ class MonitoringRuntime private constructor(
                 android.util.Log.w(TAG, "video preview generation failed video=$videoName")
                 return
             }
+            val isSheet = settings.previewMode == io.securitycam.level2.core.PreviewMode.SHEET
+            val mainPreview = if (isSheet) preview.sheet else preview.video
+            if (mainPreview == null) {
+                android.util.Log.w(TAG, "video preview missing sheet/video for mode=${settings.previewMode}")
+                return
+            }
             android.util.Log.i(
-                TAG, "video preview generated eventId=${info.eventId} preview=${preview.video.name} " +
-                    "bytes=${preview.video.bytes.size} targets=${info.previewTargets.size}",
+                TAG, "video preview generated eventId=${info.eventId} preview=${mainPreview.name} " +
+                    "bytes=${mainPreview.bytes.size} mode=${settings.previewMode} targets=${info.previewTargets.size}",
             )
             try {
-                snapshots.save(preview.video)
+                snapshots.save(mainPreview)
             } catch (e: Exception) {
-                android.util.Log.w(TAG, "video preview save failed preview=${preview.video.name}", e)
+                android.util.Log.w(TAG, "video preview save failed preview=${mainPreview.name}", e)
                 return
             }
             try {
@@ -673,12 +679,19 @@ class MonitoringRuntime private constructor(
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "video preview still save failed still=${preview.still.name}", e)
             }
+            preview.sheet?.let {
+                if (it !== mainPreview) {
+                    try { snapshots.save(it) } catch (e: Exception) {
+                        android.util.Log.w(TAG, "video preview sheet save failed sheet=${it.name}", e)
+                    }
+                }
+            }
             val message = AlertMessage(
                 timestamp = batchTime,
                 triggerType = info.triggerType,
                 text = info.text,
                 snapshot = preview.still,
-                videoPreview = preview.video,
+                videoPreview = mainPreview,
             )
             val store = OutboxStore.from(AppDatabase.get(context))
             for (target in info.previewTargets) {
@@ -701,7 +714,7 @@ class MonitoringRuntime private constructor(
                                 triggerType = info.triggerType,
                                 eventTime = batchTime.toEpochMilli(),
                                 text = info.text,
-                                previewGifName = preview.video.name,
+                                previewGifName = mainPreview.name,
                             ),
                         )
                     } catch (e: Exception) {
