@@ -8,7 +8,10 @@ import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.backup.RemoteKeys
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.AlertMessage
+import io.securitycam.level2.core.ChannelConfig
 import io.securitycam.level2.core.DetectorType
+import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.mediaFileName
 import io.securitycam.level2.detection.AnalysisFrame
@@ -41,6 +44,7 @@ import io.securitycam.level2.storage.OutboxKind
 import io.securitycam.level2.storage.OutboxStore
 import io.securitycam.level2.storage.RoomEventLog
 import io.securitycam.level2.sensors.PcmWindowAccumulator
+import io.securitycam.level2.media.GifPreviewGenerator
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -115,9 +119,6 @@ class MonitoringRuntime private constructor(
 
     @Volatile
     private var stopped = false
-
-    /** Fast-notify: batch timestamp → eventId for late video linking. */
-    private val pendingVideoEventIds = java.util.concurrent.ConcurrentHashMap<Instant, Long>()
 
     /**
      * Runtime-scoped detector factories (Wave 4): this runtime's face
@@ -305,6 +306,27 @@ class MonitoringRuntime private constructor(
 
     /** Subscribes to camera/mic buses and starts the trigger/batch collectors. */
     fun begin() {
+        VideoLinkRegistry.pruneOlderThan(Instant.now().minusSeconds(60))
+        // Heal recent orphaned video links (stop-race file-DB desync like
+        // 22-19-15-216.mp4 existing but event 142 video_name=null) by
+        // checking MediaStore/files for the expected name derived from the
+        // event timestamp. Best-effort, runs off the collector scope.
+        runtimeScope.launch {
+            runCatching {
+                val dao = AppDatabase.get(context).eventDao()
+                val log = RoomEventLog(dao)
+                val recent = log.recent(limit = 50)
+                for (ev in recent) {
+                    if (ev.videoName != null) continue
+                    if (java.time.Duration.between(ev.timestamp, Instant.now()).toHours() > 24) continue
+                    val candidate = VideoClipRecorder.videoFileName(ev.timestamp.toEpochMilli(), ev.cameraName)
+                    if (VideoClipRecorder.exists(candidate)) {
+                        log.updateVideoName(ev.id, candidate)
+                        android.util.Log.i(TAG, "healed orphan video link eventId=${ev.id} video=$candidate")
+                    }
+                }
+            }
+        }
         CameraFrameBus.add(frameListener)
         CameraEvents.addMicPcmListener(micListener)
         triggerJob = runtimeScope.launch {
@@ -325,14 +347,39 @@ class MonitoringRuntime private constructor(
             batcher.batches.collect {
                 // Per-batch guard: one failing batch (channel crash, IO) must
                 // not end event recording for the rest of the session.
+                // Store pending link BEFORE handleBatch so a handleBatch
+                // exception doesn't orphan the video future (file-DB desync).
+                val pendingPreviewTargets = eventPipeline.targetsFor(it.triggers)
+                    .filter { t -> t.pushVideoPreview && t.supportsVideoPreview() }
+                val pendingText = eventPipeline.buildAlertText(it)
+                val pendingType = eventPipeline.alertType(it)
+                VideoLinkRegistry.put(
+                    it.timestamp,
+                    VideoLinkRegistry.PendingVideoInfo(
+                        eventId = -1L,
+                        text = pendingText,
+                        triggerType = pendingType,
+                        previewTargets = pendingPreviewTargets,
+                    ),
+                )
                 runCatching {
                     android.util.Log.d(TAG, "batch emitted triggers=${it.triggers.size}")
                     val eventId = eventPipeline.handleBatch(it)
-                    pendingVideoEventIds[it.timestamp] = eventId
+                    VideoLinkRegistry.put(
+                        it.timestamp,
+                        VideoLinkRegistry.PendingVideoInfo(
+                            eventId = eventId,
+                            text = pendingText,
+                            triggerType = pendingType,
+                            previewTargets = pendingPreviewTargets,
+                        ),
+                    )
                     android.util.Log.d(TAG, "event recorded id=$eventId type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
                     queueCloudBackups(it)
                 }.onFailure { t ->
                     android.util.Log.w(TAG, "batch handling failed", t)
+                    // Keep placeholder so handleVideoReady can log orphan;
+                    // prune will clear it after TTL.
                 }
             }
         }
@@ -364,6 +411,19 @@ class MonitoringRuntime private constructor(
                 batcher.drainIfCurrent()?.let { emitForStop(it) }
             }
         }
+        // Give in-flight video-exports time to link their DB rows before
+        // tearing down; TriggerBatcher now launches onVideoReady in a
+        // global scope so the link survives runtimeScope cancellation, but
+        // awaiting briefly here lets the caller see the linked row without
+        // polling.
+        runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                val deadline = System.currentTimeMillis() + 15_000L
+                while (System.currentTimeMillis() < deadline && VideoLinkRegistry.size() > 0) {
+                    kotlinx.coroutines.delay(200)
+                }
+            }
+        }
         runCatching { batchJob?.cancel() }
         batchJob = null
         runCatching { healthJob?.cancel() }
@@ -382,10 +442,21 @@ class MonitoringRuntime private constructor(
 
     /** Handles a batch drained on stop just like the collector does. */
     private suspend fun emitForStop(batch: TriggerBatch) {
+        val stopPreviewTargets = eventPipeline.targetsFor(batch.triggers)
+            .filter { t -> t.pushVideoPreview && t.supportsVideoPreview() }
+        val stopText = eventPipeline.buildAlertText(batch)
+        val stopType = eventPipeline.alertType(batch)
+        VideoLinkRegistry.put(
+            batch.timestamp,
+            VideoLinkRegistry.PendingVideoInfo(eventId = -1L, text = stopText, triggerType = stopType, previewTargets = stopPreviewTargets),
+        )
         runCatching {
             android.util.Log.d(TAG, "batch emitted (stop) triggers=${batch.triggers.size}")
             val eventId = eventPipeline.handleBatch(batch)
-            pendingVideoEventIds[batch.timestamp] = eventId
+            VideoLinkRegistry.put(
+                batch.timestamp,
+                VideoLinkRegistry.PendingVideoInfo(eventId = eventId, text = stopText, triggerType = stopType, previewTargets = stopPreviewTargets),
+            )
             android.util.Log.d(
                 TAG,
                 "event recorded (stop) id=$eventId type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}",
@@ -521,22 +592,30 @@ class MonitoringRuntime private constructor(
     }
 
     private suspend fun handleVideoReady(batchTime: Instant, videoName: String?) {
-        val eventId = pendingVideoEventIds.remove(batchTime)
-        if (eventId == null) {
+        val info = VideoLinkRegistry.remove(batchTime)
+        if (info == null) {
             android.util.Log.w(TAG, "video ready but no eventId for batchTime=$batchTime video=$videoName")
+            VideoLinkRegistry.pruneOlderThan(Instant.now().minusSeconds(60))
+            return
+        }
+        if (info.eventId == -1L) {
+            android.util.Log.w(TAG, "video ready orphan placeholder for batchTime=$batchTime video=$videoName (handleBatch never succeeded)")
             return
         }
         if (videoName == null) {
-            android.util.Log.i(TAG, "video ready null for eventId=$eventId batchTime=$batchTime (no clip)")
+            android.util.Log.i(TAG, "video ready null for eventId=${info.eventId} batchTime=$batchTime (no clip)")
             return
         }
         try {
             val log = RoomEventLog(AppDatabase.get(context).eventDao())
-            log.updateVideoName(eventId, videoName)
-            android.util.Log.i(TAG, "video linked eventId=$eventId batchTime=$batchTime video=$videoName")
+            log.updateVideoName(info.eventId, videoName)
+            android.util.Log.i(TAG, "video linked eventId=${info.eventId} batchTime=$batchTime video=$videoName")
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "video link failed eventId=$eventId video=$videoName", e)
+            android.util.Log.w(TAG, "video link failed eventId=${info.eventId} video=$videoName", e)
             return
+        }
+        if (info.previewTargets.isNotEmpty()) {
+            pushVideoPreviews(batchTime, info, videoName)
         }
         // Cloud backup for the late clip.
         val cb = settings.cloudBackup
@@ -554,6 +633,78 @@ class MonitoringRuntime private constructor(
             )
         } catch (e: Exception) {
             android.util.Log.w(TAG, "video backup enqueue failed video=$videoName", e)
+        }
+    }
+
+    /**
+     * GIF video preview (see docs/plans/2026-09-14-video-preview-gif.md): once
+     * the clip muxes, generate a short low-frame-rate GIF from it (only when a
+     * routed, capable channel asked for one), persist it beside the snapshot,
+     * and push it per channel. An exhausted/delivery failure enqueues an outbox
+     * NOTIFY row carrying the preview so connectivity returns re-send it.
+     */
+    private suspend fun pushVideoPreviews(
+        batchTime: Instant,
+        info: VideoLinkRegistry.PendingVideoInfo,
+        videoName: String,
+    ) {
+        try {
+            val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
+            val gif = GifPreviewGenerator(context).generate(
+                clipName = videoName,
+                fps = settings.gifPreviewFps,
+                maxWidthPx = settings.gifPreviewMaxWidthPx,
+            ) ?: run {
+                android.util.Log.w(TAG, "video preview generation failed video=$videoName")
+                return
+            }
+            android.util.Log.i(
+                TAG, "video preview generated eventId=${info.eventId} gif=${gif.name} " +
+                    "bytes=${gif.bytes.size} targets=${info.previewTargets.size}",
+            )
+            try {
+                snapshots.save(gif)
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "video preview save failed gif=${gif.name}", e)
+                return
+            }
+            val message = AlertMessage(
+                timestamp = batchTime,
+                triggerType = info.triggerType,
+                text = info.text,
+                videoPreview = gif,
+            )
+            val store = OutboxStore.from(AppDatabase.get(context))
+            for (target in info.previewTargets) {
+                val factory = ChannelRegistry.factories[target.type] ?: continue
+                val delivered = try {
+                    factory(target).send(message)
+                    true
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "video preview send failed eventId=${info.eventId} channel=${target.id}", e)
+                    false
+                }
+                if (!delivered) {
+                    try {
+                        store.enqueue(
+                            OutboxEntity(
+                                createdAt = Instant.now().toEpochMilli(),
+                                kind = OutboxKind.NOTIFY,
+                                channelId = target.id,
+                                eventId = info.eventId,
+                                triggerType = info.triggerType,
+                                eventTime = batchTime.toEpochMilli(),
+                                text = info.text,
+                                previewGifName = gif.name,
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.w(TAG, "video preview outbox enqueue failed eventId=${info.eventId}", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "video preview push aborted eventId=${info.eventId}", e)
         }
     }
 }

@@ -116,12 +116,14 @@ import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ClipStampPosition
+import io.securitycam.level2.core.GifPreview
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.LiveViewSettings
 import io.securitycam.level2.core.ScheduleWindow
 import io.securitycam.level2.core.VideoQuality
 import io.securitycam.level2.core.DetectorType
 import io.securitycam.level2.core.TriggerType
+import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
@@ -340,6 +342,15 @@ fun SettingsScreen(
                                         },
                                         onSendTest = { merged ->
                                             viewModel.sendTestFromUi(merged)
+                                        },
+                                        onPreviewChange = { v ->
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.map {
+                                                        if (it.id == config.id) it.copy(pushVideoPreview = v) else it
+                                                    },
+                                                )
+                                            }
                                         },
                                         onDelete = {
                                             viewModel.update { settings ->
@@ -1088,6 +1099,36 @@ fun SettingsScreen(
                                 testTag = "analysisResolutionDropdown",
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
                             )
+                            HorizontalDivider()
+                            BodyText(
+                                "Video preview GIF: a short animated preview of the recorded " +
+                                    "clip pushed with each alert when a channel's preview toggle is on.",
+                            )
+                            Text("Preview frame rate: ${current.gifPreviewFps} fps")
+                            Slider(
+                                value = current.gifPreviewFps.toFloat(),
+                                onValueChange = { v ->
+                                    viewModel.update {
+                                        it.copy(gifPreviewFps = GifPreview.clampFps(v.round()))
+                                    }
+                                },
+                                valueRange = GifPreview.MIN_FPS.toFloat()..GifPreview.MAX_FPS.toFloat(),
+                                steps = GifPreview.MAX_FPS - GifPreview.MIN_FPS - 1,
+                                modifier = Modifier.testTag("gifFpsSlider"),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("Preview width: ${current.gifPreviewMaxWidthPx} px")
+                            Slider(
+                                value = current.gifPreviewMaxWidthPx.toFloat(),
+                                onValueChange = { v ->
+                                    viewModel.update {
+                                        it.copy(gifPreviewMaxWidthPx = GifPreview.clampWidth(v.round()))
+                                    }
+                                },
+                                valueRange = GifPreview.MIN_WIDTH.toFloat()..GifPreview.MAX_WIDTH.toFloat(),
+                                steps = (GifPreview.MAX_WIDTH - GifPreview.MIN_WIDTH) / 16 - 1,
+                                modifier = Modifier.testTag("gifWidthSlider"),
+                            )
                         }
                         HorizontalDivider()
                         CollapsibleSection("About Level 2") {
@@ -1630,6 +1671,7 @@ private fun ChannelCard(
     inFlight: Boolean,
     sendingDisabled: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
+    onPreviewChange: (Boolean) -> Unit = {},
     testPreviewUrl: String? = null,
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
@@ -1681,6 +1723,15 @@ private fun ChannelCard(
                     factories = factories,
                     testPreviewUrl = testPreviewUrl,
                 )
+                SwitchRow(
+                    title = "Push video-preview GIF",
+                    subtitle = "Send a short animated preview of each clip along with the alert " +
+                        "(channels that cannot attach files silently skip it in the runtime).",
+                    checked = config.pushVideoPreview,
+                    onCheckedChange = onPreviewChange,
+                    testTag = "channelPreview_${config.id}",
+                )
+                Spacer(Modifier.height(8.dp))
             },
     )
     if (confirmDelete) {
@@ -1984,9 +2035,10 @@ private fun SwitchRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    testTag: String? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(switchTag(title)))
+        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(testTag ?: switchTag(title)))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title)

@@ -506,6 +506,9 @@ class SettingsViewModel(
                 }
                 for (name in deleted.videoNames) {
                     runCatching { VideoClipRecorder.delete(name) }
+                    // Companion video-preview GIF (sibling <stem>.gif).
+                    val gif = "${name.substringBeforeLast('.')}.gif"
+                    if (gif != name) runCatching { snapshots.delete(gif) }
                 }
             }
 

@@ -498,4 +498,54 @@ class WebhookChannelTest {
             ).validate(),
         )
     }
+
+    @Test
+    fun discordVideoPreviewIsSentAsFile() = runBlocking {
+        val server = serverWith(code = 200, body = "{}")
+        try {
+            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
+            channel(mockBase = server.url("/").toString()).send(
+                AlertMessage(timestamp = Instant.EPOCH, triggerType = "motion", text = "hi", videoPreview = preview),
+            )
+            assertEquals(1, server.requestCount)
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("preview.gif"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun ntfyVideoPreviewIsSentAsMultipart() = runBlocking {
+        val server = serverWith()
+        try {
+            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
+            channel(preset = "ntfy", url = "https://ntfy.sh/mytopic", mockBase = server.url("/").toString()).send(
+                AlertMessage(timestamp = Instant.EPOCH, triggerType = "motion", text = "hi", videoPreview = preview),
+            )
+            assertEquals(1, server.requestCount)
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("preview.gif"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun slackIgnoresVideoPreviewAndSendsJson() = runBlocking {
+        val server = serverWith()
+        try {
+            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
+            channel(preset = "slack", url = "https://hooks.slack.com/services/T123/B456/abc", mockBase = server.url("/").toString()).send(
+                AlertMessage(timestamp = Instant.EPOCH, triggerType = "motion", text = "hi", videoPreview = preview),
+            )
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("application/json"))
+            assertTrue(recorded.body.readUtf8().contains("hi"))
+            assertFalse(recorded.body.readUtf8().contains("preview.gif"))
+        } finally {
+            server.shutdown()
+        }
+    }
 }

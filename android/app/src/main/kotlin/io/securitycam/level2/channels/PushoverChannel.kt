@@ -77,36 +77,45 @@ class PushoverChannel(
 
     override suspend fun send(message: AlertMessage) {
         val text = fitMessage(message.text)
+        // Preview pushes carry only the GIF (no snapshot): attach it directly.
+        message.videoPreview?.let { preview ->
+            sendMultipart(text, preview)
+            return
+        }
         // Oversized originals are downscaled to fit; unsalvageable ones fall
         // back to the text form (mirrors Telegram's photo→message fallback).
         val upload = message.snapshot?.let { fitSnapshot(it, MAX_ATTACHMENT_BYTES) }
         if (message.snapshot != null && upload != null) {
-            withTempSnapshot(upload) { tmp ->
-                val builder = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                for ((k, v) in fields(text)) builder.addFormDataPart(k, v)
-                builder.addFormDataPart(
-                    "attachment",
-                    upload.name,
-                    tmp.asRequestBody(safeMediaType(upload.mimeType)),
-                )
-                val response = withContext(Dispatchers.IO) {
-                    client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
-                }
-                response.use {
-                    if (!it.isSuccessful && it.code in 400..499) {
-                        // The server rejected the upload itself (bad key,
-                        // oversize attachment): degrade to text so the alert
-                        // still arrives. 5xx/network errors keep the photo
-                        // for the outbox retry path.
-                        postText(text)
-                    } else {
-                        check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
-                    }
-                }
-            }
+            sendMultipart(text, upload)
         } else {
             postText(text)
+        }
+    }
+
+    private suspend fun sendMultipart(text: String, attach: Snapshot) {
+        withTempSnapshot(attach) { tmp ->
+            val builder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+            for ((k, v) in fields(text)) builder.addFormDataPart(k, v)
+            builder.addFormDataPart(
+                "attachment",
+                attach.name,
+                tmp.asRequestBody(safeMediaType(attach.mimeType)),
+            )
+            val response = withContext(Dispatchers.IO) {
+                client.newCall(Request.Builder().url(ENDPOINT).post(builder.build()).build()).execute()
+            }
+            response.use {
+                if (!it.isSuccessful && it.code in 400..499) {
+                    // The server rejected the upload itself (bad key,
+                    // oversize attachment): degrade to text so the alert
+                    // still arrives. 5xx/network errors keep the photo
+                    // for the outbox retry path.
+                    postText(text)
+                } else {
+                    check(it.isSuccessful) { "Pushover failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                }
+            }
         }
     }
 

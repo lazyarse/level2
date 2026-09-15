@@ -177,6 +177,9 @@ class OutboxWorker(
             snapshot = row.snapshotName?.let { name ->
                 runCatching { snapshots.load(name) }.getOrNull()
             },
+            videoPreview = row.previewGifName?.let { name ->
+                runCatching { snapshots.load(name) }.getOrNull()
+            },
         )
         return try {
             factory(config).send(message)

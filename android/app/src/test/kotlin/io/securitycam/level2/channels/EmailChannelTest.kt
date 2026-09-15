@@ -322,4 +322,36 @@ class EmailChannelTest {
         )
         assertTrue(rendered.endsWith("\r\n.\r\n"))
     }
+
+    @Test
+    fun sendForwardsVideoPreviewAsAttachmentWhenNoSnapshot() = runBlocking {
+        val sent = mutableListOf<MailMessage>()
+        val c = channel { m -> sent.add(m) }
+        val preview = Snapshot(byteArrayOf(9, 8, 7), "image/gif", "preview.gif")
+
+        c.send(
+            AlertMessage(
+                timestamp = Instant.EPOCH,
+                triggerType = "motion",
+                text = "Motion with preview",
+                videoPreview = preview,
+            ),
+        )
+
+        assertEquals(preview, sent.single().attachment)
+        // When both are present, snapshot wins (preview is fallback).
+        val sent2 = mutableListOf<MailMessage>()
+        val c2 = channel { m -> sent2.add(m) }
+        val snap = Snapshot(byteArrayOf(1), "image/jpeg", "snap.jpg")
+        c2.send(
+            AlertMessage(
+                timestamp = Instant.EPOCH,
+                triggerType = "motion",
+                text = "hi",
+                snapshot = snap,
+                videoPreview = preview,
+            ),
+        )
+        assertEquals(snap, sent2.single().attachment)
+    }
 }

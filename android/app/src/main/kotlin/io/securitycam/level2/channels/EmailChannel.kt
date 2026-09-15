@@ -129,7 +129,9 @@ class EmailChannel(
                 to = settings.to,
                 subject = message.text,
                 text = message.text,
-                attachment = message.snapshot,
+                // Preview pushes carry only the GIF (no snapshot); either works
+                // as the single MIME attachment.
+                attachment = message.snapshot ?: message.videoPreview,
             ),
         )
         (active as? RawSmtpSender)?.lastPreviewUrl?.let {

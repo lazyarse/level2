@@ -12,7 +12,7 @@ import java.time.Duration
 import kotlinx.coroutines.flow.Flow
 
 /**
- * A queued delivery awaiting connectivity (schema v5). One row per
+ * A queued delivery awaiting connectivity (schema v6). One row per
  * (event × channel) for notifications, one per media item for cloud backups —
  * see docs/plans/2026-08-24-offline-alert-outbox-design.md.
  */
@@ -33,6 +33,8 @@ data class OutboxEntity(
     @ColumnInfo(name = "text") val text: String? = null,
     /** SnapshotStore reference; bytes reload at send time. */
     @ColumnInfo(name = "snapshotName") val snapshotName: String? = null,
+    /** SnapshotStore reference to the video-preview GIF; bytes reload at send time. */
+    @ColumnInfo(name = "previewGifName") val previewGifName: String? = null,
     // ---- backup rows (cloud-backup phase) ----
     @ColumnInfo(name = "mediaPath") val mediaPath: String? = null,
     @ColumnInfo(name = "remotePath") val remotePath: String? = null,

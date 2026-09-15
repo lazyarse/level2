@@ -17,18 +17,22 @@ data class ChannelConfig(
     val type: String,
     val enabled: Boolean = true,
     val settingsJson: Map<String, Any?> = emptyMap(),
+    /** Push a short GIF preview of the recorded clip once it is muxed. */
+    val pushVideoPreview: Boolean = false,
     /** User-facing account name; blank falls back to a derived "Type N" name. */
     val label: String = "",
 ) {
     fun copyWith(
         enabled: Boolean? = null,
         settingsJson: Map<String, Any?>? = null,
+        pushVideoPreview: Boolean? = null,
         label: String? = null,
     ): ChannelConfig = ChannelConfig(
         id = id,
         type = type,
         enabled = enabled ?: this.enabled,
         settingsJson = settingsJson ?: this.settingsJson,
+        pushVideoPreview = pushVideoPreview ?: this.pushVideoPreview,
         label = label ?: this.label,
     )
 
@@ -37,6 +41,7 @@ data class ChannelConfig(
         "type" to type,
         "enabled" to enabled,
         "settings" to settingsJson,
+        "pushVideoPreview" to pushVideoPreview,
         "label" to label,
     )
 
@@ -48,6 +53,7 @@ data class ChannelConfig(
             settingsJson = (json["settings"] as? Map<*, *>)
                 ?.entries
                 ?.associate { it.key as String to it.value } ?: emptyMap(),
+            pushVideoPreview = json["pushVideoPreview"] as? Boolean ?: false,
             label = json["label"] as? String ?: "",
         )
     }
@@ -59,6 +65,8 @@ data class AlertMessage(
     val triggerType: String,
     val text: String,
     val snapshot: Snapshot? = null,
+    /** Optional GIF preview of the recorded clip (pushed once the clip muxes). */
+    val videoPreview: Snapshot? = null,
 )
 
 /** Delivery contract (port of `lib/core/channel.dart` `Channel`). */
@@ -89,3 +97,17 @@ internal fun ChannelConfig.isPristinePlaceholder(): Boolean {
     if (settingsJson.isEmpty()) return true
     return type == "webhook" && settingsJson.keys.all { it == "preset" }
 }
+
+/**
+ * Whether a channel can receive the video-preview GIF. Types without a
+ * file/attachment path (slack/teams/custom webhooks, log) skip the preview
+ * push entirely — their text alert already went out at batch close.
+ */
+fun ChannelConfig.supportsVideoPreview(): Boolean = when (type) {
+    "telegram", "email", "pushover" -> true
+    "webhook" -> preset() in setOf("discord", "ntfy")
+    else -> false
+}
+
+/** Webhook preset (`settingsJson["preset"]`), defaulting to "custom". */
+fun ChannelConfig.preset(): String = settingsJson["preset"] as? String ?: "custom"

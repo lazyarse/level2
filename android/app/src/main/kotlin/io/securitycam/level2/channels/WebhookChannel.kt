@@ -75,18 +75,21 @@ class WebhookChannel(
 
     private suspend fun sendDiscord(message: AlertMessage) {
         val text = fitWebhookText(message.text)
-        val snapshot = message.snapshot ?: run {
+        // A preview push carries only the GIF (no snapshot, and vice versa),
+        // so a single attachment covers both paths.
+        val attach = message.snapshot ?: message.videoPreview
+        if (attach == null) {
             sendJson("content" to text)
             return
         }
-        withTempSnapshot(snapshot) { tmp ->
+        withTempSnapshot(attach) { tmp ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("content", text)
                 .addFormDataPart(
                     "file",
-                    safeAttachmentName(snapshot.name),
-                    tmp.asRequestBody(safeMediaType(snapshot.mimeType)),
+                    safeAttachmentName(attach.name),
+                    tmp.asRequestBody(safeMediaType(attach.mimeType)),
                 )
                 .build()
             val response = withContext(Dispatchers.IO) {
@@ -107,10 +110,38 @@ class WebhookChannel(
     }
 
     private suspend fun sendNtfy(message: AlertMessage) {
+        val text = fitWebhookText(message.text)
+        val preview = message.videoPreview
+        if (preview != null) {
+            // ntfy accepts attachments as a multipart "file" part (same shape
+            // as Discord); keep the auth/title headers on the multipart POST.
+            withTempSnapshot(preview) { tmp ->
+                val builder = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("message", text)
+                    .addFormDataPart(
+                        "file",
+                        safeAttachmentName(preview.name),
+                        tmp.asRequestBody(safeMediaType(preview.mimeType)),
+                    )
+                val requestBuilder = Request.Builder().url(endpoint).post(builder.build())
+                if (settings.bearerToken.isNotEmpty()) {
+                    requestBuilder.header("Authorization", "Bearer ${settings.bearerToken}")
+                }
+                if (settings.title.isNotEmpty()) requestBuilder.header("X-Title", settings.title)
+                val response = withContext(Dispatchers.IO) {
+                    client.newCall(requestBuilder.build()).execute()
+                }
+                response.use {
+                    check(it.isSuccessful) { "Webhook failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                }
+            }
+            return
+        }
         val headers = mutableMapOf("content-type" to "text/plain")
         if (settings.bearerToken.isNotEmpty()) headers["Authorization"] = "Bearer ${settings.bearerToken}"
         if (settings.title.isNotEmpty()) headers["X-Title"] = settings.title
-        post(headers, fitWebhookText(message.text))
+        post(headers, text)
     }
 
     private suspend fun sendCustom(message: AlertMessage) {

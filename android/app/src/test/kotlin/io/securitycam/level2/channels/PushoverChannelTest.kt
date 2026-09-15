@@ -327,4 +327,19 @@ class PushoverChannelTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun videoPreviewIsSentAsAttachment() = runBlocking {
+        val server = serverWith()
+        try {
+            val c = channel(server.url("/").toString())
+            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
+            c.send(message().copy(videoPreview = preview))
+            assertEquals(1, server.requestCount)
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("preview.gif"))
+        } finally {
+            server.shutdown()
+        }
+    }
 }

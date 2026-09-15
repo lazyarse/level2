@@ -184,4 +184,58 @@ class TelegramChannelTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun sendWithVideoPreviewUsesSendAnimation() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"ok\":true}"))
+        server.start()
+        try {
+            val c = newChannel(server.url("/").toString())
+            val preview = Snapshot(byteArrayOf(7, 8, 9), "image/gif", "preview.gif")
+            c.send(
+                AlertMessage(
+                    timestamp = Instant.EPOCH,
+                    triggerType = "motion",
+                    text = "Motion with preview",
+                    videoPreview = preview,
+                ),
+            )
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertEquals("/bot123456:ABC-DEF/sendAnimation", recorded.path)
+            val body = recorded.body.readUtf8()
+            assertTrue(body.contains("preview.gif"))
+            assertTrue(body.contains("Motion with preview"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun sendAnimationFailureThrows() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"ok\":false,\"description\":\"FILE_TOO_BIG\"}"))
+        server.start()
+        try {
+            val c = newChannel(server.url("/").toString())
+            var thrown: Throwable? = null
+            try {
+                c.send(
+                    AlertMessage(
+                        timestamp = Instant.EPOCH,
+                        triggerType = "motion",
+                        text = "hi",
+                        videoPreview = Snapshot(byteArrayOf(1), "image/gif", "preview.gif"),
+                    ),
+                )
+            } catch (e: IllegalStateException) {
+                thrown = e
+            }
+            assertTrue(thrown?.message.orEmpty().contains("sendAnimation failed"))
+            assertTrue(thrown?.message.orEmpty().contains("FILE_TOO_BIG"))
+        } finally {
+            server.shutdown()
+        }
+    }
 }

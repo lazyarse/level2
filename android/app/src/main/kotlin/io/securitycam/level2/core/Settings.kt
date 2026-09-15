@@ -122,6 +122,38 @@ object PrivacyMaskEffect {
     }
 }
 
+/** Notification video-preview GIF constraints (Advanced settings). */
+object GifPreview {
+    /** Frame-rate bounds; the GIF decimates the clip to [DEFAULT_FPS] fps. */
+    const val MIN_FPS = 1
+    const val MAX_FPS = 5
+    const val DEFAULT_FPS = 2
+
+    /** Max frame width in px; height follows the clip's aspect ratio. */
+    const val MIN_WIDTH = 160
+    const val MAX_WIDTH = 640
+    const val DEFAULT_WIDTH = 320
+
+    /** Sample the first [MAX_DURATION_SECONDS] of the clip (whichever is shorter). */
+    const val MAX_DURATION_SECONDS = 6
+
+    /** Hard cap on sampled frames regardless of duration/fps (60 keeps 20s@5fps uncapped → 60, still <30s at 160px). */
+    const val MAX_FRAMES = 60
+
+    /**
+     * Total encode pixel budget across ALL sampled frames (px). LZW on the
+     * SM_A137F-class device runs at ~30 k px/s, so 60 frames at 320 px wide
+     * (1.8 M px) blows the 60 s withTimeout. Keeping total ≤[PIXEL_BUDGET] px
+     * shrinks the frame so the whole-video x-fps GIF actually lands under the
+     * 60 s encode deadline; the user's maxWidthPx stays the ceiling for short
+     * clips and only adapts down when sampleCount*fps would exceed it.
+     */
+    const val PIXEL_BUDGET = 700_000
+
+    fun clampFps(value: Int): Int = value.coerceIn(MIN_FPS, MAX_FPS)
+    fun clampWidth(value: Int): Int = value.coerceIn(MIN_WIDTH, MAX_WIDTH)
+}
+
 /** Cloud backup settings (WebDAV / S3-compatible; see backup/ design doc). */
 data class CloudBackupSettings(
     val enabled: Boolean = false,
@@ -197,6 +229,10 @@ data class AppSettings(
     val tripwireZones: List<DetectionZone> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
+    /** Frame rate for notification video-preview GIFs (clamped to [GifPreview]). */
+    val gifPreviewFps: Int = GifPreview.DEFAULT_FPS,
+    /** Max frame width in px for notification video-preview GIFs. */
+    val gifPreviewMaxWidthPx: Int = GifPreview.DEFAULT_WIDTH,
     /**
      * One-way flag: the pre-2026-08-23 legacy cooldown normalization has run.
      * Guards [SettingsStore.migrateLegacyCooldowns] so an intentional 60s /
@@ -234,6 +270,8 @@ data class AppSettings(
         tripwireZones: List<DetectionZone>? = null,
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
+        gifPreviewFps: Int? = null,
+        gifPreviewMaxWidthPx: Int? = null,
         cooldownsMigrated: Boolean? = null,
         mergeWindowUpgraded: Boolean? = null,
     ): AppSettings = AppSettings(
@@ -261,6 +299,8 @@ data class AppSettings(
         tripwireZones = tripwireZones ?: this.tripwireZones,
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
+        gifPreviewFps = gifPreviewFps ?: this.gifPreviewFps,
+        gifPreviewMaxWidthPx = gifPreviewMaxWidthPx ?: this.gifPreviewMaxWidthPx,
         cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
         mergeWindowUpgraded = mergeWindowUpgraded ?: this.mergeWindowUpgraded,
     )
@@ -291,6 +331,8 @@ data class AppSettings(
         json["scheduleExclusions"] = scheduleExclusions.map { it.toJson() }
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
+        json["gifPreviewFps"] = gifPreviewFps
+        json["gifPreviewMaxWidthPx"] = gifPreviewMaxWidthPx
         json["cooldownsMigrated"] = cooldownsMigrated
         json["mergeWindowUpgraded"] = mergeWindowUpgraded
         return json
@@ -562,6 +604,13 @@ data class AppSettings(
                 cloudBackup = (json["cloudBackup"] as? Map<*, *>)
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
+                gifPreviewFps = GifPreview.clampFps(
+                    (json["gifPreviewFps"] as? Number)?.toInt() ?: defaults.gifPreviewFps,
+                ),
+                gifPreviewMaxWidthPx = GifPreview.clampWidth(
+                    (json["gifPreviewMaxWidthPx"] as? Number)?.toInt()
+                        ?: defaults.gifPreviewMaxWidthPx,
+                ),
                 cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
                 mergeWindowUpgraded = json["mergeWindowUpgraded"] as? Boolean ?: false,
             )

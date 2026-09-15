@@ -785,4 +785,30 @@ class SettingsScreenTest {
         compose.waitUntil(5000) { harness.cleared.isNotEmpty() }
         assertEquals(listOf(null), harness.cleared)
     }
+
+    @Test
+    fun advancedSectionShowsGifPreviewSliders() {
+        setContent(Harness())
+        expandSection("Advanced")
+        compose.onNodeWithTag("gifFpsSlider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("gifWidthSlider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Preview frame rate:", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Preview width:", substring = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun channelPreviewToggleVisibleOnAllChannelTypesAndFlips() {
+        val harness = channelsHarness()
+        setContent(harness)
+        expandSection("Notification Channels")
+        // Every non-log channel should expose the preview toggle.
+        for (id in listOf("telegram", "email", "discord", "pushover")) {
+            expandChannel(id)
+            compose.onNodeWithTag("channelPreview_$id").performScrollTo().assertIsDisplayed()
+        }
+        assertFalse(harness.viewModel.draft.value!!.channelConfigs.first { it.id == "telegram" }.pushVideoPreview)
+        compose.onNodeWithTag("channelPreview_telegram").performScrollTo().performClick()
+        compose.waitForIdle()
+        assertTrue(harness.viewModel.draft.value!!.channelConfigs.first { it.id == "telegram" }.pushVideoPreview)
+    }
 }

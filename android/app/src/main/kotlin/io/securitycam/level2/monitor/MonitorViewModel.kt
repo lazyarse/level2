@@ -699,6 +699,10 @@ class MonitorViewModel(
         for (name in deleted.videoNames) {
             if (OutboxStore.normalizeMediaRef(name) in pinned) continue
             runCatching { VideoClipRecorder.delete(name) }
+            // Companion video-preview GIF (sibling <stem>.gif) — no outbox
+            // row ever pins it (a rerun would regenerate), so just remove.
+            val gif = "${name.substringBeforeLast('.')}.gif"
+            if (gif != name) runCatching { snapshots.delete(gif) }
         }
     }
 

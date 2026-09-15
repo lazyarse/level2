@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.map
 
 /**
  * Room-backed [EventRecorder] (port of `lib/storage/event_log.dart`,
- * schema version 5).
+ * schema version 5; the shared DB is at v6 via the outbox preview column).
  */
 class RoomEventLog(private val dao: EventDao) : EventRecorder {
 

@@ -500,4 +500,75 @@ class SettingsTest {
         val s = AppSettings.defaults()
         assertEquals(Duration.ofSeconds(15), s.notificationMergeWindow)
     }
+
+    @Test
+    fun gifPreviewDefaultsMatchSpec() {
+        val s = AppSettings.defaults()
+        assertEquals(GifPreview.DEFAULT_FPS, s.gifPreviewFps)
+        assertEquals(GifPreview.DEFAULT_WIDTH, s.gifPreviewMaxWidthPx)
+    }
+
+    @Test
+    fun gifPreviewJsonRoundTrip() {
+        val s = AppSettings.defaults().copyWith(gifPreviewFps = 4, gifPreviewMaxWidthPx = 480)
+        val back = AppSettings.fromJson(s.toJson())
+        assertEquals(4, back.gifPreviewFps)
+        assertEquals(480, back.gifPreviewMaxWidthPx)
+    }
+
+    @Test
+    fun gifPreviewOutOfRangeJsonClampsOnParse() {
+        val raw = AppSettings.defaults().toJson().toMutableMap()
+        raw["gifPreviewFps"] = 99
+        raw["gifPreviewMaxWidthPx"] = 45
+        val back = AppSettings.fromJson(raw)
+        assertEquals(GifPreview.MAX_FPS, back.gifPreviewFps)
+        assertEquals(GifPreview.MIN_WIDTH, back.gifPreviewMaxWidthPx)
+    }
+
+    @Test
+    fun gifPreviewClampBounds() {
+        assertEquals(1, GifPreview.clampFps(0))
+        assertEquals(5, GifPreview.clampFps(99))
+        assertEquals(3, GifPreview.clampFps(3))
+        assertEquals(160, GifPreview.clampWidth(1))
+        assertEquals(640, GifPreview.clampWidth(9999))
+        assertEquals(320, GifPreview.clampWidth(320))
+    }
+
+    @Test
+    fun channelPushVideoPreviewDefaultsToFalse() {
+        val config = ChannelConfig(id = "telegram", type = "telegram")
+        assertFalse(config.pushVideoPreview)
+    }
+
+    @Test
+    fun channelPushVideoPreviewJsonRoundTrip() {
+        val config = ChannelConfig(id = "tg1", type = "telegram", pushVideoPreview = true, label = "TG")
+        val back = ChannelConfig.fromJson(config.toJson())
+        assertEquals(true, back.pushVideoPreview)
+        assertEquals("TG", back.label)
+        val off = ChannelConfig(id = "tg2", type = "telegram", pushVideoPreview = false)
+        assertEquals(false, ChannelConfig.fromJson(off.toJson()).pushVideoPreview)
+    }
+
+    @Test
+    fun channelPushVideoPreviewLegacyJsonDefaultsFalse() {
+        val legacy = mapOf<String, Any?>("id" to "tg", "type" to "telegram", "enabled" to true, "settings" to emptyMap<String, Any?>(), "label" to "")
+        val back = ChannelConfig.fromJson(legacy)
+        assertFalse(back.pushVideoPreview)
+    }
+
+    @Test
+    fun supportsVideoPreviewPerType() {
+        assertTrue(ChannelConfig(id = "a", type = "telegram").supportsVideoPreview())
+        assertTrue(ChannelConfig(id = "b", type = "email").supportsVideoPreview())
+        assertTrue(ChannelConfig(id = "c", type = "pushover").supportsVideoPreview())
+        assertTrue(ChannelConfig(id = "d", type = "webhook", settingsJson = mapOf("preset" to "discord")).supportsVideoPreview())
+        assertTrue(ChannelConfig(id = "e", type = "webhook", settingsJson = mapOf("preset" to "ntfy")).supportsVideoPreview())
+        assertFalse(ChannelConfig(id = "f", type = "webhook", settingsJson = mapOf("preset" to "slack")).supportsVideoPreview())
+        assertFalse(ChannelConfig(id = "g", type = "webhook", settingsJson = mapOf("preset" to "custom")).supportsVideoPreview())
+        assertFalse(ChannelConfig(id = "h", type = "log").supportsVideoPreview())
+        assertFalse(ChannelConfig(id = "i", type = "webhook").supportsVideoPreview())
+    }
 }

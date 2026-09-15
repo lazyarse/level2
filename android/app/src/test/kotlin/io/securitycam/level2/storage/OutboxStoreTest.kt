@@ -131,6 +131,32 @@ class OutboxStoreTest {
         assertNull(db.eventDao().byId(123_456L))
     }
 
+    @Test
+    fun previewGifNameRoundTripsAndDefaultsToNull() = runBlocking {
+        val withPreview = row(100).copy(previewGifName = "clip123.gif")
+        val withoutPreview = row(200)
+        // Direct DAO insert so we exercise the nullable TEXT column directly.
+        val dao = db.outboxDao()
+        dao.insert(withPreview)
+        dao.insert(withoutPreview)
+        val batch = dao.peekBatch(10).sortedBy { it.createdAt }
+        assertEquals("clip123.gif", batch[0].previewGifName)
+        assertNull(batch[1].previewGifName)
+    }
+
+    @Test
+    fun outboxSchemaHasPreviewGifNameColumn() = runBlocking {
+        // Guard against a missed Room migration: the v6 column must exist even
+        // on a freshly-built in-memory DB.
+        val cursor = db.openHelper.readableDatabase.query("PRAGMA table_info(outbox)")
+        val cols = mutableListOf<String>()
+        while (cursor.moveToNext()) {
+            cols.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+        }
+        cursor.close()
+        assertTrue(cols.contains("previewGifName"))
+    }
+
     /** Local re-implementation to avoid reaching into RoomEventLog privates. */
     private fun decodeForTest(raw: String): Map<String, String> {
         val obj = org.json.JSONObject(raw)

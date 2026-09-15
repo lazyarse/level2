@@ -46,6 +46,11 @@ class TelegramChannel(
         "https://api.telegram.org/bot${settings.botToken}/$method"
 
     override suspend fun send(message: AlertMessage) {
+        val preview = message.videoPreview
+        if (preview != null) {
+            sendAnimation(preview, message.text)
+            return
+        }
         val photo = message.snapshot
         if (photo != null) {
             if (!sendPhoto(photo, message.text)) {
@@ -53,6 +58,32 @@ class TelegramChannel(
             }
         } else {
             sendMessage(message.text)
+        }
+    }
+
+    private suspend fun sendAnimation(gif: Snapshot, caption: String) {
+        withTempSnapshot(gif) { tmp ->
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("chat_id", settings.chatId)
+                .addFormDataPart("caption", caption)
+                .addFormDataPart(
+                    "animation",
+                    gif.name,
+                    tmp.asRequestBody(safeMediaType(gif.mimeType)),
+                )
+                .build()
+            val response = withContext(Dispatchers.IO) {
+                client.newCall(Request.Builder().url(endpoint("sendAnimation")).post(body).build()).execute()
+            }
+            response.use {
+                val respBody = it.body?.string()
+                // A rejected preview must surface so the caller (outbox) can
+                // retry the GIF delivery rather than silently degrade.
+                if (!isOk(respBody)) {
+                    error("Telegram sendAnimation failed (${it.code}): ${telegramError(respBody)}")
+                }
+            }
         }
     }
 

@@ -48,7 +48,7 @@ class EventPipeline(
     suspend fun handleBatch(batch: TriggerBatch): Long {
         val types = batch.triggers.map { it.triggerType }.distinct()
         val single = types.size == 1
-        val type = if (single) types.first() else TriggerType.merged
+        val type = alertType(batch)
 
         val snapshot = batch.snapshot
         if (snapshot != null) {
@@ -58,7 +58,7 @@ class EventPipeline(
             }
         }
 
-        val text = alertText(batch)
+        val text = buildAlertText(batch)
         val message = AlertMessage(
             timestamp = batch.timestamp,
             triggerType = type,
@@ -149,7 +149,12 @@ class EventPipeline(
         return STATUS_FAILED
     }
 
-    private fun targetsFor(triggers: List<TriggerEvent>): List<ChannelConfig> {
+    /**
+     * Channels an alert routes to for the given batch's triggers (enabled ∪
+     * log, filtered by per-detector routes). Public so the monitoring runtime
+     * can derive the GIF-preview target set from the same routing rules.
+     */
+    fun targetsFor(triggers: List<TriggerEvent>): List<ChannelConfig> {
         val anyKnownDetector = triggers.any { detectorConfigs.containsKey(it.detectorId) }
         val anyEmptyRoutes = triggers.any { t ->
             val config = detectorConfigs[t.detectorId]
@@ -183,6 +188,15 @@ class EventPipeline(
         )
         return "$label detected in $cameraName at $time"
     }
+
+    /** Single vs merged trigger label (mirrors [handleBatch]'s type pick). */
+    fun alertType(batch: TriggerBatch): String {
+        val types = batch.triggers.map { it.triggerType }.distinct()
+        return if (types.size == 1) types.first() else TriggerType.merged
+    }
+
+    /** Alert text for a batch (public so preview pushes caption like the alert). */
+    fun buildAlertText(batch: TriggerBatch): String = alertText(batch)
 
     companion object {
         /**

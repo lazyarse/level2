@@ -39,6 +39,7 @@ class FileSnapshotStore(private val directoryPath: String) : SnapshotStore {
             "png" -> "image/png"
             "jpg", "jpeg" -> "image/jpeg"
             "webp" -> "image/webp"
+            "gif" -> "image/gif"
             else -> "application/octet-stream"
         }
     }

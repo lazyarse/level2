@@ -248,17 +248,20 @@ class TriggerBatcher(
             val vf = videoFuture
             val bt = batchOpenedAt
             val genCopy = g
-            scope.launch {
+            // Video ready must survive runtimeScope cancellation (stop() cancels
+            // the batcher scope); use a process-wide scope so the late link
+            // still fires after monitoring stops and crosses a restart.
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
                 try {
+                    val name = vf?.await()
+                    val vidMs = System.currentTimeMillis() - drainStartMs
+                    runCatching {
+                        android.util.Log.i(
+                            "TriggerBatcher",
+                            "video ready gen=$genCopy batch=$bt video=${name ?: "null"} vidMs=$vidMs",
+                        )
+                    }
                     kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                        val name = vf?.await()
-                        val vidMs = System.currentTimeMillis() - drainStartMs
-                        runCatching {
-                            android.util.Log.i(
-                                "TriggerBatcher",
-                                "video ready gen=$genCopy batch=$bt video=${name ?: "null"} vidMs=$vidMs",
-                            )
-                        }
                         onVideoReady(bt, name)
                     }
                 } catch (_: Exception) {
