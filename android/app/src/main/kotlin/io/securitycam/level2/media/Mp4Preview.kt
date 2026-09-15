@@ -84,12 +84,15 @@ class Mp4PreviewGenerator(private val context: Context) {
                 val budgetW = kotlin.math.sqrt(
                     GifPreview.PIXEL_BUDGET.toDouble() / sampleCount * srcWidth / srcHeight,
                 ).toInt()
-                val width = minOf(
-                    maxWidthPx.coerceAtLeast(GifPreview.MIN_WIDTH),
-                    budgetW.coerceAtLeast(GifPreview.MIN_WIDTH),
+                val rawWidth = minOf(
+                    maxWidthPx.coerceAtLeast(128),
+                    budgetW.coerceAtLeast(128),
                     srcWidth,
                 )
-                val height = maxOf(1, srcHeight * width / srcWidth)
+                val rawHeight = maxOf(128, srcHeight * rawWidth / srcWidth)
+                // Encoder requires at least 128x128 (VideoCapabilities) and even dims
+                val width = maxOf(128, rawWidth and 0x7FFFFFFE)
+                val height = maxOf(128, rawHeight and 0x7FFFFFFE)
 
                 val frames = ArrayList<Mp4Encoder.Frame>(sampleCount)
                 Log.i(
@@ -113,8 +116,8 @@ class Mp4PreviewGenerator(private val context: Context) {
                         val bw = bitmap.width
                         val bh = bitmap.height
                         if (frameWidth == -1) {
-                            frameWidth = bw
-                            frameHeight = bh
+                            frameWidth = maxOf(128, bw and 0x7FFFFFFE)
+                            frameHeight = maxOf(128, bh and 0x7FFFFFFE)
                         }
                         if (bw != frameWidth || bh != frameHeight) {
                             Log.w(

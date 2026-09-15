@@ -80,8 +80,8 @@ object Mp4Encoder {
     fun encode(frames: List<Frame>): ByteArray {
         require(frames.isNotEmpty()) { "Mp4Encoder.encode: empty frame list" }
         val first = frames.first()
-        val width = first.width
-        val height = first.height
+        val width = maxOf(128, first.width and 0x7FFFFFFE)
+        val height = maxOf(128, first.height and 0x7FFFFFFE)
 
         val tmp = File.createTempFile("preview", ".mp4")
         tmp.deleteOnExit()
@@ -89,7 +89,7 @@ object Mp4Encoder {
         val codec = MediaCodec.createEncoderByType(MIME)
         val format = MediaFormat.createVideoFormat(MIME, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, pickColorFormat(codec))
-            setInteger(MediaFormat.KEY_BIT_RATE, width * height * 5)
+            setInteger(MediaFormat.KEY_BIT_RATE, maxOf(width * height * 5, 100_000))
             setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
         }
@@ -171,6 +171,9 @@ object Mp4Encoder {
         val caps = codec.codecInfo.getCapabilitiesForType(MIME)
         for (cf in caps.colorFormats) {
             if (cf == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible) return cf
+        }
+        for (cf in caps.colorFormats) {
+            if (cf == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar) return cf
         }
         for (cf in caps.colorFormats) {
             if (cf == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar) return cf
