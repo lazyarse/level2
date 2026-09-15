@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.util.Log
-import io.securitycam.level2.core.GifPreview
+import io.securitycam.level2.core.VideoPreview
 import io.securitycam.level2.core.Snapshot
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -31,7 +31,7 @@ data class Preview(
 class Mp4PreviewGenerator(private val context: Context) {
 
     /**
-     * Samples the first [GifPreview.MAX_DURATION_SECONDS] of the clip at the
+     * Samples the first [VideoPreview.MAX_DURATION_SECONDS] of the clip at the
      * configured [fps], downscaled to at most [maxWidthPx] wide, and returns a
      * [Preview] holding the MP4 `<clipStem>.mp4` plus a still JPEG
      * `<clipStem>.jpg` (frame 0), or null when the clip can't be read
@@ -69,10 +69,10 @@ class Mp4PreviewGenerator(private val context: Context) {
                 }
 
                 // Whole video, x fps decimated to MAX_FRAMES cap and stretched so wall time matches clip.
-                val clampedFps = fps.coerceIn(GifPreview.MIN_FPS, GifPreview.MAX_FPS)
+                val clampedFps = fps.coerceIn(VideoPreview.MIN_FPS, VideoPreview.MAX_FPS)
                 val targetUs = durationUs
                 val idealCount = (targetUs * clampedFps / 1_000_000L + 1).toInt()
-                val sampleCount = minOf(idealCount, GifPreview.MAX_FRAMES).coerceAtLeast(1)
+                val sampleCount = minOf(idealCount, VideoPreview.MAX_FRAMES).coerceAtLeast(1)
                 val intervalUs = if (sampleCount > 1) targetUs / (sampleCount - 1) else 0L
                 val delayCs = if (sampleCount > 1) ((targetUs / 10000L) / sampleCount).toInt().coerceAtLeast(1)
                 else (100 / clampedFps).coerceAtLeast(1)
@@ -82,7 +82,7 @@ class Mp4PreviewGenerator(private val context: Context) {
                 // per-frame pixel budget = totalBudget / sampleCount keeps the LZW
                 // encode under withTimeout on the SM_A137F-class device.
                 val budgetW = kotlin.math.sqrt(
-                    GifPreview.PIXEL_BUDGET.toDouble() / sampleCount * srcWidth / srcHeight,
+                    VideoPreview.PIXEL_BUDGET.toDouble() / sampleCount * srcWidth / srcHeight,
                 ).toInt()
                 val rawWidth = minOf(
                     maxWidthPx.coerceAtLeast(128),

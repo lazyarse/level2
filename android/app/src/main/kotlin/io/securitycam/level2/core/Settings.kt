@@ -122,8 +122,11 @@ object PrivacyMaskEffect {
     }
 }
 
-/** Notification video-preview GIF constraints (Advanced settings). */
-object GifPreview {
+/** Notification video-preview constraints (Advanced settings). */
+@Deprecated("Use VideoPreview")
+typealias GifPreview = VideoPreview
+
+object VideoPreview {
     /** Frame-rate bounds; the GIF decimates the clip to [DEFAULT_FPS] fps. */
     const val MIN_FPS = 1
     const val MAX_FPS = 5
@@ -229,10 +232,10 @@ data class AppSettings(
     val tripwireZones: List<DetectionZone> = emptyList(),
     val liveView: LiveViewSettings = LiveViewSettings(),
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
-    /** Frame rate for notification video-preview GIFs (clamped to [GifPreview]). */
-    val gifPreviewFps: Int = GifPreview.DEFAULT_FPS,
-    /** Max frame width in px for notification video-preview GIFs. */
-    val gifPreviewMaxWidthPx: Int = GifPreview.DEFAULT_WIDTH,
+    /** Frame rate for notification video-previews (clamped to [VideoPreview]). */
+    val gifPreviewFps: Int = VideoPreview.DEFAULT_FPS,
+    /** Max frame width in px for notification video-previews. */
+    val gifPreviewMaxWidthPx: Int = VideoPreview.DEFAULT_WIDTH,
     /**
      * One-way flag: the pre-2026-08-23 legacy cooldown normalization has run.
      * Guards [SettingsStore.migrateLegacyCooldowns] so an intentional 60s /
@@ -604,10 +607,10 @@ data class AppSettings(
                 cloudBackup = (json["cloudBackup"] as? Map<*, *>)
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
-                gifPreviewFps = GifPreview.clampFps(
+                gifPreviewFps = VideoPreview.clampFps(
                     (json["gifPreviewFps"] as? Number)?.toInt() ?: defaults.gifPreviewFps,
                 ),
-                gifPreviewMaxWidthPx = GifPreview.clampWidth(
+                gifPreviewMaxWidthPx = VideoPreview.clampWidth(
                     (json["gifPreviewMaxWidthPx"] as? Number)?.toInt()
                         ?: defaults.gifPreviewMaxWidthPx,
                 ),

@@ -637,7 +637,7 @@ class MonitoringRuntime private constructor(
     }
 
     /**
-     * GIF video preview (see docs/plans/2026-09-14-video-preview-gif.md): once
+     * Video preview (see docs/plans/2026-09-14-video-preview-gif.md): once
      * the clip muxes, generate a short low-frame-rate GIF from it (only when a
      * routed, capable channel asked for one), persist it beside the snapshot,
      * and push it per channel. An exhausted/delivery failure enqueues an outbox

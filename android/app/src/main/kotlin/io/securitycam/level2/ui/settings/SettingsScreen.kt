@@ -116,7 +116,7 @@ import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ClipStampPosition
-import io.securitycam.level2.core.GifPreview
+import io.securitycam.level2.core.VideoPreview
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.LiveViewSettings
 import io.securitycam.level2.core.ScheduleWindow
@@ -1101,7 +1101,7 @@ fun SettingsScreen(
                             )
                             HorizontalDivider()
                             BodyText(
-                                "Video preview GIF: a short animated preview of the recorded " +
+                                "Video preview: a short preview of the recorded " +
                                     "clip pushed with each alert when a channel's preview toggle is on.",
                             )
                             Text("Preview frame rate: ${current.gifPreviewFps} fps")
@@ -1109,11 +1109,11 @@ fun SettingsScreen(
                                 value = current.gifPreviewFps.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(gifPreviewFps = GifPreview.clampFps(v.round()))
+                                        it.copy(gifPreviewFps = VideoPreview.clampFps(v.round()))
                                     }
                                 },
-                                valueRange = GifPreview.MIN_FPS.toFloat()..GifPreview.MAX_FPS.toFloat(),
-                                steps = GifPreview.MAX_FPS - GifPreview.MIN_FPS - 1,
+                                valueRange = VideoPreview.MIN_FPS.toFloat()..VideoPreview.MAX_FPS.toFloat(),
+                                steps = VideoPreview.MAX_FPS - VideoPreview.MIN_FPS - 1,
                                 modifier = Modifier.testTag("gifFpsSlider"),
                             )
                             Spacer(Modifier.height(8.dp))
@@ -1122,11 +1122,11 @@ fun SettingsScreen(
                                 value = current.gifPreviewMaxWidthPx.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(gifPreviewMaxWidthPx = GifPreview.clampWidth(v.round()))
+                                        it.copy(gifPreviewMaxWidthPx = VideoPreview.clampWidth(v.round()))
                                     }
                                 },
-                                valueRange = GifPreview.MIN_WIDTH.toFloat()..GifPreview.MAX_WIDTH.toFloat(),
-                                steps = (GifPreview.MAX_WIDTH - GifPreview.MIN_WIDTH) / 16 - 1,
+                                valueRange = VideoPreview.MIN_WIDTH.toFloat()..VideoPreview.MAX_WIDTH.toFloat(),
+                                steps = (VideoPreview.MAX_WIDTH - VideoPreview.MIN_WIDTH) / 16 - 1,
                                 modifier = Modifier.testTag("gifWidthSlider"),
                             )
                         }
@@ -1724,8 +1724,8 @@ private fun ChannelCard(
                     testPreviewUrl = testPreviewUrl,
                 )
                 SwitchRow(
-                    title = "Push video-preview GIF",
-                    subtitle = "Send a short animated preview of each clip along with the alert " +
+                    title = "Push video preview",
+                    subtitle = "Send a short preview of each clip along with the alert " +
                         "(channels that cannot attach files silently skip it in the runtime).",
                     checked = config.pushVideoPreview,
                     onCheckedChange = onPreviewChange,
