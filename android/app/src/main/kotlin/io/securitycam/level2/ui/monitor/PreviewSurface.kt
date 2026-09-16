@@ -21,7 +21,13 @@ import io.securitycam.level2.camera_service.MonitoringServiceController
 
 /**
  * Live camera passthrough backed by a native CameraX [PreviewView]
- * (`COMPATIBLE` implementation). The surface provider is handed to the
+ * (`PERFORMANCE` implementation i.e. `SurfaceView`, composited by
+ * SurfaceFlinger). This keeps the preview smooth while on-device inference
+ * saturates the app process: unlike `COMPATIBLE` (`TextureView`, composited
+ * on the app UI thread), a `SurfaceView` hole keeps rendering even when
+ * analysis burns full-core CPU. Siblings drawn after this view (zone overlay,
+ * top bar) still composite on top; nothing may be placed *under* it.
+ * The surface provider is handed to the
  * monitoring service so the FGS can stream into it; on dispose (tab switch,
  * screen off) the provider is detached while analysis/video keep running.
  *
@@ -71,7 +77,7 @@ fun PreviewSurface(modifier: Modifier = Modifier, fillCrop: Boolean = true) {
         modifier = modifier,
         factory = { ctx ->
             PreviewView(ctx).apply {
-                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                implementationMode = PreviewView.ImplementationMode.PERFORMANCE
                 scaleType = if (fillCrop) {
                     PreviewView.ScaleType.FILL_CENTER
                 } else {
