@@ -797,6 +797,23 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun channelFrequencyDropdownDefaultsToEveryTriggerAndSelectsPerWave() {
+        val harness = channelsHarness()
+        setContent(harness)
+        expandSection("Notification Channels")
+        expandChannel("telegram")
+        compose.onNodeWithTag("channelFrequency_telegram").performScrollTo().assertIsDisplayed()
+        val before = harness.viewModel.draft.value!!.channelConfigs.first { it.id == "telegram" }
+        assertEquals("every_trigger", before.alertMode)
+        compose.onNodeWithTag("channelFrequency_telegram").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Once per wave").performClick()
+        compose.waitForIdle()
+        val after = harness.viewModel.draft.value!!.channelConfigs.first { it.id == "telegram" }
+        assertEquals("per_wave", after.alertMode)
+    }
+
+    @Test
     fun channelPreviewToggleVisibleOnAllChannelTypesAndFlips() {
         val harness = channelsHarness()
         setContent(harness)

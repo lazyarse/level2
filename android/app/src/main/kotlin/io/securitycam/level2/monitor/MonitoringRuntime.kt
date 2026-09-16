@@ -11,6 +11,7 @@ import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelConfig
 import io.securitycam.level2.core.DetectorType
+import io.securitycam.level2.core.isDue
 import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.mediaFileName
@@ -107,6 +108,8 @@ class MonitoringRuntime private constructor(
         var snapshotName: String? = null,
         val statuses: LinkedHashMap<String, String> = LinkedHashMap(),
         var finalized: Boolean = false,
+        /** Last per-channel send start (epoch ms): the frequency gate. */
+        val lastSentMs: MutableMap<String, Long> = mutableMapOf(),
     )
     private val waveMutex = Mutex()
     private val waves = HashMap<Instant, WaveState>()
@@ -463,11 +466,28 @@ class MonitoringRuntime private constructor(
      */
     private suspend fun sendImmediate(batchOpenedAt: Instant, trigger: TriggerEvent) {
         if (stopped) return
+        // Frequency gate first: per-wave/per-channel, no snapshot or network
+        // unless at least one routed channel is due. A new wave (no state
+        // yet) is always due everywhere.
+        val nowMs = System.currentTimeMillis()
+        val routed = eventPipeline.targetsFor(listOf(trigger))
+        val dueIds: Set<String> = waveMutex.withLock {
+            val wave = waves[batchOpenedAt]
+            routed.filter { it.isDue(wave?.lastSentMs?.get(it.id), nowMs) }
+                .map { it.id }.toSet()
+        }
+        if (dueIds.isEmpty()) {
+            // Suppressed by every channel's frequency setting: still merge
+            // the trigger into the early row (triggers/score/detail/type),
+            // keeping the last send statuses untouched.
+            mergeSuppressed(batchOpenedAt, trigger)
+            return
+        }
         // Fresh still per trigger; waits for the camera (15s timeout inside).
         val snapshot = runCatching { captureSnapshot() }.getOrNull()
         if (stopped) return
         val result = try {
-            eventPipeline.sendSingle(trigger, snapshot)
+            eventPipeline.sendSingle(trigger, snapshot, onlyChannelIds = dueIds)
         } catch (e: Exception) {
             android.util.Log.w(TAG, "immediate send failed type=${trigger.triggerType}", e)
             return
@@ -506,6 +526,7 @@ class MonitoringRuntime private constructor(
                     eventId = eventId,
                     snapshotName = snapshot?.name,
                     statuses = LinkedHashMap(statuses),
+                    lastSentMs = dueIds.associateWith { nowMs }.toMutableMap(),
                 )
                 waves[batchOpenedAt] = wave
                 waveEventId = eventId
@@ -526,6 +547,7 @@ class MonitoringRuntime private constructor(
             } else if (!wave.finalized) {
                 wave.triggers.add(trigger)
                 for ((k, v) in statuses) wave.statuses[k] = v
+                for (id in dueIds) wave.lastSentMs[id] = nowMs
                 val types = wave.triggers.map { it.triggerType }.distinct()
                 val mergedType = if (types.size == 1) types.first() else TriggerType.merged
                 val mergedDetail = wave.triggers.firstOrNull { !it.detail.isNullOrBlank() }?.detail
@@ -550,6 +572,7 @@ class MonitoringRuntime private constructor(
                 // trigger were still sent above; just flip its failures onto
                 // the finished row so the outbox retry stays visible.
                 waveEventId = wave.eventId
+                for (id in dueIds) wave.lastSentMs[id] = nowMs
                 try {
                     for ((k, v) in statuses) {
                         if (v == EventPipeline.STATUS_QUEUED || v == EventPipeline.STATUS_FAILED) {
@@ -591,6 +614,36 @@ class MonitoringRuntime private constructor(
         backupSnapshot?.let { snap ->
             runCatching { queueSnapshotBackup(snap) }.onFailure { e ->
                 android.util.Log.w(TAG, "immediate snapshot backup failed snap=${snap.name}", e)
+            }
+        }
+    }
+
+    /**
+     * Merges a frequency-suppressed trigger into its wave's early row without
+     * touching channels, snapshots, or statuses — only the merged trigger
+     * view (types/score/detail) advances. No-op when the wave has no row yet
+     * (suppression with no prior send means nothing was ever routed).
+     */
+    private suspend fun mergeSuppressed(batchOpenedAt: Instant, trigger: TriggerEvent) {
+        waveMutex.withLock {
+            val wave = waves[batchOpenedAt] ?: return@withLock
+            if (wave.finalized) {
+                wave.triggers.add(trigger)
+                return@withLock
+            }
+            wave.triggers.add(trigger)
+            val types = wave.triggers.map { it.triggerType }.distinct()
+            try {
+                roomLog.updateMerged(
+                    eventId = wave.eventId,
+                    triggerType = if (types.size == 1) types.first() else TriggerType.merged,
+                    triggerTypes = if (types.size == 1) emptyList() else types,
+                    score = wave.triggers.maxOfOrNull { it.score } ?: trigger.score,
+                    detail = wave.triggers.firstOrNull { !it.detail.isNullOrBlank() }?.detail,
+                    channelStatuses = LinkedHashMap(wave.statuses),
+                )
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "suppressed merge failed eventId=${wave.eventId}", e)
             }
         }
     }

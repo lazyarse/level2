@@ -12,6 +12,9 @@ import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.storage.OutboxEntity
 import io.securitycam.level2.storage.OutboxKind
 import io.securitycam.level2.storage.SnapshotStore
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.Instant
@@ -63,13 +66,29 @@ class EventPipeline(
      * outbox — the monitoring runtime records the early row first, then
      * enqueues failures against it. Snapshot is freshly captured per trigger
      * by the caller (never the batcher's shared still).
+     *
+     * [onlyChannelIds] restricts delivery to the given channel ids (the
+     * runtime's frequency gate); skipped channels are absent from the result
+     * so the caller keeps their last status. Null means all routed targets.
      */
-    suspend fun sendSingle(trigger: TriggerEvent, snapshot: Snapshot?): SingleTriggerResult {
-        if (snapshot != null) {
+    suspend fun sendSingle(
+        trigger: TriggerEvent,
+        snapshot: Snapshot?,
+        onlyChannelIds: Set<String>? = null,
+    ): SingleTriggerResult {
+        if (snapshot != null && onlyChannelIds?.isEmpty() != true) {
             try {
                 snapshotStore.save(snapshot)
             } catch (_: Exception) {
             }
+        }
+        if (onlyChannelIds != null && onlyChannelIds.isEmpty()) {
+            return SingleTriggerResult(
+                text = buildAlertTextForTrigger(trigger),
+                type = trigger.triggerType,
+                statuses = emptyMap(),
+                failedTargets = emptyList(),
+            )
         }
         val text = buildAlertTextForTrigger(trigger)
         val message = AlertMessage(
@@ -78,37 +97,51 @@ class EventPipeline(
             text = text,
             snapshot = snapshot,
         )
-        val (statuses, failedTargets) = deliver(listOf(trigger), message)
+        val (statuses, failedTargets) = deliver(listOf(trigger), message, onlyChannelIds)
         return SingleTriggerResult(text, trigger.triggerType, statuses, failedTargets)
     }
 
-    /** Shared channel fan-out: raw FAILED statuses plus the failed targets. */
+    /**
+     * Shared channel fan-out: raw FAILED statuses plus the failed targets.
+     * Targets send concurrently so one slow channel (big upload, backoff
+     * retries) never delays the others or the event-row merge; result order
+     * still follows routing order.
+     */
     private suspend fun deliver(
         triggers: List<TriggerEvent>,
         message: AlertMessage,
+        onlyChannelIds: Set<String>? = null,
     ): Pair<LinkedHashMap<String, String>, MutableList<ChannelConfig>> {
         val targets = targetsFor(triggers)
+            .filter { onlyChannelIds == null || it.id in onlyChannelIds }
+        // Per-target result: status plus the failed config (null unless FAILED).
+        val results = coroutineScope {
+            targets.map { target ->
+                async {
+                    val factory = channelFactories[target.type]
+                    if (factory == null) {
+                        // No factory for this channel type (unknown type, missing
+                        // build): record the hole explicitly instead of dropping the
+                        // target silently from the event history.
+                        return@async Triple(target.id, STATUS_MISCONFIGURED, null)
+                    }
+                    // Unknown (forward-version) channel types fail soft: a null typed
+                    // settings means no factory can be trusted to build it, so it
+                    // lands on the explicit misconfigured status instead of throwing.
+                    if (ChannelRegistry.buildChannelSettings(target.type, target.settingsJson) == null) {
+                        return@async Triple(target.id, STATUS_MISCONFIGURED, null)
+                    }
+                    val status = sendWithRetry(factory(target), message)
+                    Triple(target.id, status, if (status == STATUS_FAILED) target else null)
+                }
+            }.awaitAll()
+        }
         val statuses = LinkedHashMap<String, String>()
         val failedTargets = mutableListOf<ChannelConfig>()
-        for (target in targets) {
-            val factory = channelFactories[target.type]
-            if (factory == null) {
-                // No factory for this channel type (unknown type, missing
-                // build): record the hole explicitly instead of dropping the
-                // target silently from the event history.
-                statuses[target.id] = STATUS_MISCONFIGURED
-                continue
-            }
-            // Unknown (forward-version) channel types fail soft: a null typed
-            // settings means no factory can be trusted to build it, so it
-            // lands on the explicit misconfigured status instead of throwing.
-            if (ChannelRegistry.buildChannelSettings(target.type, target.settingsJson) == null) {
-                statuses[target.id] = STATUS_MISCONFIGURED
-                continue
-            }
-            val status = sendWithRetry(factory(target), message)
-            statuses[target.id] = status
-            if (status == STATUS_FAILED) failedTargets.add(target)
+        val byId = targets.associateBy { it.id }
+        for ((id, status, failed) in results) {
+            statuses[id] = status
+            if (failed != null) failedTargets.add(byId.getValue(id))
         }
         return statuses to failedTargets
     }

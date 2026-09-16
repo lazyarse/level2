@@ -24,6 +24,7 @@ class WebhookChannelTest {
         bearerToken: String = "",
         title: String = "",
         bodyStyle: String = "json",
+        attachPhotos: Boolean = false,
         mockBase: String? = null,
         testSnapshot: () -> Snapshot = { Snapshot(byteArrayOf(1, 2, 3), "image/jpeg", "test-snapshot.jpg") },
     ): WebhookChannel = WebhookChannel(
@@ -35,6 +36,7 @@ class WebhookChannelTest {
             bearerToken = bearerToken,
             title = title,
             bodyStyle = bodyStyle,
+            attachPhotos = attachPhotos,
         ),
         client = mockBase?.let { TestHttp.rewritingClient(it.toHttpUrl()) },
         testSnapshot = testSnapshot,
@@ -284,6 +286,51 @@ class WebhookChannelTest {
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test
+    fun customWithSnapshotStaysJsonWhenAttachPhotosIsOff() = runBlocking {
+        val server = serverWith()
+        try {
+            channel(
+                preset = "custom",
+                url = "https://example.com/hook",
+                bodyStyle = "json",
+                mockBase = server.url("/").toString(),
+            ).send(message(snapshot = snapshot()))
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("application/json"))
+            assertTrue(recorded.body.readUtf8().contains("Motion detected in Hallway"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun customWithSnapshotUploadsMultipartWhenAttachPhotosIsOn() = runBlocking {
+        val server = serverWith()
+        try {
+            channel(
+                preset = "custom",
+                url = "https://example.com/hook",
+                attachPhotos = true,
+                mockBase = server.url("/").toString(),
+            ).send(message(snapshot = snapshot()))
+            assertEquals(1, server.requestCount)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.getHeader("content-type").orEmpty().contains("multipart"))
+            assertTrue(recorded.body.readUtf8().contains("snap.png"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun attachPhotosRoundTripsThroughSettingsJson() {
+        val settings = WebhookChannelSettings(preset = "custom", url = "https://example.com/hook", attachPhotos = true)
+        assertEquals(true, WebhookChannelSettings.fromJson(settings.toJson()).attachPhotos)
+        assertEquals(false, WebhookChannelSettings.fromJson(emptyMap()).attachPhotos)
     }
 
     // validate per preset

@@ -535,6 +535,58 @@ class EventPipelineTest {
     }
 
     @Test
+    fun sendSingleAllowlistSkipsNonDueChannels() = runBlocking {
+        val tg = FakeChannel("telegram", "telegram")
+        val email = FakeChannel("email", "email")
+        val builder = PipelineBuilder()
+        builder.channels = mapOf(
+            "telegram" to telegramConfig(),
+            "email" to ChannelConfig(id = "email", type = "email"),
+        )
+        builder.detectors = mapOf("motion" to config("motion", routes = listOf("telegram", "email")))
+        builder.factories = mapOf(
+            "telegram" to { _: ChannelConfig -> tg },
+            "email" to { _: ChannelConfig -> email },
+        )
+        val p = builder.build()
+
+        val result = p.sendSingle(trigger("motion", "motion"), null, onlyChannelIds = setOf("telegram"))
+
+        // Only the due channel was attempted; the skipped one is absent so
+        // the caller keeps its last status.
+        assertEquals(1, tg.sent.size)
+        assertEquals(0, email.sent.size)
+        assertEquals(mapOf("telegram" to EventPipeline.STATUS_DELIVERED), result.statuses)
+        assertTrue(result.failedTargets.isEmpty())
+    }
+
+    @Test
+    fun concurrentFanOutStillReportsEveryTarget() = runBlocking {
+        val slow = FakeChannel("slow", "email", failures = 99)
+        val fast = FakeChannel("fast", "telegram")
+        val builder = PipelineBuilder()
+        builder.channels = mapOf(
+            "slow" to ChannelConfig(id = "slow", type = "email"),
+            "fast" to ChannelConfig(id = "fast", type = "telegram"),
+        )
+        builder.detectors = mapOf("motion" to config("motion", routes = listOf("slow", "fast")))
+        builder.factories = mapOf(
+            "email" to { _: ChannelConfig -> slow },
+            "telegram" to { _: ChannelConfig -> fast },
+        )
+        val p = builder.build()
+
+        val result = p.sendSingle(trigger("motion", "motion"), null)
+
+        assertEquals(1, fast.sent.size)
+        assertEquals(
+            mapOf("slow" to EventPipeline.STATUS_FAILED, "fast" to EventPipeline.STATUS_DELIVERED),
+            result.statuses,
+        )
+        assertEquals(listOf("slow"), result.failedTargets.map { it.id })
+    }
+
+    @Test
     fun sendSingleTextMatchesSingleBatchText() = runBlocking {
         val tg = FakeChannel("telegram", "telegram")
         val builder = PipelineBuilder()

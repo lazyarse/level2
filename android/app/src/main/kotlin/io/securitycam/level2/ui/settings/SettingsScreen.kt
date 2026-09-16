@@ -182,6 +182,7 @@ fun SettingsScreen(
                     fields["${c.id}.token"] = it.bearerToken
                     fields["${c.id}.title"] = it.title
                     fields["${c.id}.bodystyle"] = it.bodyStyle
+                    fields["${c.id}.attachphotos"] = if (it.attachPhotos) "1" else ""
                 }
 
                 ChannelTypes.PUSHOVER -> PushoverChannelSettings.fromJson(c.settingsJson).let {
@@ -349,6 +350,19 @@ fun SettingsScreen(
                                                 settings.copy(
                                                     channelConfigs = settings.channelConfigs.map {
                                                         if (it.id == config.id) it.copy(pushVideoPreview = v) else it
+                                                    },
+                                                )
+                                            }
+                                        },
+                                        onFrequencyChange = { mode, seconds ->
+                                            viewModel.update { settings ->
+                                                settings.copy(
+                                                    channelConfigs = settings.channelConfigs.map {
+                                                        if (it.id == config.id) {
+                                                            it.copy(alertMode = mode, alertEverySeconds = seconds)
+                                                        } else {
+                                                            it
+                                                        }
                                                     },
                                                 )
                                             }
@@ -1681,6 +1695,7 @@ private fun ChannelCard(
     sendingDisabled: Boolean,
     factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
     onPreviewChange: (Boolean) -> Unit = {},
+    onFrequencyChange: (String, Int) -> Unit = { _, _ -> },
     testPreviewUrl: String? = null,
 ) {
     var expanded by rememberSaveable("channel_${config.id}") { mutableStateOf(false) }
@@ -1739,6 +1754,17 @@ private fun ChannelCard(
                     checked = config.pushVideoPreview,
                     onCheckedChange = onPreviewChange,
                     testTag = "channelPreview_${config.id}",
+                )
+                DropdownField(
+                    label = "Alert frequency",
+                    selected = alertFrequencyLabel(config),
+                    options = alertFrequencyOptions.map { "${it.mode}:${it.seconds}" to it.label },
+                    testTag = "channelFrequency_${config.id}",
+                    onSelect = { value ->
+                        val mode = value.substringBefore(":")
+                        val seconds = value.substringAfter(":").toIntOrNull() ?: 60
+                        onFrequencyChange(mode, seconds)
+                    },
                 )
                 Spacer(Modifier.height(8.dp))
             },
@@ -1834,6 +1860,12 @@ private fun ChannelBody(
                             subtitle = "",
                             checked = (fields["${config.id}.bodystyle"] ?: WebhookValues.JSON) == WebhookValues.JSON,
                             onCheckedChange = { v -> setField("${config.id}.bodystyle", if (v) WebhookValues.JSON else WebhookValues.TEXT) },
+                        )
+                        SwitchRow(
+                            title = "Attach photos",
+                            subtitle = "Upload the snapshot with each alert (multipart). Off sends JSON/text only.",
+                            checked = fields["${config.id}.attachphotos"] == "1",
+                            onCheckedChange = { v -> setField("${config.id}.attachphotos", if (v) "1" else "") },
                         )
                     }
                 }
@@ -2088,6 +2120,26 @@ private fun BodyText(text: String) {
 
 private fun mergeLabel(window: Duration): String =
     if (window.isZero) "Off" else "${window.toSeconds()}s"
+
+/** Alert-frequency presets for the per-channel dropdown (value + label). */
+private data class FrequencyOption(val mode: String, val seconds: Int, val label: String)
+
+private val alertFrequencyOptions: List<FrequencyOption>
+    get() = listOf(
+        FrequencyOption(io.securitycam.level2.core.AlertMode.EVERY_TRIGGER, 0, "Every trigger"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.PER_WAVE, 0, "Once per wave"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.THROTTLED, 15, "Every 15 seconds"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.THROTTLED, 30, "Every 30 seconds"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.THROTTLED, 60, "Every minute"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.THROTTLED, 120, "Every 2 minutes"),
+        FrequencyOption(io.securitycam.level2.core.AlertMode.THROTTLED, 300, "Every 5 minutes"),
+    )
+
+private fun alertFrequencyLabel(config: io.securitycam.level2.core.ChannelConfig): String =
+    alertFrequencyOptions.firstOrNull { it.mode == config.alertMode && it.seconds == config.alertEverySeconds }
+        ?.label
+        ?: alertFrequencyOptions.firstOrNull { it.mode == config.alertMode }?.label
+        ?: "Every trigger"
 
 private fun Float.round(): Int = Math.round(this)
 

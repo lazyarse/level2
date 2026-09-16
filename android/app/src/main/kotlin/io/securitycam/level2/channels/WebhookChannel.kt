@@ -20,6 +20,12 @@ class WebhookChannelSettings(
     val bearerToken: String = "",
     val title: String = "",
     val bodyStyle: String = "json",
+    /**
+     * Custom-preset only: upload the snapshot as a multipart file part like
+     * Discord. Off by default — plain receivers expect the JSON/text body,
+     * and per-trigger uploads would multiply traffic and failure modes.
+     */
+    val attachPhotos: Boolean = false,
 ) : ChannelSettings() {
     override val type: String get() = "webhook"
     override fun toJson(): Map<String, Any?> = mapOf(
@@ -28,6 +34,7 @@ class WebhookChannelSettings(
         "bearerToken" to bearerToken,
         "title" to title,
         "bodyStyle" to bodyStyle,
+        "attachPhotos" to attachPhotos,
     )
     override val secretFields: List<String> get() = listOf("url", "bearerToken")
 
@@ -38,6 +45,7 @@ class WebhookChannelSettings(
             bearerToken = json["bearerToken"] as? String ?: "",
             title = json["title"] as? String ?: "",
             bodyStyle = json["bodyStyle"] as? String ?: "json",
+            attachPhotos = json["attachPhotos"] as? Boolean ?: false,
         )
     }
 }
@@ -77,7 +85,7 @@ class WebhookChannel(
         val text = fitWebhookText(message.text)
         // A preview push carries only the GIF (no snapshot, and vice versa),
         // so a single attachment covers both paths.
-        val attach = message.snapshot ?: message.videoPreview
+        val attach = message.videoPreview ?: message.snapshot
         if (attach == null) {
             sendJson("content" to text)
             return
@@ -145,10 +153,51 @@ class WebhookChannel(
     }
 
     private suspend fun sendCustom(message: AlertMessage) {
-        val headers = mutableMapOf<String, String>()
-        if (settings.bearerToken.isNotEmpty()) headers["Authorization"] = "Bearer ${settings.bearerToken}"
+        // Photo uploads are opt-in (attachPhotos): plain custom receivers
+        // expect the JSON/text body, and the per-trigger fast path would
+        // otherwise multiply multipart traffic and failure modes per wave.
+        // Video previews always attach — preview-capable custom channels
+        // imply attachPhotos (see supportsVideoPreview).
+        val attach = message.videoPreview
+            ?: if (settings.attachPhotos) message.snapshot else null
+        if (attach != null) {
+            val text = fitWebhookText(message.text)
+            withTempSnapshot(attach) { tmp ->
+                val body = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("content", text)
+                    .addFormDataPart(
+                        "file",
+                        safeAttachmentName(attach.name),
+                        tmp.asRequestBody(safeMediaType(attach.mimeType)),
+                    )
+                    .build()
+                val requestBuilder = Request.Builder().url(endpoint).post(body)
+                if (settings.bearerToken.isNotEmpty()) {
+                    requestBuilder.header("Authorization", "Bearer ${settings.bearerToken}")
+                }
+                if (settings.title.isNotEmpty()) requestBuilder.header("X-Title", settings.title)
+                val response = withContext(Dispatchers.IO) {
+                    client.newCall(requestBuilder.build()).execute()
+                }
+                response.use {
+                    if (!it.isSuccessful && it.code in 400..499) {
+                        // Degrade to text-only for 4xx (bad webhook/rejected file)
+                        val headers = mutableMapOf<String, String>()
+                        if (settings.bearerToken.isNotEmpty()) headers["Authorization"] = "Bearer ${settings.bearerToken}"
+                        headers["content-type"] = "text/plain"
+                        post(headers, message.text)
+                    } else {
+                        check(it.isSuccessful) { "Webhook failed (${it.code}) ${it.body?.string()?.take(200)}" }
+                    }
+                }
+            }
+            return
+        }
+        // Fallback to the original JSON/text behavior when no preview.
         if (settings.bodyStyle == "text") {
-            headers["content-type"] = "text/plain"
+            val headers = mutableMapOf("content-type" to "text/plain")
+            if (settings.bearerToken.isNotEmpty()) headers["Authorization"] = "Bearer ${settings.bearerToken}"
             post(headers, message.text)
         } else {
             sendJson("text" to message.text)

@@ -85,6 +85,7 @@ internal fun buildChannelConfigs(
                 bearerToken = f("token"),
                 title = f("title"),
                 bodyStyle = f("bodystyle").ifEmpty { WebhookValues.JSON },
+                attachPhotos = f("attachphotos") == "1",
             ).toJson(),
         )
 

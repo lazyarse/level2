@@ -11,6 +11,21 @@ abstract class ChannelSettings {
     abstract val secretFields: List<String>
 }
 
+/** Per-channel alert frequency: how often a continuous wave may re-notify. */
+object AlertMode {
+    /** Every trigger sends (the per-trigger fast path default). */
+    const val EVERY_TRIGGER = "every_trigger"
+
+    /** Only the wave's first trigger sends; joiners are DB-merged silently. */
+    const val PER_WAVE = "per_wave"
+
+    /** First trigger sends, then at most one repeat per [ChannelConfig.alertEverySeconds]. */
+    const val THROTTLED = "throttled"
+
+    /** Default throttle interval for fresh channels. */
+    const val DEFAULT_EVERY_SECONDS = 60
+}
+
 /** Serializable channel configuration (port of `lib/core/channel.dart`). */
 data class ChannelConfig(
     val id: String,
@@ -21,12 +36,18 @@ data class ChannelConfig(
     val pushVideoPreview: Boolean = false,
     /** User-facing account name; blank falls back to a derived "Type N" name. */
     val label: String = "",
+    /** One of [AlertMode]; unknown (forward-version) values behave as [AlertMode.EVERY_TRIGGER]. */
+    val alertMode: String = AlertMode.EVERY_TRIGGER,
+    /** Minimum seconds between repeat alerts in [AlertMode.THROTTLED]; ignored otherwise. */
+    val alertEverySeconds: Int = 60,
 ) {
     fun copyWith(
         enabled: Boolean? = null,
         settingsJson: Map<String, Any?>? = null,
         pushVideoPreview: Boolean? = null,
         label: String? = null,
+        alertMode: String? = null,
+        alertEverySeconds: Int? = null,
     ): ChannelConfig = ChannelConfig(
         id = id,
         type = type,
@@ -34,6 +55,8 @@ data class ChannelConfig(
         settingsJson = settingsJson ?: this.settingsJson,
         pushVideoPreview = pushVideoPreview ?: this.pushVideoPreview,
         label = label ?: this.label,
+        alertMode = alertMode ?: this.alertMode,
+        alertEverySeconds = alertEverySeconds ?: this.alertEverySeconds,
     )
 
     fun toJson(): Map<String, Any?> = mapOf(
@@ -43,6 +66,8 @@ data class ChannelConfig(
         "settings" to settingsJson,
         "pushVideoPreview" to pushVideoPreview,
         "label" to label,
+        "alertMode" to alertMode,
+        "alertEverySeconds" to alertEverySeconds,
     )
 
     companion object {
@@ -55,8 +80,27 @@ data class ChannelConfig(
                 ?.associate { it.key as String to it.value } ?: emptyMap(),
             pushVideoPreview = json["pushVideoPreview"] as? Boolean ?: false,
             label = json["label"] as? String ?: "",
+            alertMode = json["alertMode"] as? String ?: AlertMode.EVERY_TRIGGER,
+            alertEverySeconds = (json["alertEverySeconds"] as? Number)?.toInt()
+                ?: AlertMode.DEFAULT_EVERY_SECONDS,
         )
     }
+}
+
+/**
+ * Pure throttle decision for the per-trigger fast path. [lastSentMs] is null
+ * until this wave's first send to the channel; [nowMs] is the send_tests clock
+ * (System.currentTimeMillis in production, fake in tests).
+ */
+fun ChannelConfig.isDue(lastSentMs: Long?, nowMs: Long): Boolean = when (alertMode) {
+    AlertMode.PER_WAVE -> lastSentMs == null
+    AlertMode.THROTTLED -> {
+        if (lastSentMs == null) true
+        else if (alertEverySeconds <= 0) true
+        else nowMs - lastSentMs >= alertEverySeconds * 1000L
+    }
+    // EVERY_TRIGGER and any unknown forward-version mode: always send.
+    else -> true
 }
 
 /** Alert payload delivered through a channel. */
@@ -105,7 +149,8 @@ internal fun ChannelConfig.isPristinePlaceholder(): Boolean {
  */
 fun ChannelConfig.supportsVideoPreview(): Boolean = when (type) {
     "telegram", "email", "pushover" -> true
-    "webhook" -> preset() in setOf("discord", "ntfy")
+    "webhook" -> preset() in setOf("discord", "ntfy") ||
+        (preset() == "custom" && settingsJson["attachPhotos"] == true)
     else -> false
 }
 
