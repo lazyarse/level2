@@ -127,6 +127,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
+import io.securitycam.level2.detection.SensitivityScale
 import java.time.Duration
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -286,8 +287,8 @@ fun SettingsScreen(
                         )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
                             BodyText(
-                                "Threshold: confidence needed to detect " +
-                                    "(lower values are more sensitive) · " +
+                                "Sensitivity: higher catches more (1 = strict, " +
+                                    "20 = catches everything) · " +
                                     "Persistence: consecutive frames before triggering · " +
                                     "Cooldown: minimum gap between triggers",
                             )
@@ -1544,30 +1545,61 @@ private fun DetectorCard(
                 val hybrid = config.type in combinedPetOrder
                 if (config.type != TriggerType.health) {
                     if (hybrid) {
-                        Text("Sight threshold: %.2f".format(config.threshold))
+                        val sightSensitivity =
+                            SensitivityScale.thresholdToSensitivity(config.type, config.threshold)
+                        Text(
+                            "Sight sensitivity: $sightSensitivity/20 " +
+                                "(${SensitivityScale.label(sightSensitivity)})",
+                        )
                         Slider(
-                            value = config.threshold.toFloat().coerceIn(0f, 1f),
+                            value = sightSensitivity.toFloat(),
                             onValueChange = { v -> onChanged(config.copy(
-                                threshold = v.toDouble(),
+                                threshold = SensitivityScale.sensitivityToThreshold(
+                                    config.type,
+                                    v.round(),
+                                ),
                                 audioThreshold = config.audioThreshold ?: config.threshold,
                             )) },
-                            valueRange = 0f..1f,
+                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
                             modifier = Modifier.testTag("threshold_${config.type}"),
                         )
                         val audioThreshold = config.audioThreshold ?: config.threshold
-                        Text("Sound threshold: %.2f".format(audioThreshold))
+                        val soundSensitivity =
+                            SensitivityScale.thresholdToSensitivity(config.type, audioThreshold)
+                        Text(
+                            "Sound sensitivity: $soundSensitivity/20 " +
+                                "(${SensitivityScale.label(soundSensitivity)})",
+                        )
                         Slider(
-                            value = audioThreshold.toFloat().coerceIn(0f, 1f),
-                            onValueChange = { v -> onChanged(config.copy(audioThreshold = v.toDouble())) },
-                            valueRange = 0f..1f,
+                            value = soundSensitivity.toFloat(),
+                            onValueChange = { v -> onChanged(config.copy(
+                                audioThreshold = SensitivityScale.sensitivityToThreshold(
+                                    config.type,
+                                    v.round(),
+                                ),
+                            )) },
+                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
                             modifier = Modifier.testTag("audioThreshold_${config.type}"),
                         )
                     } else {
-                        Text("Threshold: %.2f".format(config.threshold))
+                        val sensitivity =
+                            SensitivityScale.thresholdToSensitivity(config.type, config.threshold)
+                        Text(
+                            "Sensitivity: $sensitivity/20 " +
+                                "(${SensitivityScale.label(sensitivity)})",
+                        )
                         Slider(
-                            value = config.threshold.toFloat().coerceIn(0f, 1f),
-                            onValueChange = { v -> onChanged(config.copy(threshold = v.toDouble())) },
-                            valueRange = 0f..1f,
+                            value = sensitivity.toFloat(),
+                            onValueChange = { v -> onChanged(config.copy(
+                                threshold = SensitivityScale.sensitivityToThreshold(
+                                    config.type,
+                                    v.round(),
+                                ),
+                            )) },
+                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
                             modifier = Modifier.testTag("threshold_${config.type}"),
                         )
                     }

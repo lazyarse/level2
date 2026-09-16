@@ -502,7 +502,20 @@ class SettingsScreenTest {
         setContent(Harness())
         expandSection("Detectors")
 
-        compose.onNodeWithText("lower values are more sensitive", substring = true)
+        compose.onNodeWithText("higher catches more", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun detectorCardShowsSensitivityScale() {
+        setContent(Harness())
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_person").performScrollTo().performClick()
+        compose.waitForIdle()
+
+        // Person default threshold 0.5 → sensitivity 11/20 (Medium).
+        compose.onNodeWithText("Sensitivity: 11/20 (Medium)", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
     }
