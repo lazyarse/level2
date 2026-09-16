@@ -36,27 +36,31 @@ class YoloVehicleEngine(
     override suspend fun detectVehicles(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         val input = buildInput(frame)
-        val inputs = compiled.createInputBuffers()
-        try {
-            inputs[0].writeFloat(input)
-            val outputs = compiled.run(inputs)
+        // Shared with the other YOLO engines: the first engine to see this
+        // frame runs the model, the rest reuse its raw output.
+        val output = YoloSharedInference.getOrRun(frame) {
+            val inputs = compiled.createInputBuffers()
             try {
-                val output = outputs[0].readFloat()
-                return decodeYoloClasses(
-                    output,
-                    classIndices = YoloClasses.VEHICLES,
-                    conf = confThreshold,
-                    iou = iouThreshold,
-                    maxDetections = maxDetections,
-                    frameWidth = frame.width,
-                    frameHeight = frame.height,
-                )
+                inputs[0].writeFloat(input)
+                val outputs = compiled.run(inputs)
+                try {
+                    outputs[0].readFloat()
+                } finally {
+                    outputs.forEach { it.close() }
+                }
             } finally {
-                outputs.forEach { it.close() }
+                inputs.forEach { it.close() }
             }
-        } finally {
-            inputs.forEach { it.close() }
         }
+        return decodeYoloClasses(
+            output,
+            classIndices = YoloClasses.VEHICLES,
+            conf = confThreshold,
+            iou = iouThreshold,
+            maxDetections = maxDetections,
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+        )
     }
 
     /** Letterboxes [frame] into the 640x640 RGB NCHW float32 input tensor. */
