@@ -266,6 +266,55 @@ class TriggerBatcherTest {
     }
 
     @Test
+    fun immediateHookFiresPerTriggerWithTheWaveKey() = runBlocking {
+        val seen = mutableListOf<Pair<Instant, TriggerEvent>>()
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(100),
+            captureSnapshot = { null },
+            onImmediateTrigger = { key, ev -> seen.add(key to ev) },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        batcher.add(trigger("motion", t0))
+        batcher.add(trigger("motion", t0.plusMillis(30)))
+        delay(250)
+        // Both triggers fired the hook immediately with the wave's openedAt…
+        assertEquals(2, seen.size)
+        assertEquals(t0, seen[0].first)
+        assertEquals(t0, seen[1].first)
+        // …while the batch flow still merged them into one row.
+        assertEquals(1, batches.size)
+        assertEquals(2, batches.single().triggers.size)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
+    fun immediateHookUsesANewKeyAfterAQuietGap() = runBlocking {
+        val seen = mutableListOf<Pair<Instant, TriggerEvent>>()
+        val batcher = TriggerBatcher(
+            scope = this,
+            window = Duration.ofMillis(80),
+            captureSnapshot = { null },
+            onImmediateTrigger = { key, ev -> seen.add(key to ev) },
+        )
+        val batches = mutableListOf<TriggerBatch>()
+        val collector = launch { batcher.batches.collect { batches.add(it) } }
+        val t1 = t0.plusMillis(500)
+        batcher.add(trigger("motion", t0))
+        delay(200)
+        batcher.add(trigger("motion", t1))
+        delay(200)
+        assertEquals(2, seen.size)
+        assertEquals(t0, seen[0].first)
+        assertEquals(t1, seen[1].first)
+        assertEquals(2, batches.size)
+        collector.cancel()
+        batcher.dispose()
+    }
+
+    @Test
     fun maxBatchDurationForceFlushesEvenWhileTriggersKeepArriving() = runBlocking {
         // Perpetual motion (fan, swaying trees) must not produce ONE endless
         // event: the hard cap closes the batch and a new one opens.

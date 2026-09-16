@@ -45,29 +45,49 @@ class EventPipeline(
     private val outboxSink: (suspend (OutboxEntity) -> Unit)? = null,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
-    suspend fun handleBatch(batch: TriggerBatch): Long {
-        val types = batch.triggers.map { it.triggerType }.distinct()
-        val single = types.size == 1
-        val type = alertType(batch)
+    /**
+     * Per-trigger channel result. Raw [STATUS_FAILED] (not flipped to queued):
+     * the caller owns the event row, flips failures to [STATUS_QUEUED], and
+     * enqueues the outbox with the now-known event id.
+     */
+    data class SingleTriggerResult(
+        val text: String,
+        val type: String,
+        val statuses: Map<String, String>,
+        val failedTargets: List<ChannelConfig>,
+    )
 
-        val snapshot = batch.snapshot
+    /**
+     * Immediate per-trigger send: saves [snapshot], routes [trigger] alone,
+     * and delivers to every target. Never touches the event log or the
+     * outbox — the monitoring runtime records the early row first, then
+     * enqueues failures against it. Snapshot is freshly captured per trigger
+     * by the caller (never the batcher's shared still).
+     */
+    suspend fun sendSingle(trigger: TriggerEvent, snapshot: Snapshot?): SingleTriggerResult {
         if (snapshot != null) {
             try {
                 snapshotStore.save(snapshot)
             } catch (_: Exception) {
             }
         }
-
-        val text = buildAlertText(batch)
+        val text = buildAlertTextForTrigger(trigger)
         val message = AlertMessage(
-            timestamp = batch.timestamp,
-            triggerType = type,
+            timestamp = trigger.timestamp,
+            triggerType = trigger.triggerType,
             text = text,
             snapshot = snapshot,
         )
+        val (statuses, failedTargets) = deliver(listOf(trigger), message)
+        return SingleTriggerResult(text, trigger.triggerType, statuses, failedTargets)
+    }
 
-        val targets = targetsFor(batch.triggers)
-
+    /** Shared channel fan-out: raw FAILED statuses plus the failed targets. */
+    private suspend fun deliver(
+        triggers: List<TriggerEvent>,
+        message: AlertMessage,
+    ): Pair<LinkedHashMap<String, String>, MutableList<ChannelConfig>> {
+        val targets = targetsFor(triggers)
         val statuses = LinkedHashMap<String, String>()
         val failedTargets = mutableListOf<ChannelConfig>()
         for (target in targets) {
@@ -90,6 +110,31 @@ class EventPipeline(
             statuses[target.id] = status
             if (status == STATUS_FAILED) failedTargets.add(target)
         }
+        return statuses to failedTargets
+    }
+
+    suspend fun handleBatch(batch: TriggerBatch): Long {
+        val types = batch.triggers.map { it.triggerType }.distinct()
+        val single = types.size == 1
+        val type = alertType(batch)
+
+        val snapshot = batch.snapshot
+        if (snapshot != null) {
+            try {
+                snapshotStore.save(snapshot)
+            } catch (_: Exception) {
+            }
+        }
+
+        val text = buildAlertText(batch)
+        val message = AlertMessage(
+            timestamp = batch.timestamp,
+            triggerType = type,
+            text = text,
+            snapshot = snapshot,
+        )
+
+        val (statuses, failedTargets) = deliver(batch.triggers, message)
 
         // Offline queueing: with an outbox wired, exhausted deliveries become
         // "queued" rows instead of permanent failures.
@@ -197,6 +242,17 @@ class EventPipeline(
 
     /** Alert text for a batch (public so preview pushes caption like the alert). */
     fun buildAlertText(batch: TriggerBatch): String = alertText(batch)
+
+    /** Alert text for one immediate trigger (same wording as a single batch). */
+    fun buildAlertTextForTrigger(trigger: TriggerEvent): String {
+        val label = tamperDetailLabel(trigger.triggerType, trigger.detail)
+            ?: healthDetailLabel(trigger.detail)
+            ?: triggerLabel(trigger.triggerType)
+        val time = ALERT_TIME_FORMAT.format(
+            trigger.timestamp.atZone(ZoneId.systemDefault()),
+        )
+        return "$label detected in $cameraName at $time"
+    }
 
     companion object {
         /**

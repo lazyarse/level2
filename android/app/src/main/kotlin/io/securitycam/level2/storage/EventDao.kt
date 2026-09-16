@@ -83,6 +83,24 @@ interface EventDao {
     suspend fun updateChannelStatusesRaw(id: Long, json: String)
 
     /**
+     * Per-trigger fast path: a wave's early row is rewritten as more triggers
+     * join it (merged type/list, max score, first detail, merged statuses).
+     * Snapshot/video stay untouched — first still wins, the clip links later.
+     */
+    @Query(
+        "UPDATE events SET trigger_type = :triggerType, trigger_types = :triggerTypes, " +
+            "score = :score, detail = :detail, channel_statuses = :channelStatuses WHERE id = :id",
+    )
+    suspend fun updateMerged(
+        id: Long,
+        triggerType: String,
+        triggerTypes: String?,
+        score: Double,
+        detail: String?,
+        channelStatuses: String,
+    )
+
+    /**
      * Read-modify-write of one channel's status as a single transaction;
      * concurrent flips for different channels no longer lose each other.
      */

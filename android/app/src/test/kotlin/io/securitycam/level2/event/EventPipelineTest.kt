@@ -493,4 +493,59 @@ class EventPipelineTest {
     fun triggerLabelMapsFace() {
         assertEquals("Face", triggerLabel(TriggerType.face))
     }
+
+    @Test
+    fun sendSingleDeliversPerTriggerWithoutRecording() = runBlocking {
+        val tg = FakeChannel("telegram", "telegram")
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig())
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> tg })
+        val p = builder.build()
+
+        val result = p.sendSingle(trigger("motion", "motion"), snap())
+
+        // Channel got its alert immediately…
+        assertEquals(1, tg.sent.size)
+        assertEquals("motion", result.type)
+        assertEquals(mapOf("telegram" to EventPipeline.STATUS_DELIVERED), result.statuses)
+        assertTrue(result.failedTargets.isEmpty())
+        assertEquals(1, builder.snapshots.saved.size)
+        // …but no event row was written (the runtime owns the early row).
+        assertTrue(builder.recorder.recorded.isEmpty())
+    }
+
+    @Test
+    fun sendSingleReturnsRawFailedForTheCallerToQueue() = runBlocking {
+        val alwaysFails = FakeChannel("telegram", "telegram", failures = 99)
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig())
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> alwaysFails })
+        // Outbox wired, yet sendSingle must NOT flip: the runtime flips after
+        // the early row exists so the outbox row can reference it.
+        builder.outboxSink = {}
+        val p = builder.build()
+
+        val result = p.sendSingle(trigger("motion", "motion"), null)
+
+        assertEquals(mapOf("telegram" to EventPipeline.STATUS_FAILED), result.statuses)
+        assertEquals(1, result.failedTargets.size)
+        assertTrue(builder.recorder.recorded.isEmpty())
+    }
+
+    @Test
+    fun sendSingleTextMatchesSingleBatchText() = runBlocking {
+        val tg = FakeChannel("telegram", "telegram")
+        val builder = PipelineBuilder()
+        builder.channels = mapOf("telegram" to telegramConfig())
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf("telegram" to { _: ChannelConfig -> tg })
+        val p = builder.build()
+        val t = trigger("motion", "motion")
+
+        val result = p.sendSingle(t, null)
+
+        assertEquals(tg.sent.single().text, result.text)
+    }
 }

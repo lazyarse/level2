@@ -42,6 +42,29 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         dao.updateVideoName(eventId, videoName)
     }
 
+    /**
+     * Per-trigger fast path: rewrites a wave's early row with the merged
+     * view of all triggers seen so far. [triggerTypes] is stored null when
+     * empty (single-type wave), matching [record].
+     */
+    suspend fun updateMerged(
+        eventId: Long,
+        triggerType: String,
+        triggerTypes: List<String>,
+        score: Double,
+        detail: String?,
+        channelStatuses: Map<String, String>,
+    ) {
+        dao.updateMerged(
+            id = eventId,
+            triggerType = triggerType,
+            triggerTypes = if (triggerTypes.isEmpty()) null else jsonEncodeChannelStatusList(triggerTypes),
+            score = score,
+            detail = detail,
+            channelStatuses = jsonEncodeChannelStatusMap(channelStatuses),
+        )
+    }
+
     override suspend fun deleteEvents(olderThan: Instant?): DeletedMedia {
         // deleteEventsCollectingRefs already deletes the rows atomically;
         // the extra delete below the original code had was dead weight.

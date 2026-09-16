@@ -36,7 +36,9 @@ data class TriggerBatch(
  * optional clip export starts too and resolves to its display name once the
  * post-roll tail is recorded. [onTriggerExtended] lets the clip keep
  * recording while the wave continues; [onBatchClose] finalizes it when the
- * wave quiets.
+ * wave quiets. [onImmediateTrigger] fires for EVERY trigger (wave key +
+ * trigger) so the runtime can send per-trigger channel alerts without
+ * waiting for the merge window; the batch flow stays the DB-merge path.
  */
 class TriggerBatcher(
     private val scope: CoroutineScope,
@@ -52,6 +54,8 @@ class TriggerBatcher(
     /** Window-based fast notify: when set, the batch emits with videoName=null
      *  and the clip is linked later via this callback (batchOpenedAt, videoName?). */
     private val onVideoReady: (suspend (Instant, String?) -> Unit)? = null,
+    /** Immediate per-trigger hook (batchOpenedAt, trigger); never suspends. */
+    private val onImmediateTrigger: ((Instant, TriggerEvent) -> Unit)? = null,
 ) {
     private val batchFlow = MutableSharedFlow<TriggerBatch>(
         extraBufferCapacity = 16,
@@ -88,6 +92,7 @@ class TriggerBatcher(
     fun add(event: TriggerEvent) {
         if (disposed) return
         scope.launch {
+            var waveKey: Instant? = null
             mutex.withLock {
                 if (disposed) return@withLock
                 if (pending.isEmpty()) {
@@ -126,6 +131,14 @@ class TriggerBatcher(
                     armWindowTimer(generation)
                 }
                 pending.add(event)
+                waveKey = openedAt ?: event.timestamp
+            }
+            // Outside the lock: the immediate send suspends (still + network)
+            // and must never block batching.
+            val key = waveKey ?: return@launch
+            try {
+                onImmediateTrigger?.invoke(key, event)
+            } catch (_: Exception) {
             }
         }
     }

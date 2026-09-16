@@ -35,6 +35,7 @@ import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.detection.pipeline.AnalysisDispatcher
 import io.securitycam.level2.detection.pipeline.DetectorPipeline
 import io.securitycam.level2.event.EventPipeline
+import io.securitycam.level2.event.RecordedEvent
 import io.securitycam.level2.event.TriggerBatch
 import io.securitycam.level2.event.TriggerBatcher
 import io.securitycam.level2.storage.AppDatabase
@@ -64,6 +65,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -90,6 +93,23 @@ class MonitoringRuntime private constructor(
     private lateinit var pipeline: DetectorPipeline
     private lateinit var batcher: TriggerBatcher
     private lateinit var eventPipeline: EventPipeline
+    private lateinit var roomLog: RoomEventLog
+
+    /**
+     * Per-trigger fast path: every trigger sends its channels immediately
+     * (fresh still, no merge-window wait) while the batcher still merges the
+     * wave into ONE early DB row, updated as the wave continues. Keyed by the
+     * wave's openedAt — the same key the batch flow and VideoLinkRegistry use.
+     */
+    private data class WaveState(
+        val triggers: MutableList<TriggerEvent> = mutableListOf(),
+        var eventId: Long = -1L,
+        var snapshotName: String? = null,
+        val statuses: LinkedHashMap<String, String> = LinkedHashMap(),
+        var finalized: Boolean = false,
+    )
+    private val waveMutex = Mutex()
+    private val waves = HashMap<Instant, WaveState>()
     private lateinit var frameDispatcher: AnalysisDispatcher<AnalysisFrame>
     private lateinit var audioDispatcher: AnalysisDispatcher<AudioWindow>
     private var triggerJob: Job? = null
@@ -237,6 +257,7 @@ class MonitoringRuntime private constructor(
             runtime.pipeline.setZones(settings.detectionZones, settings.exclusionZones)
             runtime.pipeline.setTripwireZones(settings.tripwireZones)
             val roomLog = RoomEventLog(AppDatabase.get(appContext).eventDao())
+            runtime.roomLog = roomLog
             runtime.eventPipeline = EventPipeline(
                 cameraName = settings.cameraName,
                 detectorConfigs = settings.detectorConfigs,
@@ -255,13 +276,21 @@ class MonitoringRuntime private constructor(
             runtime.batcher = TriggerBatcher(
                 scope = runtime.runtimeScope,
                 window = settings.notificationMergeWindow,
-                captureSnapshot = { runtime.captureSnapshot() },
+                // The batcher's shared still is redundant now: every trigger
+                // captures its own fresh still in sendImmediate and the early
+                // row keeps the first one. Skipping it halves camera load.
+                captureSnapshot = { null },
                 captureVideo = { triggerAt -> runtime.captureVideo(triggerAt) },
                 onTriggerExtended = { VideoClipRecorder.extendExport() },
                 onBatchClose = { VideoClipRecorder.endExport() },
                 maxBatchDuration = MAX_BATCH_DURATION,
                 onVideoReady = { batchTime, videoName ->
                     runtime.handleVideoReady(batchTime, videoName)
+                },
+                // Non-suspending fan-out: the suspend work (still + network)
+                // runs in sendImmediate on the runtime scope.
+                onImmediateTrigger = { openedAt, trigger ->
+                    runtime.runtimeScope.launch { runtime.sendImmediate(openedAt, trigger) }
                 },
             )
             runtime.frameDispatcher =
@@ -347,39 +376,14 @@ class MonitoringRuntime private constructor(
             batcher.batches.collect {
                 // Per-batch guard: one failing batch (channel crash, IO) must
                 // not end event recording for the rest of the session.
-                // Store pending link BEFORE handleBatch so a handleBatch
-                // exception doesn't orphan the video future (file-DB desync).
-                val pendingPreviewTargets = eventPipeline.targetsFor(it.triggers)
-                    .filter { t -> t.pushVideoPreview && t.supportsVideoPreview() }
-                val pendingText = eventPipeline.buildAlertText(it)
-                val pendingType = eventPipeline.alertType(it)
-                VideoLinkRegistry.put(
-                    it.timestamp,
-                    VideoLinkRegistry.PendingVideoInfo(
-                        eventId = -1L,
-                        text = pendingText,
-                        triggerType = pendingType,
-                        previewTargets = pendingPreviewTargets,
-                    ),
-                )
+                // Channels were already sent per trigger in sendImmediate;
+                // the batch close only finalizes the early row (merged view +
+                // preview targets) and queues the clip backup.
                 runCatching {
                     android.util.Log.d(TAG, "batch emitted triggers=${it.triggers.size}")
-                    val eventId = eventPipeline.handleBatch(it)
-                    VideoLinkRegistry.put(
-                        it.timestamp,
-                        VideoLinkRegistry.PendingVideoInfo(
-                            eventId = eventId,
-                            text = pendingText,
-                            triggerType = pendingType,
-                            previewTargets = pendingPreviewTargets,
-                        ),
-                    )
-                    android.util.Log.d(TAG, "event recorded id=$eventId type=${it.triggers.firstOrNull()?.triggerType} video=${it.videoName}")
-                    queueCloudBackups(it)
+                    finalizeWave(it)
                 }.onFailure { t ->
                     android.util.Log.w(TAG, "batch handling failed", t)
-                    // Keep placeholder so handleVideoReady can log orphan;
-                    // prune will clear it after TTL.
                 }
             }
         }
@@ -442,28 +446,257 @@ class MonitoringRuntime private constructor(
 
     /** Handles a batch drained on stop just like the collector does. */
     private suspend fun emitForStop(batch: TriggerBatch) {
-        val stopPreviewTargets = eventPipeline.targetsFor(batch.triggers)
-            .filter { t -> t.pushVideoPreview && t.supportsVideoPreview() }
-        val stopText = eventPipeline.buildAlertText(batch)
-        val stopType = eventPipeline.alertType(batch)
-        VideoLinkRegistry.put(
-            batch.timestamp,
-            VideoLinkRegistry.PendingVideoInfo(eventId = -1L, text = stopText, triggerType = stopType, previewTargets = stopPreviewTargets),
-        )
         runCatching {
             android.util.Log.d(TAG, "batch emitted (stop) triggers=${batch.triggers.size}")
+            finalizeWave(batch)
+        }.onFailure { t ->
+            android.util.Log.w(TAG, "stop batch handling failed", t)
+        }
+    }
+
+    /**
+     * Immediate per-trigger channel send (fast path). Captures a fresh still,
+     * delivers to the trigger's routed channels, then records the wave's
+     * early row on the first trigger or merges into it afterwards. Late
+     * arrivals (after [finalizeWave] marked the wave done) still send their
+     * channels and flip statuses, but skip the merged rewrite.
+     */
+    private suspend fun sendImmediate(batchOpenedAt: Instant, trigger: TriggerEvent) {
+        if (stopped) return
+        // Fresh still per trigger; waits for the camera (15s timeout inside).
+        val snapshot = runCatching { captureSnapshot() }.getOrNull()
+        if (stopped) return
+        val result = try {
+            eventPipeline.sendSingle(trigger, snapshot)
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "immediate send failed type=${trigger.triggerType}", e)
+            return
+        }
+        // Raw FAILED becomes QUEUED once the outbox row exists (same flip as
+        // EventPipeline.handleBatch, but deferred until the early row exists).
+        val statuses = LinkedHashMap<String, String>(result.statuses)
+        for (target in result.failedTargets) statuses[target.id] = EventPipeline.STATUS_QUEUED
+
+        var waveEventId = -1L
+        var outboxTargets = result.failedTargets
+        var backupSnapshot: Snapshot? = null
+        waveMutex.withLock {
+            var wave = waves[batchOpenedAt]
+            if (wave == null) {
+                val eventId = try {
+                    roomLog.record(
+                        RecordedEvent(
+                            timestamp = batchOpenedAt,
+                            cameraName = settings.cameraName,
+                            triggerType = result.type,
+                            triggerTypes = emptyList(),
+                            score = trigger.score,
+                            snapshotName = snapshot?.name,
+                            videoName = null,
+                            channelStatuses = statuses,
+                            detail = trigger.detail,
+                        ),
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "immediate record failed", e)
+                    return@withLock
+                }
+                wave = WaveState(
+                    triggers = mutableListOf(trigger),
+                    eventId = eventId,
+                    snapshotName = snapshot?.name,
+                    statuses = LinkedHashMap(statuses),
+                )
+                waves[batchOpenedAt] = wave
+                waveEventId = eventId
+                if (snapshot != null) backupSnapshot = snapshot
+                // Real id from the start: handleVideoReady never sees the old
+                // -1L placeholder in the fast path. Preview targets refresh
+                // at finalizeWave when the merged trigger set is known.
+                VideoLinkRegistry.put(
+                    batchOpenedAt,
+                    VideoLinkRegistry.PendingVideoInfo(
+                        eventId = eventId,
+                        text = result.text,
+                        triggerType = result.type,
+                        previewTargets = emptyList(),
+                    ),
+                )
+                android.util.Log.d(TAG, "immediate first type=${trigger.triggerType} eventId=$eventId")
+            } else if (!wave.finalized) {
+                wave.triggers.add(trigger)
+                for ((k, v) in statuses) wave.statuses[k] = v
+                val types = wave.triggers.map { it.triggerType }.distinct()
+                val mergedType = if (types.size == 1) types.first() else TriggerType.merged
+                val mergedDetail = wave.triggers.firstOrNull { !it.detail.isNullOrBlank() }?.detail
+                val mergedScore = wave.triggers.maxOfOrNull { it.score } ?: trigger.score
+                try {
+                    roomLog.updateMerged(
+                        eventId = wave.eventId,
+                        triggerType = mergedType,
+                        triggerTypes = if (types.size == 1) emptyList() else types,
+                        score = mergedScore,
+                        detail = mergedDetail,
+                        channelStatuses = LinkedHashMap(wave.statuses),
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "immediate merge failed eventId=${wave.eventId}", e)
+                }
+                waveEventId = wave.eventId
+                if (snapshot != null) backupSnapshot = snapshot
+                android.util.Log.d(TAG, "immediate merge type=${trigger.triggerType} eventId=${wave.eventId} triggers=${wave.triggers.size}")
+            } else {
+                // Wave already finalized by the batch close: channels for this
+                // trigger were still sent above; just flip its failures onto
+                // the finished row so the outbox retry stays visible.
+                waveEventId = wave.eventId
+                try {
+                    for ((k, v) in statuses) {
+                        if (v == EventPipeline.STATUS_QUEUED || v == EventPipeline.STATUS_FAILED) {
+                            roomLog.flipChannelStatus(wave.eventId, k, v)
+                        } else if (wave.statuses[k] != EventPipeline.STATUS_DELIVERED) {
+                            roomLog.flipChannelStatus(wave.eventId, k, v)
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "immediate late flip failed eventId=${wave.eventId}", e)
+                }
+                if (snapshot != null) backupSnapshot = snapshot
+            }
+        }
+        if (waveEventId == -1L) return
+        // Outbox + cloud backup outside the wave lock.
+        if (outboxTargets.isNotEmpty()) {
+            runCatching {
+                val store = OutboxStore.from(AppDatabase.get(context))
+                val now = Instant.now().toEpochMilli()
+                for (target in outboxTargets) {
+                    store.enqueue(
+                        OutboxEntity(
+                            createdAt = now,
+                            kind = OutboxKind.NOTIFY,
+                            channelId = target.id,
+                            eventId = waveEventId,
+                            triggerType = result.type,
+                            eventTime = trigger.timestamp.toEpochMilli(),
+                            text = result.text,
+                            snapshotName = snapshot?.name,
+                        ),
+                    )
+                }
+            }.onFailure { e ->
+                android.util.Log.w(TAG, "immediate outbox enqueue failed eventId=$waveEventId", e)
+            }
+        }
+        backupSnapshot?.let { snap ->
+            runCatching { queueSnapshotBackup(snap) }.onFailure { e ->
+                android.util.Log.w(TAG, "immediate snapshot backup failed snap=${snap.name}", e)
+            }
+        }
+    }
+
+    /**
+     * Batch-close finalizer (DB-merge path). Channels are NOT resent here —
+     * [sendImmediate] already delivered every trigger. Rewrites the early row
+     * with the authoritative merged view, refreshes the video-link entry with
+     * the final text/type/preview targets, and queues the clip backup.
+     * Falls back to the legacy [EventPipeline.handleBatch] only when the fast
+     * path never created a row (e.g. every immediate send threw before record).
+     */
+    private suspend fun finalizeWave(batch: TriggerBatch) {
+        val previewTargets = eventPipeline.targetsFor(batch.triggers)
+            .filter { t -> t.pushVideoPreview && t.supportsVideoPreview() }
+        val finalText = eventPipeline.buildAlertText(batch)
+        val finalType = eventPipeline.alertType(batch)
+        var knownEventId: Long? = null
+        waveMutex.withLock {
+            val wave = waves[batch.timestamp]
+            if (wave != null) {
+                wave.finalized = true
+                // Authoritative trigger set: a late trigger's fast send may
+                // still be in flight (still + network), so adopt any triggers
+                // it hasn't merged yet without dropping its statuses.
+                val known = wave.triggers.map { it.timestamp to it.triggerType }.toSet()
+                for (t in batch.triggers) {
+                    if (!known.contains(t.timestamp to t.triggerType)) wave.triggers.add(t)
+                }
+                val types = wave.triggers.map { it.triggerType }.distinct()
+                val mergedType = if (types.size == 1) types.first() else TriggerType.merged
+                val mergedDetail = wave.triggers.firstOrNull { !it.detail.isNullOrBlank() }?.detail
+                val mergedScore = wave.triggers.maxOfOrNull { it.score } ?: 0.0
+                try {
+                    roomLog.updateMerged(
+                        eventId = wave.eventId,
+                        triggerType = mergedType,
+                        triggerTypes = if (types.size == 1) emptyList() else types,
+                        score = mergedScore,
+                        detail = mergedDetail,
+                        channelStatuses = LinkedHashMap(wave.statuses),
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "finalize merge failed eventId=${wave.eventId}", e)
+                }
+                knownEventId = wave.eventId
+                VideoLinkRegistry.put(
+                    batch.timestamp,
+                    VideoLinkRegistry.PendingVideoInfo(
+                        eventId = wave.eventId,
+                        text = finalText,
+                        triggerType = finalType,
+                        previewTargets = previewTargets,
+                    ),
+                )
+                android.util.Log.d(TAG, "wave finalized eventId=${wave.eventId} triggers=${wave.triggers.size} video=${batch.videoName}")
+            }
+        }
+        if (knownEventId != null) {
+            // Clip backup only: per-trigger snapshots were already queued in
+            // sendImmediate; the batcher's own still is disabled (null).
+            if (batch.videoName != null) {
+                runCatching {
+                    val cb = settings.cloudBackup
+                    if (cb.enabled && cb.backupClips) {
+                        OutboxStore.from(AppDatabase.get(context)).enqueue(
+                            OutboxEntity(
+                                createdAt = Instant.now().toEpochMilli(),
+                                kind = OutboxKind.BACKUP,
+                                mediaPath = "$CLIP_MEDIA_PREFIX${batch.videoName}",
+                                remotePath = RemoteKeys.forMedia(settings.cameraName, batch.videoName, Instant.now().toEpochMilli()),
+                            ),
+                        )
+                    }
+                }.onFailure { e ->
+                    android.util.Log.w(TAG, "finalize clip backup failed video=${batch.videoName}", e)
+                }
+            }
+            return
+        }
+        // Fallback: no early row (fast path never recorded). Legacy behavior:
+        // send channels + record + link, so the wave is never lost.
+        VideoLinkRegistry.put(
+            batch.timestamp,
+            VideoLinkRegistry.PendingVideoInfo(
+                eventId = -1L,
+                text = finalText,
+                triggerType = finalType,
+                previewTargets = previewTargets,
+            ),
+        )
+        runCatching {
             val eventId = eventPipeline.handleBatch(batch)
             VideoLinkRegistry.put(
                 batch.timestamp,
-                VideoLinkRegistry.PendingVideoInfo(eventId = eventId, text = stopText, triggerType = stopType, previewTargets = stopPreviewTargets),
+                VideoLinkRegistry.PendingVideoInfo(
+                    eventId = eventId,
+                    text = finalText,
+                    triggerType = finalType,
+                    previewTargets = previewTargets,
+                ),
             )
-            android.util.Log.d(
-                TAG,
-                "event recorded (stop) id=$eventId type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}",
-            )
+            android.util.Log.d(TAG, "event recorded (fallback) id=$eventId type=${batch.triggers.firstOrNull()?.triggerType} video=${batch.videoName}")
             queueCloudBackups(batch)
         }.onFailure { t ->
-            android.util.Log.w(TAG, "stop batch handling failed", t)
+            android.util.Log.w(TAG, "batch handling failed", t)
         }
     }
 
@@ -554,6 +787,21 @@ class MonitoringRuntime private constructor(
             android.util.Log.i(TAG, "captureVideo done triggerAt=$triggerAt elapsed=${elapsed}ms video=$result")
         }
         return result
+    }
+
+    /** Per-trigger snapshot backup for the fast path (clip backup stays late). */
+    private suspend fun queueSnapshotBackup(snap: Snapshot) {
+        val cb = settings.cloudBackup
+        if (!cb.enabled || !cb.backupSnapshots) return
+        val now = Instant.now().toEpochMilli()
+        OutboxStore.from(AppDatabase.get(context)).enqueue(
+            OutboxEntity(
+                createdAt = now,
+                kind = OutboxKind.BACKUP,
+                mediaPath = snap.name,
+                remotePath = RemoteKeys.forMedia(settings.cameraName, snap.name, now),
+            ),
+        )
     }
 
     /**
@@ -694,7 +942,9 @@ class MonitoringRuntime private constructor(
                 videoPreview = mainPreview,
             )
             val store = OutboxStore.from(AppDatabase.get(context))
+            android.util.Log.w(TAG, "pushVideoPreviews: previewTargets size=${info.previewTargets.size}, targets=${info.previewTargets.map { "${it.id}(${it.type},push=${it.pushVideoPreview},supports=${it.supportsVideoPreview()})" }.joinToString(", ")}")
             for (target in info.previewTargets) {
+                android.util.Log.w(TAG, "video preview sending to channel id=${target.id} type=${target.type} pushVideoPreview=${target.pushVideoPreview} supportsVideoPreview=${target.supportsVideoPreview()}")
                 val factory = ChannelRegistry.factories[target.type] ?: continue
                 val delivered = try {
                     factory(target).send(message)
