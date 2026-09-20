@@ -318,7 +318,7 @@ private fun MonitorStatusBar(
                 }
                 Spacer(Modifier.width(8.dp))
             }
-            if (monitoring) {
+            if (monitoring || state == MonitorState.Starting) {
                 Button(
                     onClick = onStop,
                     modifier = Modifier.testTag("stopMonitorButton"),
@@ -357,18 +357,6 @@ private fun MonitorStatusBar(
                         Icon(Icons.Filled.Stop, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Stop")
-                    }
-
-                    // Cancel a slow service start; Error relies on Retry above.
-                    state == MonitorState.Starting -> IconButton(
-                        onClick = onStop,
-                        modifier = Modifier.testTag("cancelStartButton"),
-                    ) {
-                        Icon(
-                            Icons.Filled.Stop,
-                            contentDescription = "Cancel startup",
-                            tint = MaterialTheme.colorScheme.error,
-                        )
                     }
 
                     else -> Unit
