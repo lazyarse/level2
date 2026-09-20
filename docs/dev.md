@@ -46,3 +46,22 @@ meant N serial ~570 ms CPU inferences per motion frame on a Galaxy A13
 (person+vehicle measured at ~1200 ms/frame, saturating the CPU and stuttering
 the preview). Shared: person+vehicle ≈ 630 ms/frame. Enabling more detectors
 now adds ~20 ms each (preprocess + decode), not another inference.
+
+## Detection speed (Advanced setting)
+
+`DetectionSpeed` tiers pace the heavy gated ML pass (`DetectorPipeline`
+`gatedMinInterval`, set by `MonitoringRuntime` from
+`AppSettings.detectionSpeed`, takes effect on monitoring restart):
+
+| Tier | Interval | Default? |
+|---|---|---|
+| Best accuracy | 750 ms | yes (status quo) |
+| Balanced | 1500 ms | no |
+| Fastest (older phones) | 3000 ms | no |
+
+Lower tiers trade detection latency for CPU/battery. Pacing — not smaller
+model inputs — is the lever because the YOLO26n LiteRT export has a fixed
+640×640 input (`CompiledModel` 2.2.0 exposes buffer requirements but no
+resize). Each engine still letterboxes its own 640×640 input per frame, but
+only the first engine's tensor is used (`YoloSharedInference` caches it
+alongside the raw output).

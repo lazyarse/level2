@@ -1,6 +1,7 @@
 package io.securitycam.level2.detection.pipeline
 
 import io.securitycam.level2.detection.DetectorConfig
+import io.securitycam.level2.core.DetectionSpeed
 import io.securitycam.level2.core.TriggerEvent
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AudioDetector
@@ -33,7 +34,20 @@ class DetectorPipeline(
      * Defaults to the process-global registry for tests/legacy call sites.
      */
     private val registry: DetectorRegistry = DetectorRegistry.withDefaults(),
+    /**
+     * Minimum gap between heavy gated passes during continuous motion. The
+     * gated loop is N serial ML inferences (~600 ms each on weak devices),
+     * so running it on every published frame (~4/s) saturates the CPU and
+     * stutters the preview. Motion's own cheap sync pass still runs every
+     * frame, so gating stays responsive — only the expensive half is paced.
+     * [MonitoringRuntime] sets this from the user's detection-speed tier;
+     * the default matches the Best-accuracy tier. Lower tiers trade
+     * detection latency for CPU/battery on older hardware.
+     */
+    val gatedMinInterval: Duration =
+        DetectionSpeed.gatedInterval(DetectionSpeed.accuracy),
 ) {
+
     private val frameDetectorsInternal: MutableList<FrameDetector> = configs
         .filter { it.enabled }
         .map { registry.factoryFor(it.type)?.invoke(it) }
@@ -47,15 +61,6 @@ class DetectorPipeline(
         .toMutableList()
 
     private val lastTriggerAt = mutableMapOf<String, Instant>()
-
-    /**
-     * Minimum gap between heavy gated passes during continuous motion. The
-     * gated loop is N serial ML inferences (~600 ms each on weak devices),
-     * so running it on every published frame (~4/s) saturates the CPU and
-     * stutters the preview. Motion's own cheap sync pass still runs every
-     * frame, so gating stays responsive — only the expensive half is paced.
-     */
-    val gatedMinInterval: Duration = Duration.ofMillis(750)
 
     private var lastGatedAt: Instant? = null
     private val triggerFlow = MutableSharedFlow<TriggerEvent>(

@@ -47,6 +47,34 @@ object AnalysisResolution {
     }
 }
 
+/**
+ * Detection speed tiers: how often the heavy gated ML pass may run during
+ * continuous motion (see `DetectorPipeline.gatedMinInterval`). Lower tiers
+ * trade detection latency for CPU/battery on older hardware. The YOLO model
+ * input itself is fixed at 640×640 (LiteRT exposes no resize), so pacing —
+ * not smaller inputs — is the lever.
+ */
+object DetectionSpeed {
+    const val accuracy = "accuracy"
+    const val balanced = "balanced"
+    const val fastest = "fastest"
+
+    val values = listOf(accuracy, balanced, fastest)
+
+    /** Minimum gap between heavy gated passes for a tier. */
+    fun gatedInterval(value: String): Duration = when (value) {
+        balanced -> Duration.ofMillis(1500)
+        fastest -> Duration.ofMillis(3000)
+        else -> Duration.ofMillis(750)
+    }
+
+    fun label(value: String): String = when (value) {
+        balanced -> "Balanced"
+        fastest -> "Fastest (older phones)"
+        else -> "Best accuracy"
+    }
+}
+
 /** Live View streaming settings. */
 data class LiveViewSettings(
     val enabled: Boolean = false,
@@ -225,6 +253,8 @@ data class AppSettings(
     /** One of [PrivacyMaskEffect] values: "solid", "pixelate", "blur". */
     val privacyMaskEffect: String = PrivacyMaskEffect.solid,
     val analysisResolution: String = AnalysisResolution.balanced,
+    /** One of [DetectionSpeed] values: how often the gated ML pass may run. */
+    val detectionSpeed: String = DetectionSpeed.accuracy,
     /** Monitor screen: bind the Preview use case (live image) while monitoring. */
     val monitorPreview: Boolean = false,
     val detectionZones: List<DetectionZone> = emptyList(),
@@ -269,6 +299,7 @@ data class AppSettings(
         privacyMasking: Boolean? = null,
         privacyMaskEffect: String? = null,
         analysisResolution: String? = null,
+        detectionSpeed: String? = null,
         detectionZones: List<DetectionZone>? = null,
         exclusionZones: List<DetectionZone>? = null,
         scheduleExclusions: List<ScheduleWindow>? = null,
@@ -298,6 +329,7 @@ data class AppSettings(
         privacyMasking = privacyMasking ?: this.privacyMasking,
         privacyMaskEffect = privacyMaskEffect ?: this.privacyMaskEffect,
         analysisResolution = analysisResolution ?: this.analysisResolution,
+        detectionSpeed = detectionSpeed ?: this.detectionSpeed,
         monitorPreview = monitorPreview ?: this.monitorPreview,
         detectionZones = detectionZones ?: this.detectionZones,
         exclusionZones = exclusionZones ?: this.exclusionZones,
@@ -331,6 +363,7 @@ data class AppSettings(
         json["privacyMasking"] = privacyMasking
         json["privacyMaskEffect"] = privacyMaskEffect
         json["analysisResolution"] = analysisResolution
+        json["detectionSpeed"] = detectionSpeed
         json["monitorPreview"] = monitorPreview
         json["detectionZones"] = detectionZones.map { it.toJson() }
         json["exclusionZones"] = exclusionZones.map { it.toJson() }
@@ -590,6 +623,8 @@ data class AppSettings(
                     ?: defaults.privacyMaskEffect,
                 analysisResolution = json["analysisResolution"] as? String
                     ?: defaults.analysisResolution,
+                detectionSpeed = json["detectionSpeed"] as? String
+                    ?: defaults.detectionSpeed,
                 monitorPreview = json["monitorPreview"] as? Boolean
                     ?: defaults.monitorPreview,
                 detectionZones = (json["detectionZones"] as? List<*>)

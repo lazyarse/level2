@@ -527,6 +527,19 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun advancedSectionOffersDetectionSpeed() {
+        setContent(Harness())
+        expandSection("Advanced")
+
+        compose.onNodeWithTag("detectionSpeedDropdown")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Best accuracy", substring = false)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun disabledDetectorCardStillUnfolds() {
         // Dog ships disabled; the fold-down must open anyway so it can be
         // pre-configured before enabling.

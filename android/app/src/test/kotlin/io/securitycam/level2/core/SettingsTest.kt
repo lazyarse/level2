@@ -387,6 +387,42 @@ class SettingsTest {
     }
 
     @Test
+    fun detectionSpeedDefaultsToAccuracy() {
+        val s = AppSettings.defaults()
+        assertEquals(DetectionSpeed.accuracy, s.detectionSpeed)
+    }
+
+    @Test
+    fun detectionSpeedJsonRoundTrips() {
+        val s = AppSettings.defaults().copyWith(detectionSpeed = DetectionSpeed.fastest)
+        val back = AppSettings.fromJson(s.toJson())
+        assertEquals(DetectionSpeed.fastest, back.detectionSpeed)
+    }
+
+    @Test
+    fun missingDetectionSpeedFallsBackToAccuracy() {
+        val back = AppSettings.fromJson(emptyMap())
+        assertEquals(DetectionSpeed.accuracy, back.detectionSpeed)
+    }
+
+    @Test
+    fun detectionSpeedTiersPaceLongerWhenFaster() {
+        val accuracy = DetectionSpeed.gatedInterval(DetectionSpeed.accuracy)
+        val balanced = DetectionSpeed.gatedInterval(DetectionSpeed.balanced)
+        val fastest = DetectionSpeed.gatedInterval(DetectionSpeed.fastest)
+        assertTrue(balanced > accuracy)
+        assertTrue(fastest > balanced)
+    }
+
+    @Test
+    fun unknownDetectionSpeedFallsBackToAccuracyInterval() {
+        assertEquals(
+            DetectionSpeed.gatedInterval(DetectionSpeed.accuracy),
+            DetectionSpeed.gatedInterval("turbo"),
+        )
+    }
+
+    @Test
     fun presetLabels() {
         assertEquals("Low (160x120)", AnalysisResolution.label(AnalysisResolution.low))
         assertEquals("Balanced (320x240)", AnalysisResolution.label(AnalysisResolution.balanced))

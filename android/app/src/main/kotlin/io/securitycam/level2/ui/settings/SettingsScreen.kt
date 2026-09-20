@@ -116,6 +116,7 @@ import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ClipStampPosition
+import io.securitycam.level2.core.DetectionSpeed
 import io.securitycam.level2.core.PreviewMode
 import io.securitycam.level2.core.VideoPreview
 import io.securitycam.level2.core.KnownFace
@@ -1114,6 +1115,20 @@ fun SettingsScreen(
                                 options = AnalysisResolution.values.map { it to AnalysisResolution.label(it) },
                                 testTag = "analysisResolutionDropdown",
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            BodyText(
+                                "Detection speed: how often detectors re-check during " +
+                                    "continuous motion. Lower is smoother on older phones " +
+                                    "but adds detection delay. Takes effect when monitoring " +
+                                    "restarts.",
+                            )
+                            DropdownField(
+                                label = "Detection speed",
+                                selected = DetectionSpeed.label(current.detectionSpeed),
+                                options = DetectionSpeed.values.map { it to DetectionSpeed.label(it) },
+                                testTag = "detectionSpeedDropdown",
+                                onSelect = { v -> viewModel.update { it.copy(detectionSpeed = v) } },
                             )
                             HorizontalDivider()
                             BodyText(

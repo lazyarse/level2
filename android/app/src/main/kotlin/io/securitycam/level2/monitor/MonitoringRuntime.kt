@@ -13,6 +13,7 @@ import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.AlertMessage
 import io.securitycam.level2.core.ChannelConfig
 import io.securitycam.level2.core.DetectorType
+import io.securitycam.level2.core.DetectionSpeed
 import io.securitycam.level2.core.isDue
 import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.core.Snapshot
@@ -257,6 +258,9 @@ class MonitoringRuntime private constructor(
                 },
                 configs = settings.detectorConfigs.values.toList(),
                 registry = scoped,
+                // User's detection-speed tier paces the heavy gated ML pass;
+                // takes effect on (re)start.
+                gatedMinInterval = DetectionSpeed.gatedInterval(settings.detectionSpeed),
             )
             withContext(Dispatchers.IO) { runtime.pipeline.init() }
             runtime.pipeline.setZones(settings.detectionZones, settings.exclusionZones)
