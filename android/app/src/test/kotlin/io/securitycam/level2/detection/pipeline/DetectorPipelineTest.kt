@@ -271,6 +271,60 @@ class DetectorPipelineTest {
         pipeline.dispose()
     }
 
+    private fun throttlePipeline(): Pair<DetectorPipeline, GatedStubDetector> {
+        val stub = GatedStubDetector(
+            DetectorConfig(type = "gated", enabled = true, persistenceFrames = 1),
+        )
+        val pipeline = DetectorPipeline(
+            classifier = MockAudioEventClassifier(),
+            configs = listOf(
+                DetectorConfig(
+                    type = TriggerType.motion, enabled = true, threshold = 0.01,
+                    persistenceFrames = 1,
+                ),
+            ),
+        )
+        pipeline.debugAddFrameDetector(stub)
+        return pipeline to stub
+    }
+
+    private fun rectFrame(x: Int, y: Int): GrayscaleBitmap =
+        GrayscaleBitmap(16, 16, buildFrameWithRect(16, 16, 140, x, y, 4, 4, 30))
+
+    @Test
+    fun gatedPassThrottledWithinInterval() = runBlocking {
+        val (pipeline, stub) = throttlePipeline()
+        pipeline.init()
+
+        // Prime (no motion on frame 1).
+        pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
+        assertEquals(0, stub.asyncCalls)
+
+        // Motion fires → gated pass runs.
+        pipeline.processFrame(AnalysisFrame(base.plusMillis(100), rectFrame(2, 2)))
+        assertEquals(1, stub.asyncCalls)
+
+        // Motion fires again 200 ms later (changed scene) → throttled.
+        pipeline.processFrame(AnalysisFrame(base.plusMillis(300), rectFrame(6, 6)))
+        assertEquals(1, stub.asyncCalls)
+        pipeline.dispose()
+    }
+
+    @Test
+    fun gatedPassRunsAgainAfterInterval() = runBlocking {
+        val (pipeline, stub) = throttlePipeline()
+        pipeline.init()
+
+        pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
+        pipeline.processFrame(AnalysisFrame(base.plusMillis(100), rectFrame(2, 2)))
+        assertEquals(1, stub.asyncCalls)
+
+        // Motion fires a full interval later → gated pass runs again.
+        pipeline.processFrame(AnalysisFrame(base.plusMillis(100 + 750), rectFrame(8, 8)))
+        assertEquals(2, stub.asyncCalls)
+        pipeline.dispose()
+    }
+
     @Test
     fun tamperRunsOnEveryFrameWithoutMotion() = runBlocking {
         val scope = scope()

@@ -47,6 +47,17 @@ class DetectorPipeline(
         .toMutableList()
 
     private val lastTriggerAt = mutableMapOf<String, Instant>()
+
+    /**
+     * Minimum gap between heavy gated passes during continuous motion. The
+     * gated loop is N serial ML inferences (~600 ms each on weak devices),
+     * so running it on every published frame (~4/s) saturates the CPU and
+     * stutters the preview. Motion's own cheap sync pass still runs every
+     * frame, so gating stays responsive — only the expensive half is paced.
+     */
+    val gatedMinInterval: Duration = Duration.ofMillis(750)
+
+    private var lastGatedAt: Instant? = null
     private val triggerFlow = MutableSharedFlow<TriggerEvent>(
         extraBufferCapacity = 64,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
@@ -118,6 +129,7 @@ class DetectorPipeline(
 
     fun reset() {
         lastTriggerAt.clear()
+        lastGatedAt = null
         for (d in frameDetectorsInternal) d.reset()
         for (d in audioDetectorsInternal) d.reset()
     }
@@ -148,6 +160,13 @@ class DetectorPipeline(
             }
         }
         if (!motionFired) return
+        // Pace the heavy gated pass: back-to-back ML inferences on every
+        // published frame saturate weak CPUs (see gatedMinInterval). A
+        // negative gap (out-of-order timestamps) also skips — only a frame
+        // at least one interval newer than the last pass runs.
+        val last = lastGatedAt
+        if (last != null && Duration.between(last, frame.timestamp) < gatedMinInterval) return
+        lastGatedAt = frame.timestamp
         for (d in frameDetectorsInternal) {
             if (!isMotionGated(d)) continue
             val result = d.analyzeFrameAsync(frame)
