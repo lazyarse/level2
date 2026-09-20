@@ -16,32 +16,52 @@ class YoloSharedInferenceTest {
     private fun frame(): ColorBitmap = ColorBitmap(2, 2, ByteArray(2 * 2 * 3))
 
     @Test
-    fun sameFrameRunsModelOnce() {
+    fun sameFrameBuildsInputAndRunsModelOnce() {
         val frame = frame()
+        var builds = 0
         var runs = 0
-        val first = YoloSharedInference.getOrRun(frame) {
-            runs++
-            floatArrayOf(1f)
-        }
-        val second = YoloSharedInference.getOrRun(frame) {
+        val first = YoloSharedInference.getOrRun(
+            frame = frame,
+            buildInput = {
+                builds++
+                floatArrayOf(1f)
+            },
+        ) {
             runs++
             floatArrayOf(2f)
         }
+        val second = YoloSharedInference.getOrRun(
+            frame = frame,
+            buildInput = {
+                builds++
+                floatArrayOf(3f)
+            },
+        ) {
+            runs++
+            floatArrayOf(4f)
+        }
+        assertEquals(1, builds)
         assertEquals(1, runs)
         assertSame(first, second)
     }
 
     @Test
-    fun newFrameRunsModelAgain() {
+    fun newFrameBuildsInputAndRunsModelAgain() {
+        var builds = 0
         var runs = 0
-        YoloSharedInference.getOrRun(frame()) {
-            runs++
-            floatArrayOf(1f)
+        repeat(2) {
+            YoloSharedInference.getOrRun(
+                frame = frame(),
+                buildInput = {
+                    builds++
+                    floatArrayOf(1f)
+                },
+            ) {
+                runs++
+                floatArrayOf(2f)
+            }
         }
-        YoloSharedInference.getOrRun(frame()) {
-            runs++
-            floatArrayOf(2f)
-        }
+        assertEquals(2, builds)
         assertEquals(2, runs)
     }
 }

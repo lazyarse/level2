@@ -35,10 +35,13 @@ class YoloDogEngine(
 
     override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
-        val input = buildInput(frame)
         // Shared with the other YOLO engines: the first engine to see this
-        // frame runs the model, the rest reuse its raw output.
-        val output = YoloSharedInference.getOrRun(frame) {
+        // frame builds the input tensor and runs the model, the rest reuse
+        // both and only pay their own class decode.
+        val output = YoloSharedInference.getOrRun(
+            frame = frame,
+            buildInput = { buildInput(frame) },
+        ) { input ->
             val inputs = compiled.createInputBuffers()
             try {
                 inputs[0].writeFloat(input)

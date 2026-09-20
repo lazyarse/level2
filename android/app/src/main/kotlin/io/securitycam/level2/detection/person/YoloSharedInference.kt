@@ -7,16 +7,18 @@ import io.securitycam.level2.detection.ColorBitmap
  *
  * All six YOLO-backed engines ([YoloPersonEngine], [YoloVehicleEngine],
  * [YoloDogEngine], [YoloCatEngine], [YoloBirdEngine], [YoloLivestockEngine])
- * share one [YoloModelSingleton] model, but each used to call `run` itself —
- * N enabled detectors meant N serial ~600 ms CPU inferences per motion frame
- * ([DetectorPipeline.processFrame] runs gated detectors sequentially). Each
- * engine now routes its raw-output inference through [getOrRun]: the first
- * engine to see a frame runs the model, the rest reuse the raw output tensor
- * and only pay their own preprocess + class decode.
+ * share one [YoloModelSingleton] model. Each used to preprocess its own
+ * 640×640 input tensor (~4.9 MB) *and* call `run` itself — N enabled
+ * detectors meant N serial ~600 ms CPU inferences plus N large transient
+ * allocations per motion frame ([DetectorPipeline.processFrame] runs gated
+ * detectors sequentially), saturating weak devices and churning GC. Each
+ * engine now routes through [getOrRun]: the first engine to see a frame
+ * builds the input tensor and runs the model; the rest reuse both and only
+ * pay their own class decode.
  *
  * Keyed on frame identity: the pipeline hands the same [ColorBitmap] instance
  * to every detector for one frame, so the cache hits within a frame and can
- * never serve a stale frame. Only the latest frame's output is retained.
+ * never serve a stale frame. Only the latest frame's tensors are retained.
  * Thread-safe via [synchronized] (the frame dispatcher is serial today, but
  * engines must not depend on that).
  *
@@ -24,21 +26,29 @@ import io.securitycam.level2.detection.ColorBitmap
  */
 object YoloSharedInference {
     private var cachedFrame: ColorBitmap? = null
+    private var cachedInput: FloatArray? = null
     private var cachedOutput: FloatArray? = null
 
     @Synchronized
-    fun getOrRun(frame: ColorBitmap, run: () -> FloatArray): FloatArray {
+    fun getOrRun(
+        frame: ColorBitmap,
+        buildInput: () -> FloatArray,
+        run: (FloatArray) -> FloatArray,
+    ): FloatArray {
         if (cachedFrame !== frame) {
-            cachedOutput = run()
+            val input = buildInput()
+            cachedInput = input
+            cachedOutput = run(input)
             cachedFrame = frame
         }
         return cachedOutput!!
     }
 
-    /** Test seam / memory hygiene: drops the retained output. */
+    /** Test seam / memory hygiene: drops the retained tensors. */
     @Synchronized
     fun clear() {
         cachedFrame = null
+        cachedInput = null
         cachedOutput = null
     }
 }
