@@ -1798,6 +1798,49 @@ private fun ChannelCard(
                         onFrequencyChange(mode, seconds)
                     },
                 )
+                // Snapshot-aware validation: derivedStateOf subscribes to the
+                // fields map reads inside the calculation, so this recomputes
+                // only when field contents change — not on every keystroke-driven
+                // recomposition of the card (the old
+                // remember(..., fields.toMap()) key rebuilt the map — a new
+                // instance — on every recomposition, re-running validation).
+                val draftError by remember(config.id, config.type) {
+                    derivedStateOf {
+                        val snapshot = fields.toMap()
+                        val merged = buildChannelConfigs(listOf(config), snapshot).first()
+                        val channel = factories[merged.type]?.invoke(merged)
+                        if (channel == null) "Unknown channel type ${merged.type}"
+                        else channel.validate() ?: emailPortError(config.id, snapshot)
+                            ?: pushoverNumericError(config.id, snapshot)
+                    }
+                }
+                // Local copy: delegated properties don't smart-cast.
+                val validationError = draftError
+                val draftValid = validationError == null
+                OutlinedButton(
+                    onClick = {
+                        onSendTest(buildChannelConfigs(listOf(config), fields).first())
+                    },
+                    // Disabled while ANY channel's test is in flight (the
+                    // ViewModel drops concurrent taps, so every card must show
+                    // it); the label stays per-card.
+                    enabled = draftValid && !sendingDisabled,
+                    modifier = Modifier.testTag("sendTest_${config.id}"),
+                    shape = AppButtonShape,
+                ) {
+                    Text(if (inFlight) "Sending…" else "Send test")
+                }
+                if (validationError != null) {
+                    Text(
+                        text = validationError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("sendTestError_${config.id}"),
+                    )
+                }
+                if (config.type == ChannelTypes.EMAIL && testPreviewUrl != null) {
+                    TestPreviewRow(url = testPreviewUrl, channelId = config.id)
+                }
                 Spacer(Modifier.height(8.dp))
             },
     )
@@ -1913,56 +1956,33 @@ private fun ChannelBody(
                         testTag = fieldTag(config.id, "Sound"),
                         onSelect = { s -> setField("${config.id}.sound", s) },
                     )
-                    ChannelTextField("Priority (-2 to 2)", config.id, fields, "${config.id}.priority", setField, keyboardType = KeyboardType.Number)
+                    val priorityRaw = fields["${config.id}.priority"]?.trim() ?: "0"
+                    val priorityValue = priorityRaw.toIntOrNull()?.toString() ?: "0"
+                    DropdownField(
+                        label = "Priority",
+                        selected = pushoverPriorityVerboseLabel(priorityValue),
+                        options = pushoverPriorityOptions,
+                        testTag = fieldTag(config.id, "Priority"),
+                        onSelect = { v -> setField("${config.id}.priority", v) },
+                    )
                     ChannelTextField("Emergency retry seconds", config.id, fields, "${config.id}.retrySeconds", setField, keyboardType = KeyboardType.Number)
                     ChannelTextField("Emergency expiry seconds", config.id, fields, "${config.id}.expireSeconds", setField, keyboardType = KeyboardType.Number)
                 }
             }
-            // Snapshot-aware validation: derivedStateOf subscribes to the
-            // fields map reads inside the calculation, so this recomputes
-            // only when field contents change — not on every keystroke-driven
-            // recomposition of the card (the old
-            // remember(..., fields.toMap()) key rebuilt the map — a new
-            // instance — on every recomposition, re-running validation).
-            val draftError by remember(config.id, config.type) {
-                derivedStateOf {
-                    val snapshot = fields.toMap()
-                    val merged = buildChannelConfigs(listOf(config), snapshot).first()
-                    val channel = factories[merged.type]?.invoke(merged)
-                    if (channel == null) "Unknown channel type ${merged.type}"
-                    else channel.validate() ?: emailPortError(config.id, snapshot)
-                        ?: pushoverNumericError(config.id, snapshot)
-                }
-            }
-            // Local copy: delegated properties don't smart-cast.
-            val validationError = draftError
-            val draftValid = validationError == null
-            OutlinedButton(
-                onClick = {
-                    onSendTest(buildChannelConfigs(listOf(config), fields).first())
-                },
-                // Disabled while ANY channel's test is in flight (the
-                // ViewModel drops concurrent taps, so every card must show
-                // it); the label stays per-card.
-                enabled = draftValid && !sendingDisabled,
-                modifier = Modifier.testTag("sendTest_${config.id}"),
-                shape = AppButtonShape,
-            ) {
-                Text(if (inFlight) "Sending…" else "Send test")
-            }
-            if (validationError != null) {
-                Text(
-                    text = validationError,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.testTag("sendTestError_${config.id}"),
-                )
-            }
-            if (config.type == ChannelTypes.EMAIL && testPreviewUrl != null) {
-                TestPreviewRow(url = testPreviewUrl, channelId = config.id)
-            }
     }
 }
+
+private val pushoverPriorityOptions: List<Pair<String, String>> = listOf(
+    "-2" to "Lowest (-2) — no sound/vibrate",
+    "-1" to "Low (-1) — quiet",
+    "0" to "Normal (0)",
+    "1" to "High (1) — bypass quiet hours",
+    "2" to "Emergency (2) — require acknowledgement",
+)
+
+private fun pushoverPriorityVerboseLabel(value: String): String =
+    pushoverPriorityOptions.firstOrNull { it.first == value }?.second
+        ?: "Normal (0)"
 
 private typealias SetField = (String, String) -> Unit
 

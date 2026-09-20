@@ -7,12 +7,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** One captured alert-log line (what the log channel delivered). */
+/** One captured alert-log line (what a channel delivered). */
 data class AlertLogEntry(
     val timestamp: Instant,
     val channelId: String,
     val triggerType: String,
     val text: String,
+    val status: String = "delivered",
 )
 
 /**

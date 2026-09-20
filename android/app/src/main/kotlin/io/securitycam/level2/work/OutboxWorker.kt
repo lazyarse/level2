@@ -11,6 +11,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.securitycam.level2.backup.CloudUploaderRegistry
 import io.securitycam.level2.camera_service.VideoClipRecorder
+import io.securitycam.level2.channels.AlertLog
+import io.securitycam.level2.channels.AlertLogEntry
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.channels.OutboxDrainer
 import io.securitycam.level2.core.AlertMessage
@@ -70,6 +72,17 @@ class OutboxWorker(
                     "delivered id=${row.id} kind=${row.kind} eventId=${row.eventId} channelId=${row.channelId}",
                 )
                 flip(row, eventLog, EventPipeline.STATUS_DELIVERED)
+                if (row.kind == OutboxKind.NOTIFY) {
+                    AlertLog.add(
+                        AlertLogEntry(
+                            timestamp = row.eventTime?.let(Instant::ofEpochMilli) ?: Instant.now(),
+                            channelId = row.channelId ?: "unknown",
+                            triggerType = row.triggerType ?: TriggerType.merged,
+                            text = row.text.orEmpty(),
+                            status = EventPipeline.STATUS_DELIVERED,
+                        ),
+                    )
+                }
             },
             onExpired = { row ->
                 android.util.Log.w(
@@ -78,6 +91,17 @@ class OutboxWorker(
                         "attempts=${row.attempts}",
                 )
                 flip(row, eventLog, EventPipeline.STATUS_FAILED)
+                if (row.kind == OutboxKind.NOTIFY) {
+                    AlertLog.add(
+                        AlertLogEntry(
+                            timestamp = row.eventTime?.let(Instant::ofEpochMilli) ?: Instant.now(),
+                            channelId = row.channelId ?: "unknown",
+                            triggerType = row.triggerType ?: TriggerType.merged,
+                            text = row.text.orEmpty(),
+                            status = EventPipeline.STATUS_FAILED,
+                        ),
+                    )
+                }
             },
         )
         val more = try {

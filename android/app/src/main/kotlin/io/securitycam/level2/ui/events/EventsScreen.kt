@@ -438,7 +438,7 @@ private fun EventRow(
     onPlay: (String) -> Unit,
     showPlayButton: Boolean,
 ) {
-    val statuses = event.channelStatuses.entries.joinToString(", ") { (k, v) -> "$k=$v" }
+
     // First line shows icons only; the label survives as thumbnail/dialog title.
     val typeLabel = if (event.triggerTypes.isEmpty()) {
         triggerLabel(event.triggerType)
@@ -502,12 +502,6 @@ private fun EventRow(
                 if (faceName != null) {
                     append("Recognised: ")
                     append(faceName)
-                }
-                if (statuses.isNotEmpty()) {
-                    if (isNotEmpty()) {
-                        append(" — ")
-                    }
-                    append(statuses)
                 }
             }
             if (subline.isNotEmpty()) {
@@ -701,7 +695,6 @@ private fun TimelineDetailCard(
     }
     val local = event.timestamp.atZone(ZoneId.systemDefault())
     val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
-    val statuses = event.channelStatuses.entries.joinToString(", ") { (k, v) -> "$k=$v" }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -751,12 +744,6 @@ private fun TimelineDetailCard(
                 if (faceName != null) {
                     append("Recognised: ")
                     append(faceName)
-                }
-                if (statuses.isNotEmpty()) {
-                    if (isNotEmpty()) {
-                        append(" — ")
-                    }
-                    append(statuses)
                 }
             }
             if (subline.isNotEmpty()) {

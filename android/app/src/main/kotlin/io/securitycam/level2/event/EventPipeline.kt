@@ -8,6 +8,8 @@ import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.core.TriggerEvent
+import io.securitycam.level2.channels.AlertLog
+import io.securitycam.level2.channels.AlertLogEntry
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.storage.OutboxEntity
 import io.securitycam.level2.storage.OutboxKind
@@ -173,6 +175,21 @@ class EventPipeline(
         // "queued" rows instead of permanent failures.
         if (outboxSink != null) {
             for (target in failedTargets) statuses[target.id] = STATUS_QUEUED
+        }
+
+        // Log every channel delivery to the alert log (except the log channel itself, which already logs).
+        for ((channelId, status) in statuses) {
+            val cfg = channelConfigs[channelId]
+            if (cfg != null && cfg.type == "log") continue
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = batch.timestamp,
+                    channelId = channelId,
+                    triggerType = type,
+                    text = text,
+                    status = status,
+                ),
+            )
         }
 
         val eventId = recorder.record(

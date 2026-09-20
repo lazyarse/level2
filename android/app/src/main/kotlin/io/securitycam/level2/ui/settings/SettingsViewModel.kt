@@ -14,6 +14,8 @@ import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.camera_service.CameraInfo
 import io.securitycam.level2.camera_service.availableCameras
+import io.securitycam.level2.channels.AlertLog
+import io.securitycam.level2.channels.AlertLogEntry
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.KnownFace
@@ -202,20 +204,62 @@ class SettingsViewModel(
      */
     suspend fun sendTest(config: io.securitycam.level2.core.ChannelConfig): String {
         val factory = channelFactories[config.type]
-            ?: return "failed: unknown channel type ${config.type}"
+        if (factory == null) {
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = Instant.now(),
+                    channelId = config.id,
+                    triggerType = "test",
+                    text = "Test alert to ${config.id}",
+                    status = "failed",
+                ),
+            )
+            return "failed: unknown channel type ${config.type}"
+        }
         val channel = factory(config)
         val invalid = channel.validate()
-        if (invalid != null) return "invalid: $invalid"
+        if (invalid != null) {
+            val res = "invalid: $invalid"
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = Instant.now(),
+                    channelId = config.id,
+                    triggerType = "test",
+                    text = "Test alert to ${config.id}",
+                    status = "invalid",
+                ),
+            )
+            return res
+        }
         return try {
             channel.sendTest()
             (channel as? io.securitycam.level2.channels.EmailChannel)?.lastPreviewUrl?.let {
                 _lastTestPreview.value = TestPreview(channelId = config.id, url = it)
             }
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = Instant.now(),
+                    channelId = config.id,
+                    triggerType = "test",
+                    text = "Test alert to ${config.id}",
+                    status = "delivered",
+                ),
+            )
             "delivered"
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (t: Throwable) {
-            "failed: ${t.message ?: t.javaClass.simpleName}"
+            val res = "failed: ${t.message ?: t.javaClass.simpleName}"
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = Instant.now(),
+                    channelId = config.id,
+                    triggerType = "test",
+                    text = "Test alert to ${config.id}",
+                    status = "failed",
+                ),
+            )
+            res
         }
     }
 

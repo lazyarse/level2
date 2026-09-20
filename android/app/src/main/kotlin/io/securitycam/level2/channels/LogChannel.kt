@@ -50,6 +50,7 @@ class LogChannel(
                 channelId = id,
                 triggerType = message.triggerType,
                 text = message.text,
+                status = "delivered",
             ),
         )
     }

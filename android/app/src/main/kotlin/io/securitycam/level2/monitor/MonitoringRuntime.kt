@@ -5,6 +5,8 @@ import io.securitycam.level2.camera_service.CameraEvents
 import io.securitycam.level2.camera_service.CameraFrameBus
 import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.camera_service.VideoClipRecorder
+import io.securitycam.level2.channels.AlertLog
+import io.securitycam.level2.channels.AlertLogEntry
 import io.securitycam.level2.channels.ChannelRegistry
 import io.securitycam.level2.backup.RemoteKeys
 import io.securitycam.level2.core.AppSettings
@@ -496,6 +498,21 @@ class MonitoringRuntime private constructor(
         // EventPipeline.handleBatch, but deferred until the early row exists).
         val statuses = LinkedHashMap<String, String>(result.statuses)
         for (target in result.failedTargets) statuses[target.id] = EventPipeline.STATUS_QUEUED
+
+        // Log every channel delivery to the alert log (except the log channel itself, which already logs).
+        for ((channelId, status) in statuses) {
+            val cfg = settings.channelConfigs.firstOrNull { it.id == channelId }
+            if (cfg != null && cfg.type == "log") continue
+            AlertLog.add(
+                AlertLogEntry(
+                    timestamp = trigger.timestamp,
+                    channelId = channelId,
+                    triggerType = result.type,
+                    text = result.text,
+                    status = status,
+                ),
+            )
+        }
 
         var waveEventId = -1L
         var outboxTargets = result.failedTargets

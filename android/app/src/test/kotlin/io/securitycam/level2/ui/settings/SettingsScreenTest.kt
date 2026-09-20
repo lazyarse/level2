@@ -272,7 +272,7 @@ class SettingsScreenTest {
 
         expandSection("Notification Channels")
         expandChannel("pushover")
-        for (label in listOf("Priority (-2 to 2)", "Emergency retry seconds", "Emergency expiry seconds")) {
+        for (label in listOf("Priority", "Emergency retry seconds", "Emergency expiry seconds")) {
             compose.onNodeWithTag(fieldTag("pushover", label)).performScrollTo().assertIsDisplayed()
         }
     }
@@ -411,20 +411,26 @@ class SettingsScreenTest {
         expandSection("Notification Channels")
         expandChannel("pushover")
 
-        // Valid tokens first so the priority check is the one that fires.
+        // Valid tokens first so the retry check is the one that fires.
         compose.onNodeWithTag(fieldTag("pushover", "App token")).performScrollTo()
             .performTextInput("apptok")
         compose.onNodeWithTag(fieldTag("pushover", "User key")).performScrollTo()
             .performTextInput("userkey")
-        compose.onNodeWithTag(fieldTag("pushover", "Priority (-2 to 2)")).performScrollTo()
+        // Priority is now a combo with verbose labels, not a free-form number field.
+        compose.onNodeWithTag(fieldTag("pushover", "Priority")).performScrollTo()
+            .assertIsDisplayed()
+            .assertTextContains("Normal (0)", substring = true)
+        compose.onNodeWithTag(fieldTag("pushover", "Priority")).performClick()
+        compose.onNodeWithText("High (1) — bypass quiet hours").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(fieldTag("pushover", "Priority")).assertTextContains("High (1)", substring = true)
+
+        // Garbage emergency retry still blocks Send test (priority validation itself is now via combo).
+        compose.onNodeWithTag(fieldTag("pushover", "Emergency retry seconds")).performScrollTo()
             .performTextReplacement("high")
         compose.waitForIdle()
 
-        // The replacement text landed in the field.
-        compose.onNodeWithTag(fieldTag("pushover", "Priority (-2 to 2)"))
-            .assertTextContains("high", substring = true)
-
-        compose.onNodeWithText("Priority must be a whole number from -2 to 2")
+        compose.onNodeWithText("Emergency retry must be a whole number of seconds")
             .performScrollTo()
             .assertIsDisplayed()
         compose.onNodeWithTag("sendTest_pushover").assertIsNotEnabled()

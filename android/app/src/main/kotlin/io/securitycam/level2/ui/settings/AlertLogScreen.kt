@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -96,13 +97,22 @@ fun AlertLogScreen(onClose: () -> Unit) {
                 items(entries.asReversed(), key = { it.timestamp.toEpochMilli() to it.text }) { entry ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = EventPipeline.ALERT_TIME_FORMAT.format(
-                                    entry.timestamp.atZone(ZoneId.systemDefault()),
-                                ) + " · ${entry.channelId} · ${entry.triggerType}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = EventPipeline.ALERT_TIME_FORMAT.format(
+                                        entry.timestamp.atZone(ZoneId.systemDefault()),
+                                    ) + " · ${entry.channelId} · ${entry.triggerType}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = entry.status,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = statusColor(entry.status),
+                                    modifier = Modifier.testTag("alertLogStatus_${entry.channelId}_${entry.status}"),
+                                )
+                            }
                             Spacer(Modifier.height(4.dp))
                             SelectionContainer {
                                 Text(
@@ -116,4 +126,11 @@ fun AlertLogScreen(onClose: () -> Unit) {
             }
         }
     }
+}
+
+private fun statusColor(status: String): Color = when (status) {
+    "delivered" -> Color(0xFF4CAF50)
+    "queued" -> Color(0xFFFFA726)
+    "failed", "misconfigured", "invalid" -> Color(0xFFE53935)
+    else -> Color(0xFF757575)
 }
