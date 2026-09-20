@@ -72,9 +72,11 @@ alongside the raw output).
   (nanoTime-based, unit-test safe). `MonitoringRuntime` samples the first 3
   passes per session; any pass ≥ `SLOW_GATED_PASS_MS` (400 ms) sets
   `slowDevice`.
-- `MonitorViewModel.showSpeedNudge` = slow + not dismissed + tier is Best
-  accuracy. `MonitorScreen` shows a banner: "Use Balanced" saves
-  `detectionSpeed=balanced` (takes effect on restart), "Not now" persists
-  `AppSettings.speedNudgeDismissed` (one-way, never re-arms).
+- `MonitorViewModel.showSpeedNudge` = slow + not snoozed + tier is Best
+  accuracy (pure `shouldShowSpeedNudge` seam). `MonitorScreen` shows a
+  suggest-only banner ("try Balanced in Settings → Advanced") with a "Got
+  it" session snooze. Deliberately zero store writes: the banner never
+  mutates settings, so the Settings draft can never go stale (this bit us
+  once with an auto-apply button — suggest, don't apply).
 - Detectors section shows a static tip when ≥2 YOLO detectors are enabled
   (person/vehicle/dog/cat/bird/livestock — the shared-pass set).

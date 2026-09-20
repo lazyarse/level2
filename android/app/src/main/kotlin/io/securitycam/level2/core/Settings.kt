@@ -281,12 +281,6 @@ data class AppSettings(
      * chosen after the change is never bumped again.
      */
     val mergeWindowUpgraded: Boolean = false,
-    /**
-     * One-way flag: the user dismissed the slow-device detection-speed
-     * nudge. Suppresses the banner even if gated passes stay slow (switching
-     * tiers manually never re-arms it, by design — no nagging).
-     */
-    val speedNudgeDismissed: Boolean = false,
 ) {
     fun copyWith(
         cameraName: String? = null,
@@ -318,7 +312,6 @@ data class AppSettings(
         gifPreviewMaxWidthPx: Int? = null,
         cooldownsMigrated: Boolean? = null,
         mergeWindowUpgraded: Boolean? = null,
-        speedNudgeDismissed: Boolean? = null,
     ): AppSettings = AppSettings(
         cameraName = cameraName ?: this.cameraName,
         cameraId = cameraId ?: this.cameraId,
@@ -350,7 +343,6 @@ data class AppSettings(
         gifPreviewMaxWidthPx = gifPreviewMaxWidthPx ?: this.gifPreviewMaxWidthPx,
         cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
         mergeWindowUpgraded = mergeWindowUpgraded ?: this.mergeWindowUpgraded,
-        speedNudgeDismissed = speedNudgeDismissed ?: this.speedNudgeDismissed,
     )
 
     fun toJson(): Map<String, Any?> {
@@ -385,7 +377,6 @@ data class AppSettings(
         json["gifPreviewMaxWidthPx"] = gifPreviewMaxWidthPx
         json["cooldownsMigrated"] = cooldownsMigrated
         json["mergeWindowUpgraded"] = mergeWindowUpgraded
-        json["speedNudgeDismissed"] = speedNudgeDismissed
         return json
     }
 
@@ -667,7 +658,6 @@ data class AppSettings(
                 ),
                 cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
                 mergeWindowUpgraded = json["mergeWindowUpgraded"] as? Boolean ?: false,
-                speedNudgeDismissed = json["speedNudgeDismissed"] as? Boolean ?: false,
             )
         }
     }

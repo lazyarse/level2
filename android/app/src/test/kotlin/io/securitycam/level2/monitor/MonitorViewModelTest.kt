@@ -366,27 +366,21 @@ class MonitorViewModelTest {
     }
 
     @Test
-    fun applyBalancedSpeed_savesBalancedTierAndHidesNudge() {
-        val saved = mutableListOf<AppSettings>()
-        val vm = MonitorViewModel(
-            application = ApplicationProvider.getApplicationContext(),
-            permissionsGranted = { true },
-            startMonitoring = { _, _, _, _, _, _, _, _ -> },
-            stopMonitoring = {},
-            settingsLoader = { AppSettings.defaults() },
-            settingsSaver = { saved.add(it) },
-            scheduleCheckInterval = null,
-        )
-        vm.applyBalancedSpeed()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertEquals(1, saved.size)
-        assertEquals(DetectionSpeed.balanced, saved.single().detectionSpeed)
-        assertFalse(vm.showSpeedNudge.value)
+    fun speedNudgeCondition() {
+        val accuracy = AppSettings.defaults()
+        val balanced = accuracy.copy(detectionSpeed = DetectionSpeed.balanced)
+        // Slow phone, fresh session, Best accuracy → show.
+        assertTrue(shouldShowSpeedNudge(true, accuracy, snoozed = false))
+        // Fast phone → never.
+        assertFalse(shouldShowSpeedNudge(false, accuracy, snoozed = false))
+        // Snoozed this session → hidden even when slow.
+        assertFalse(shouldShowSpeedNudge(true, accuracy, snoozed = true))
+        // Already off Best accuracy → nothing to suggest.
+        assertFalse(shouldShowSpeedNudge(true, balanced, snoozed = false))
     }
 
     @Test
-    fun dismissSpeedNudge_persistsDismissalAndHidesNudge() {
+    fun dismissSpeedNudge_hidesBannerWithoutSaving() {
         val saved = mutableListOf<AppSettings>()
         val vm = MonitorViewModel(
             application = ApplicationProvider.getApplicationContext(),
@@ -400,8 +394,7 @@ class MonitorViewModelTest {
         vm.dismissSpeedNudge()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, saved.size)
-        assertTrue(saved.single().speedNudgeDismissed)
+        assertTrue(saved.isEmpty())
         assertFalse(vm.showSpeedNudge.value)
     }
 }

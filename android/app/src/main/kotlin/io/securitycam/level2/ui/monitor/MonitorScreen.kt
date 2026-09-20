@@ -224,7 +224,6 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             healthStalled = healthStalled,
             activeTriggers = activeTriggers,
             showSpeedNudge = showSpeedNudge,
-            onUseBalanced = viewModel::applyBalancedSpeed,
             onDismissNudge = viewModel::dismissSpeedNudge,
             onStart = {
                 val missing = viewModel.missingPermissions()
@@ -270,7 +269,6 @@ private fun MonitorStatusBar(
     onStop: () -> Unit,
     onStartPreview: () -> Unit,
     onStopPreview: () -> Unit,
-    onUseBalanced: () -> Unit,
     onDismissNudge: () -> Unit,
 ) {
     val monitoring = state == MonitorState.Monitoring
@@ -403,26 +401,17 @@ private fun MonitorStatusBar(
             ) {
                 Text(
                     text = "Detection checks are slow on this phone — the preview " +
-                        "may stutter during motion. Switch to Balanced speed? " +
-                        "(Applies on restart.)",
+                        "may stutter during motion. Try Detection speed: Balanced " +
+                        "in Settings → Advanced.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = onUseBalanced,
-                        shape = AppButtonShape,
-                        modifier = Modifier.testTag("speedNudgeUseBalanced"),
-                    ) {
-                        Text("Use Balanced")
-                    }
-                    TextButton(
-                        onClick = onDismissNudge,
-                        shape = AppButtonShape,
-                        modifier = Modifier.testTag("speedNudgeDismiss"),
-                    ) {
-                        Text("Not now")
-                    }
+                TextButton(
+                    onClick = onDismissNudge,
+                    shape = AppButtonShape,
+                    modifier = Modifier.testTag("speedNudgeDismiss"),
+                ) {
+                    Text("Got it")
                 }
             }
         }

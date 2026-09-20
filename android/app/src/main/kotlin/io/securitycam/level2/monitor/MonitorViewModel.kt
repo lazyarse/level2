@@ -186,11 +186,16 @@ class MonitorViewModel(
 
     /**
      * Slow-device nudge: true once sampled gated passes prove this phone
-     * stutters during motion, unless dismissed or already off Best accuracy.
-     * Shown as a banner on the Monitor tab (see MonitorScreen).
+     * stutters during motion, unless snoozed or already off Best accuracy.
+     * Shown as a banner on the Monitor tab (see MonitorScreen). The banner
+     * only suggests a manual change (no store writes), so the Settings
+     * draft can never go stale.
      */
     private val _showSpeedNudge = MutableStateFlow(false)
     val showSpeedNudge: StateFlow<Boolean> = _showSpeedNudge.asStateFlow()
+
+    /** Session snooze for the nudge (in-memory; re-arms on process restart). */
+    private var speedNudgeSnoozed = false
 
     private var runtime: MonitoringRuntime? = null
     private var healthJob: Job? = null
@@ -496,9 +501,8 @@ class MonitorViewModel(
                     }
                     slowDeviceJob = viewModelScope.launch {
                         created.slowDevice.collect { slow ->
-                            _showSpeedNudge.value = slow &&
-                                !settings.speedNudgeDismissed &&
-                                settings.detectionSpeed == DetectionSpeed.accuracy
+                            _showSpeedNudge.value =
+                                shouldShowSpeedNudge(slow, settings, speedNudgeSnoozed)
                         }
                     }
                     created.begin()
@@ -605,29 +609,13 @@ class MonitorViewModel(
     }
 
     /**
-     * Slow-device nudge action: switch stored detection speed to Balanced and
-     * hide the banner. Takes effect when monitoring restarts (the running
-     * pipeline keeps its interval until then).
+     * Slow-device nudge action: snooze the banner for the rest of the app
+     * session. Deliberately in-memory — the banner suggests a manual settings
+     * change rather than writing the store, so nothing can go stale.
      */
-    fun applyBalancedSpeed() {
-        _showSpeedNudge.value = false
-        viewModelScope.launch {
-            runCatching {
-                val settings = settingsLoader()
-                settingsSaver(settings.copy(detectionSpeed = DetectionSpeed.balanced))
-            }.onFailure { t -> Log.w(TAG, "apply balanced speed failed", t) }
-        }
-    }
-
-    /** Slow-device nudge action: persist dismissal so the banner never returns. */
     fun dismissSpeedNudge() {
+        speedNudgeSnoozed = true
         _showSpeedNudge.value = false
-        viewModelScope.launch {
-            runCatching {
-                val settings = settingsLoader()
-                settingsSaver(settings.copy(speedNudgeDismissed = true))
-            }.onFailure { t -> Log.w(TAG, "dismiss speed nudge failed", t) }
-        }
     }
 
     fun stop() {
@@ -779,3 +767,14 @@ class MonitorViewModel(
         super.onCleared()
     }
 }
+
+/**
+ * Pure show-condition for the slow-device nudge (test seam): the phone
+ * proved slow, the banner wasn't snoozed this session, and the user is still
+ * on Best accuracy (nothing to suggest otherwise).
+ */
+internal fun shouldShowSpeedNudge(
+    slow: Boolean,
+    settings: AppSettings,
+    snoozed: Boolean,
+): Boolean = slow && !snoozed && settings.detectionSpeed == DetectionSpeed.accuracy
