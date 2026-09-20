@@ -1170,41 +1170,48 @@ fun SettingsScreen(
                             )
                         }
                         HorizontalDivider()
-                        CollapsibleSection("About Level 2") {
-                            BodyText(
-                                "Everyone has the right to feel secure regardless of income, so " +
-                                    "\"Level 2\" was born. A free, privacy-first security cam application " +
-                                    "with advanced features such as person detection, face recognition, " +
-                                    "dog/cat detection (including their noises) and much more. If anything " +
-                                    "is missing, feel free to create an issue on github.",
-                            )
-                            Spacer(Modifier.height(8.dp))
+                        Text(
+                            "About Level 2",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 20.dp, bottom = 8.dp)
+                                .testTag(sectionTag("About Level 2")),
+                        )
+                        BodyText(
+                            "Everyone has the right to feel secure regardless of income, so " +
+                                "\"Level 2\" was born. A free, privacy-first security cam application " +
+                                "with advanced features such as person detection, face recognition, " +
+                                "dog/cat detection (including their noises) and much more. If anything " +
+                                "is missing, feel free to create an issue on github.",
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Version ${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/lazyarse/level2"),
+                                    )
+                                    ctx.startActivity(intent)
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                "Version ${BuildConfig.VERSION_NAME}",
+                                "github.com/lazyarse/level2",
                                 style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f),
                             )
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val intent = Intent(
-                                            Intent.ACTION_VIEW,
-                                            Uri.parse("https://github.com/lazyarse/level2"),
-                                        )
-                                        ctx.startActivity(intent)
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "github.com/lazyarse/level2",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                            }
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null)
                         }
                         Spacer(Modifier.height(24.dp))
                     }
