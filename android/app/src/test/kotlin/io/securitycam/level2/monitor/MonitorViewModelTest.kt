@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.DetectionSpeed
 import io.securitycam.level2.core.ScheduleWindow
 import io.securitycam.level2.detection.DetectionZone
 import kotlinx.coroutines.runBlocking
@@ -357,5 +358,50 @@ class MonitorViewModelTest {
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals("Porch", vm.cameraName.value)
+    }
+
+    @Test
+    fun speedNudgeHiddenByDefault() {
+        assertFalse(viewModel().showSpeedNudge.value)
+    }
+
+    @Test
+    fun applyBalancedSpeed_savesBalancedTierAndHidesNudge() {
+        val saved = mutableListOf<AppSettings>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _, _, _, _, _, _, _ -> },
+            stopMonitoring = {},
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = { saved.add(it) },
+            scheduleCheckInterval = null,
+        )
+        vm.applyBalancedSpeed()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, saved.size)
+        assertEquals(DetectionSpeed.balanced, saved.single().detectionSpeed)
+        assertFalse(vm.showSpeedNudge.value)
+    }
+
+    @Test
+    fun dismissSpeedNudge_persistsDismissalAndHidesNudge() {
+        val saved = mutableListOf<AppSettings>()
+        val vm = MonitorViewModel(
+            application = ApplicationProvider.getApplicationContext(),
+            permissionsGranted = { true },
+            startMonitoring = { _, _, _, _, _, _, _, _ -> },
+            stopMonitoring = {},
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = { saved.add(it) },
+            scheduleCheckInterval = null,
+        )
+        vm.dismissSpeedNudge()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, saved.size)
+        assertTrue(saved.single().speedNudgeDismissed)
+        assertFalse(vm.showSpeedNudge.value)
     }
 }

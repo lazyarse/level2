@@ -15,7 +15,10 @@ import io.securitycam.level2.detection.TripwireDetector
 import io.securitycam.level2.detection.audio.AudioEventClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.time.Duration
 import java.time.Instant
 
@@ -69,6 +72,16 @@ class DetectorPipeline(
     )
 
     val triggers: Flow<TriggerEvent> get() = triggerFlow.asSharedFlow()
+
+    /**
+     * Wall-clock duration of the most recent heavy gated pass, in
+     * milliseconds (null until the first motion-gated frame runs).
+     * Powers the slow-device nudge: phones whose passes take hundreds of
+     * ms will stutter the preview during motion. Measured with nanoTime so
+     * it stays pure-JVM (no Android stubs, unit-test safe).
+     */
+    private val _lastGatedMs = MutableStateFlow<Long?>(null)
+    val lastGatedMs: StateFlow<Long?> = _lastGatedMs.asStateFlow()
 
     val frameDetectors: List<FrameDetector> get() = frameDetectorsInternal.toList()
     val audioDetectors: List<AudioDetector> get() = audioDetectorsInternal.toList()
@@ -172,11 +185,13 @@ class DetectorPipeline(
         val last = lastGatedAt
         if (last != null && Duration.between(last, frame.timestamp) < gatedMinInterval) return
         lastGatedAt = frame.timestamp
+        val gatedStartNs = System.nanoTime()
         for (d in frameDetectorsInternal) {
             if (!isMotionGated(d)) continue
             val result = d.analyzeFrameAsync(frame)
             if (result.triggered) maybeEmit(d, result)
         }
+        _lastGatedMs.value = (System.nanoTime() - gatedStartNs) / 1_000_000
     }
 
     /**

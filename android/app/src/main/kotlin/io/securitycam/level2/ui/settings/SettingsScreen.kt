@@ -293,6 +293,13 @@ fun SettingsScreen(
                                     "Persistence: consecutive frames before triggering · " +
                                     "Cooldown: minimum gap between triggers",
                             )
+                            if (yoloDetectorCount(current) >= 2) {
+                                BodyText(
+                                    "Tip: on older phones multiple vision detectors can " +
+                                        "stutter the preview during motion — lower " +
+                                        "Detection speed in Advanced settings.",
+                                )
+                            }
                             detectorGroup("Camera", current, cameraDetectorOrder) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
                             }
@@ -2338,6 +2345,25 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
 
 private fun retentionSummary(days: Int): String =
     if (days == 0) "retention off" else "$days day" + if (days == 1) "" else "s"
+
+/**
+ * Enabled detectors sharing the single YOLO inference pass (face runs on
+ * MediaPipe instead; loitering/tripwire reuse other detectors' boxes).
+ * Drives the multi-detector performance hint.
+ */
+private val yoloDetectorTypes = setOf(
+    TriggerType.person,
+    TriggerType.vehicle,
+    TriggerType.dog,
+    TriggerType.cat,
+    TriggerType.bird,
+    TriggerType.livestock,
+)
+
+private fun yoloDetectorCount(settings: AppSettings): Int =
+    settings.detectorConfigs.count { (type, config) ->
+        type in yoloDetectorTypes && config.enabled
+    }
 
 private fun detectorSummary(settings: AppSettings): String {
     val shownTypes = cameraDetectorOrder.toSet() +

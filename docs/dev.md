@@ -65,3 +65,16 @@ model inputs — is the lever because the YOLO26n LiteRT export has a fixed
 resize). Each engine still letterboxes its own 640×640 input per frame, but
 only the first engine's tensor is used (`YoloSharedInference` caches it
 alongside the raw output).
+
+## Slow-device nudge + multi-detector hint
+
+- `DetectorPipeline.lastGatedMs` publishes each heavy gated pass duration
+  (nanoTime-based, unit-test safe). `MonitoringRuntime` samples the first 3
+  passes per session; any pass ≥ `SLOW_GATED_PASS_MS` (400 ms) sets
+  `slowDevice`.
+- `MonitorViewModel.showSpeedNudge` = slow + not dismissed + tier is Best
+  accuracy. `MonitorScreen` shows a banner: "Use Balanced" saves
+  `detectionSpeed=balanced` (takes effect on restart), "Not now" persists
+  `AppSettings.speedNudgeDismissed` (one-way, never re-arms).
+- Detectors section shows a static tip when ≥2 YOLO detectors are enabled
+  (person/vehicle/dog/cat/bird/livestock — the shared-pass set).

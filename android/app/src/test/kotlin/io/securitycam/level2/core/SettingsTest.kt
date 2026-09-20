@@ -423,6 +423,18 @@ class SettingsTest {
     }
 
     @Test
+    fun speedNudgeDismissedDefaultsFalse() {
+        assertFalse(AppSettings.defaults().speedNudgeDismissed)
+    }
+
+    @Test
+    fun speedNudgeDismissedJsonRoundTrips() {
+        val s = AppSettings.defaults().copyWith(speedNudgeDismissed = true)
+        val back = AppSettings.fromJson(s.toJson())
+        assertTrue(back.speedNudgeDismissed)
+    }
+
+    @Test
     fun presetLabels() {
         assertEquals("Low (160x120)", AnalysisResolution.label(AnalysisResolution.low))
         assertEquals("Balanced (320x240)", AnalysisResolution.label(AnalysisResolution.balanced))

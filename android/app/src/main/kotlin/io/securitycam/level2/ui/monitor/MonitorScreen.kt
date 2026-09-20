@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +70,7 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val exclusionZones by viewModel.exclusionZones.collectAsStateWithLifecycle()
     val zoomRatio by MonitoringServiceController.zoomRatio().collectAsStateWithLifecycle()
     val activeTriggers by viewModel.activeTriggers.collectAsStateWithLifecycle()
+    val showSpeedNudge by viewModel.showSpeedNudge.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Whether Start or Preview initiated the permission request, so the grant
@@ -221,6 +223,9 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
             error = error,
             healthStalled = healthStalled,
             activeTriggers = activeTriggers,
+            showSpeedNudge = showSpeedNudge,
+            onUseBalanced = viewModel::applyBalancedSpeed,
+            onDismissNudge = viewModel::dismissSpeedNudge,
             onStart = {
                 val missing = viewModel.missingPermissions()
                 if (missing.isEmpty()) viewModel.start()
@@ -260,10 +265,13 @@ private fun MonitorStatusBar(
     error: String?,
     healthStalled: Boolean,
     activeTriggers: Set<String>,
+    showSpeedNudge: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onStartPreview: () -> Unit,
     onStopPreview: () -> Unit,
+    onUseBalanced: () -> Unit,
+    onDismissNudge: () -> Unit,
 ) {
     val monitoring = state == MonitorState.Monitoring
     val previewing = state == MonitorState.Previewing
@@ -384,6 +392,39 @@ private fun MonitorStatusBar(
                     .padding(4.dp)
                     .testTag("healthBanner"),
             )
+        }
+        if (showSpeedNudge) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(8.dp)
+                    .testTag("speedNudgeBanner"),
+            ) {
+                Text(
+                    text = "Detection checks are slow on this phone — the preview " +
+                        "may stutter during motion. Switch to Balanced speed? " +
+                        "(Applies on restart.)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = onUseBalanced,
+                        shape = AppButtonShape,
+                        modifier = Modifier.testTag("speedNudgeUseBalanced"),
+                    ) {
+                        Text("Use Balanced")
+                    }
+                    TextButton(
+                        onClick = onDismissNudge,
+                        shape = AppButtonShape,
+                        modifier = Modifier.testTag("speedNudgeDismiss"),
+                    ) {
+                        Text("Not now")
+                    }
+                }
+            }
         }
     }
 }

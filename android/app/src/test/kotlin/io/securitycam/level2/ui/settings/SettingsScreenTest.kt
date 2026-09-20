@@ -2,6 +2,7 @@ package io.securitycam.level2.ui.settings
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -21,6 +22,8 @@ import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.ChannelConfig
+import io.securitycam.level2.core.TriggerType
+import io.securitycam.level2.detection.DetectorConfig
 import java.time.Duration
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
@@ -535,6 +538,30 @@ class SettingsScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
         compose.onNodeWithText("Best accuracy", substring = false)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun detectorsSectionHidesMultiDetectorHintByDefault() {
+        // Defaults enable no YOLO detectors (motion/health only).
+        setContent(Harness())
+        expandSection("Detectors")
+
+        compose.onAllNodesWithText("older phones", substring = true)
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun detectorsSectionShowsHintWithTwoVisionDetectors() {
+        val base = AppSettings.defaults()
+        val configs = base.detectorConfigs.toMutableMap()
+        configs[TriggerType.person] = DetectorConfig(type = TriggerType.person, enabled = true)
+        configs[TriggerType.vehicle] = DetectorConfig(type = TriggerType.vehicle, enabled = true)
+        setContent(Harness(base.copyWith(detectorConfigs = configs)))
+        expandSection("Detectors")
+
+        compose.onNodeWithText("older phones", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
     }

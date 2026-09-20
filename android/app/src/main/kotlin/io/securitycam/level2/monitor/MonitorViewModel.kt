@@ -17,6 +17,7 @@ import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.camera_service.VideoClipRecorder
 import io.securitycam.level2.camera_service.availableCameras
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.DetectionSpeed
 import io.securitycam.level2.core.SchedulePolicy
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.storage.AppDatabase
@@ -183,9 +184,18 @@ class MonitorViewModel(
     private val _activeTriggers = MutableStateFlow<Set<String>>(emptySet())
     val activeTriggers: StateFlow<Set<String>> = _activeTriggers.asStateFlow()
 
+    /**
+     * Slow-device nudge: true once sampled gated passes prove this phone
+     * stutters during motion, unless dismissed or already off Best accuracy.
+     * Shown as a banner on the Monitor tab (see MonitorScreen).
+     */
+    private val _showSpeedNudge = MutableStateFlow(false)
+    val showSpeedNudge: StateFlow<Boolean> = _showSpeedNudge.asStateFlow()
+
     private var runtime: MonitoringRuntime? = null
     private var healthJob: Job? = null
     private var triggerCollectorJob: Job? = null
+    private var slowDeviceJob: Job? = null
 
     /**
      * Pulses status-bar icons on every trigger EVENT (edge-based). The
@@ -484,6 +494,13 @@ class MonitorViewModel(
                             iconPulser.onEvent(event.triggerType)
                         }
                     }
+                    slowDeviceJob = viewModelScope.launch {
+                        created.slowDevice.collect { slow ->
+                            _showSpeedNudge.value = slow &&
+                                !settings.speedNudgeDismissed &&
+                                settings.detectionSpeed == DetectionSpeed.accuracy
+                        }
+                    }
                     created.begin()
                 }
             } catch (t: Throwable) {
@@ -576,12 +593,41 @@ class MonitorViewModel(
     private fun teardownMonitoring() {
         _healthStalled.value = false
         _activeTriggers.value = emptySet()
+        _showSpeedNudge.value = false
         healthJob?.cancel()
         healthJob = null
+        slowDeviceJob?.cancel()
+        slowDeviceJob = null
         cancelTriggerJobs()
         val current = runtime
         runtime = null
         viewModelScope.launch { current?.stop() }
+    }
+
+    /**
+     * Slow-device nudge action: switch stored detection speed to Balanced and
+     * hide the banner. Takes effect when monitoring restarts (the running
+     * pipeline keeps its interval until then).
+     */
+    fun applyBalancedSpeed() {
+        _showSpeedNudge.value = false
+        viewModelScope.launch {
+            runCatching {
+                val settings = settingsLoader()
+                settingsSaver(settings.copy(detectionSpeed = DetectionSpeed.balanced))
+            }.onFailure { t -> Log.w(TAG, "apply balanced speed failed", t) }
+        }
+    }
+
+    /** Slow-device nudge action: persist dismissal so the banner never returns. */
+    fun dismissSpeedNudge() {
+        _showSpeedNudge.value = false
+        viewModelScope.launch {
+            runCatching {
+                val settings = settingsLoader()
+                settingsSaver(settings.copy(speedNudgeDismissed = true))
+            }.onFailure { t -> Log.w(TAG, "dismiss speed nudge failed", t) }
+        }
     }
 
     fun stop() {

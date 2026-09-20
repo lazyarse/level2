@@ -66,6 +66,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -121,11 +123,16 @@ class MonitoringRuntime private constructor(
     private var triggerJob: Job? = null
     private var batchJob: Job? = null
     private var healthJob: Job? = null
+    private var slowCheckJob: Job? = null
     private val pcmAccumulator = PcmWindowAccumulator()
 
     /** True while a feed-stall health episode is active (drives the UI banner). */
     private val _healthStalled = MutableStateFlow(false)
     val healthStalled: StateFlow<Boolean> = _healthStalled.asStateFlow()
+
+    /** True once sampled gated passes prove this phone is slow (drives the UI nudge). */
+    private val _slowDevice = MutableStateFlow(false)
+    val slowDevice: StateFlow<Boolean> = _slowDevice.asStateFlow()
 
     /** Set of trigger types that have fired since monitoring started. */
     private val _activeTriggerTypes = MutableStateFlow<Set<String>>(emptySet())
@@ -179,6 +186,16 @@ class MonitoringRuntime private constructor(
 
         /** mediaPath prefix marking a MediaStore clip display name. */
         const val CLIP_MEDIA_PREFIX = "clip:"
+
+        /**
+         * Slow-device nudge: a gated pass taking at least this long proves
+         * the phone will stutter the preview during motion (fast phones run
+         * the same pass in ~50–150 ms; weak ones take 600+ ms).
+         */
+        const val SLOW_GATED_PASS_MS = 400L
+
+        /** How many gated passes to sample before deciding slow/not-slow. */
+        const val SLOW_GATED_SAMPLES = 3
 
         suspend fun create(
             context: Context,
@@ -404,6 +421,18 @@ class MonitoringRuntime private constructor(
                 }
             }
         }
+        // Slow-device nudge: sample the first gated passes; one slow pass
+        // proves the preview will stutter during motion. take() ends the
+        // collection after the sample window either way.
+        slowCheckJob = runtimeScope.launch {
+            val samples = mutableListOf<Long>()
+            pipeline.lastGatedMs.filterNotNull().take(SLOW_GATED_SAMPLES).collect {
+                samples.add(it)
+            }
+            if (samples.any { it >= SLOW_GATED_PASS_MS }) {
+                _slowDevice.value = true
+            }
+        }
     }
 
     suspend fun stop() {
@@ -441,6 +470,9 @@ class MonitoringRuntime private constructor(
         batchJob = null
         runCatching { healthJob?.cancel() }
         healthJob = null
+        runCatching { slowCheckJob?.cancel() }
+        slowCheckJob = null
+        _slowDevice.value = false
         // One throwing dispose must not skip the rest.
         runCatching { batcher.dispose() }
         runCatching { frameDispatcher.dispose() }

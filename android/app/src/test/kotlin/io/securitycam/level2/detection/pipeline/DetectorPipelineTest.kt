@@ -326,6 +326,25 @@ class DetectorPipelineTest {
     }
 
     @Test
+    fun gatedPassPublishesItsTiming() = runBlocking {
+        val (pipeline, stub) = throttlePipeline()
+        pipeline.init()
+        assertEquals(null, pipeline.lastGatedMs.value)
+
+        // No motion → no gated pass, still no timing.
+        pipeline.processFrame(AnalysisFrame(base, GrayscaleBitmap(16, 16, buildFrame(16, 16, 140))))
+        assertEquals(null, pipeline.lastGatedMs.value)
+        assertEquals(0, stub.asyncCalls)
+
+        // Motion fires → gated pass runs and publishes a non-negative timing.
+        pipeline.processFrame(AnalysisFrame(base.plusMillis(100), rectFrame(2, 2)))
+        assertEquals(1, stub.asyncCalls)
+        val ms = pipeline.lastGatedMs.value
+        assertTrue(ms != null && ms >= 0)
+        pipeline.dispose()
+    }
+
+    @Test
     fun tamperRunsOnEveryFrameWithoutMotion() = runBlocking {
         val scope = scope()
         val stub = GatedStubDetector(
