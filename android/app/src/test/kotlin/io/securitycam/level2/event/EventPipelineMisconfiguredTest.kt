@@ -60,7 +60,6 @@ class EventPipelineMisconfiguredTest {
                     type = "motion",
                     threshold = 0.5,
                     persistenceFrames = 1,
-                    routeToChannelIds = emptyList(),
                 ),
             ),
             channelConfigs = mapOf(

@@ -27,7 +27,6 @@ class SettingsTest {
                 ),
             ),
         )
-        assertTrue(settings.detectorConfigs[TriggerType.motion]!!.routeToChannelIds.isEmpty())
         assertTrue(settings.detectorConfigs[TriggerType.motion]!!.enabled)
         assertTrue(settings.channelConfigs.any { it.id == "log" })
     }
@@ -79,12 +78,11 @@ class SettingsTest {
         // A blob written before dog/cat/vehicle/animal/cat_meow/loitering
         // shipped: only the original detector keys exist, with one tuned value.
         val legacyDetectorBlob = linkedMapOf<String, Any?>(
-            "motion" to DetectorConfig(
-                type = "motion",
-                threshold = 0.07,
-                persistenceFrames = 2,
-                routeToChannelIds = listOf("telegram"),
-            ).toJson(),
+                "motion" to DetectorConfig(
+                    type = "motion",
+                    threshold = 0.07,
+                    persistenceFrames = 2,
+                ).toJson(),
             "baby_cry" to DetectorConfig(type = "baby_cry", enabled = false).toJson(),
             "glass_break" to DetectorConfig(type = "glass_break", enabled = false).toJson(),
             "loud_noise" to DetectorConfig(type = "loud_noise", enabled = false).toJson(),
@@ -460,7 +458,6 @@ class SettingsTest {
                     persistenceFrames = 3,
                     enabled = true,
                     motionGated = true,
-                    routeToChannelIds = listOf("telegram"),
                 )
             ),
         )

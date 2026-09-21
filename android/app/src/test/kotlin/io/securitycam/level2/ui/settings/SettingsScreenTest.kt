@@ -591,13 +591,83 @@ class SettingsScreenTest {
         // Combined pet cards present under their group.
         compose.onNodeWithTag("detectorHeader_dog").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("detectorHeader_cat").performScrollTo().assertIsDisplayed()
-        // Heartbeat lives under Advanced now, not Detectors.
+        // Heartbeat lives under Advanced now, not Detectors — as a plain
+        // switch row, not a detector card.
         compose.onAllNodesWithTag("detectorHeader_health").fetchSemanticsNodes().let {
             assertEquals(0, it.size)
         }
         expandSection("Advanced")
         compose.onNodeWithTag("detectorHeader_heart").assertDoesNotExist()
-        compose.onNodeWithTag("detectorHeader_health").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("detectorHeader_health").assertDoesNotExist()
+        compose.onNodeWithTag("heartbeatSwitch").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Heartbeat", substring = false).performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun advancedSectionOrdersMergeWindowAndAlertLog() {
+        setContent(Harness())
+        expandSection("Advanced")
+
+        // Alert-log row carries its new label…
+        compose.onNodeWithText("View Alert Log", substring = false)
+            .performScrollTo()
+            .assertIsDisplayed()
+        // …and the merge-window label, slider and explainer read top-down.
+        val label = compose.onNodeWithText("Merge window:", substring = true)
+            .performScrollTo()
+        label.assertIsDisplayed()
+        compose.onNodeWithTag("mergeWindowSlider").performScrollTo().assertIsDisplayed()
+        val explainer = compose.onNodeWithText("grouped into a single notification", substring = true)
+            .performScrollTo()
+        explainer.assertIsDisplayed()
+        val labelY = label.fetchSemanticsNode().positionInRoot.y
+        val sliderY = compose.onNodeWithTag("mergeWindowSlider").fetchSemanticsNode().positionInRoot.y
+        val explainerY = explainer.fetchSemanticsNode().positionInRoot.y
+        assertTrue(
+            "label ($labelY) < slider ($sliderY) < explainer ($explainerY)",
+            labelY < sliderY && sliderY < explainerY,
+        )
+    }
+
+    @Test
+    fun dividerSeparatesCameraComboFromDetectors() {
+        setContent(Harness())
+        compose.onNodeWithTag("cameraDetectorsDivider").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun detectorGroupsShowExplainerLines() {
+        setContent(Harness())
+        expandSection("Detectors")
+
+        compose.onNodeWithText("things the camera sees", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Listen for sounds", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("camera and microphone together", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun versionSitsDirectlyUnderAboutHeading() {
+        setContent(Harness())
+        compose.onNodeWithTag(sectionTag("About Level 2")).performScrollTo().assertIsDisplayed()
+
+        val version = compose.onNodeWithText("Version ", substring = true).performScrollTo()
+        version.assertIsDisplayed()
+        val mission = compose.onNodeWithText("right to feel secure", substring = true)
+            .performScrollTo()
+        mission.assertIsDisplayed()
+        val versionY = version.fetchSemanticsNode().positionInRoot.y
+        val missionY = mission.fetchSemanticsNode().positionInRoot.y
+        assertTrue(
+            "version ($versionY) should sit above the mission text ($missionY)",
+            versionY < missionY,
+        )
     }
 
     @Test
@@ -633,7 +703,9 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun detectorRouteRowsShowDisplayNames() {
+    fun detectorCardHasNoPerChannelRouteRows() {
+        // Detectors fan out to all active channels; there is no per-detector
+        // routing UI anymore.
         val harness = Harness(
             AppSettings.defaults().copyWith(
                 channelConfigs = listOf(
@@ -649,15 +721,10 @@ class SettingsScreenTest {
         compose.onNodeWithTag("detectorHeader_motion").performScrollTo().performClick()
         compose.waitForIdle()
 
-        // Custom label and derived "Email 2" — never raw ids.
-        compose.onNodeWithTag("detectorRoute_motion_email").performScrollTo()
-            .assertTextContains("Work")
-        compose.onNodeWithTag("detectorRoute_motion_email-2").performScrollTo()
-            .assertTextContains("Email 2")
-        compose.onAllNodesWithText("email-2", substring = false).fetchSemanticsNodes().let {
-            assertEquals(0, it.size)
-        }
-        // The alert-log feed is not a per-detector route option anymore.
+        compose.onAllNodesWithTag("detectorRoute_motion_email", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithTag("detectorRoute_motion_email-2", useUnmergedTree = true)
+            .assertCountEquals(0)
         compose.onNodeWithTag("detectorRoute_motion_log").assertDoesNotExist()
     }
 

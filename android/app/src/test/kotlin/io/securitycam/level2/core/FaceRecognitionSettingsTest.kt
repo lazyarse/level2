@@ -30,7 +30,6 @@ class FaceRecognitionSettingsTest {
         assertTrue(face.enabled)
         for (type in listOf(TriggerType.faceKnown, TriggerType.faceUnknown)) {
             val c = on.detectorConfigs[type]!!
-            assertEquals(face.routeToChannelIds, c.routeToChannelIds)
             assertEquals(1, c.persistenceFrames)
         }
         assertEquals(

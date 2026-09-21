@@ -260,6 +260,16 @@ fun SettingsScreen(
                             .verticalScroll(scrollState)
                             .padding(horizontal = 16.dp),
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        ) {
+                            Text(
+                                "Settings",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.testTag("settingsTitle"),
+                            )
+                        }
                         OutlinedTextField(
                             value = current.cameraName,
                             onValueChange = { name -> viewModel.update { it.copy(cameraName = name.take(20)) } },
@@ -286,13 +296,24 @@ fun SettingsScreen(
                             testTag = "cameraDropdown",
                             onSelect = { id -> viewModel.update { it.copy(cameraId = id) } },
                         )
+                        HorizontalDivider(
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .testTag("cameraDetectorsDivider"),
+                        )
                         CollapsibleSection("Detectors", summary = detectorSummary(current)) {
-                            BodyText(
-                                "Sensitivity: higher catches more (1 = strict, " +
-                                    "20 = catches everything) · " +
-                                    "Persistence: consecutive frames before triggering · " +
-                                    "Cooldown: minimum gap between triggers",
-                            )
+                            Column {
+                                BodyText(
+                                    "• Sensitivity: higher catches more (1 = strict, " +
+                                        "20 = catches everything)",
+                                )
+                                BodyText(
+                                    "• Persistence: consecutive frames before triggering",
+                                )
+                                BodyText(
+                                    "• Cooldown: minimum gap between triggers",
+                                )
+                            }
                             if (yoloDetectorCount(current) >= 2) {
                                 BodyText(
                                     "Tip: on older phones multiple vision detectors can " +
@@ -382,10 +403,6 @@ fun SettingsScreen(
                                                     channelConfigs = settings.channelConfigs.filterNot {
                                                         it.id == config.id
                                                     },
-                                                    detectorConfigs = pruneChannelFromDetectors(
-                                                        settings.detectorConfigs,
-                                                        config.id,
-                                                    ),
                                                 )
                                             }
                                         },
@@ -1072,33 +1089,40 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Advanced") {
-                            detectorGroup(null, current, listOf(TriggerType.health)) { type, next ->
-                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                            current.detectorConfigs[TriggerType.health]?.let { health ->
+                                SwitchRow(
+                                    title = "Heartbeat",
+                                    subtitle = DetectorType.fromKey(TriggerType.health)?.hint.orEmpty(),
+                                    checked = health.enabled,
+                                    onCheckedChange = { v ->
+                                        viewModel.update {
+                                            it.copy(
+                                                detectorConfigs = it.detectorConfigs +
+                                                    (TriggerType.health to health.copy(enabled = v)),
+                                            )
+                                        }
+                                    },
+                                    testTag = "heartbeatSwitch",
+                                )
                             }
-                            Spacer(Modifier.height(8.dp))
-                            Card {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(onClick = onOpenAlertLog)
-                                        .padding(16.dp)
-                                        .testTag("openAlertLog"),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(Icons.Filled.Terminal, contentDescription = null)
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        "Alert log",
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                                }
+                            Spacer(Modifier.height(16.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onOpenAlertLog)
+                                    .padding(vertical = 12.dp)
+                                    .testTag("openAlertLog"),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Filled.Terminal, contentDescription = null)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "View Alert Log",
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(Icons.Filled.ChevronRight, contentDescription = null)
                             }
-                            Spacer(Modifier.height(8.dp))
-                            BodyText(
-                                "When multiple triggers fire within this window, they are " +
-                                    "grouped into a single notification to reduce noise.",
-                            )
+                            Spacer(Modifier.height(16.dp))
                             Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
                             Slider(
                                 value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
@@ -1112,10 +1136,15 @@ fun SettingsScreen(
                                 modifier = Modifier.testTag("mergeWindowSlider"),
                             )
                             BodyText(
+                                "When multiple triggers fire within this window, they are " +
+                                    "grouped into a single notification to reduce noise.",
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            BodyText(
                                 "Analysis stream resolution: higher = better far-face detection " +
                                     "but more battery. Balanced is a good default.",
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(16.dp))
                             DropdownField(
                                 label = "Analysis resolution",
                                 selected = AnalysisResolution.label(current.analysisResolution),
@@ -1123,7 +1152,7 @@ fun SettingsScreen(
                                 testTag = "analysisResolutionDropdown",
                                 onSelect = { r -> viewModel.update { it.copy(analysisResolution = r) } },
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(16.dp))
                             BodyText(
                                 "Detection speed: how often detectors re-check during " +
                                     "continuous motion. Lower is smoother on older phones " +
@@ -1149,7 +1178,7 @@ fun SettingsScreen(
                                 testTag = "previewModeDropdown",
                                 onSelect = { v -> viewModel.update { it.copy(previewMode = PreviewMode.valueOf(v)) } },
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(16.dp))
                             Text("Preview frame rate: ${current.gifPreviewFps} fps")
                             Slider(
                                 value = current.gifPreviewFps.toFloat(),
@@ -1162,7 +1191,7 @@ fun SettingsScreen(
                                 steps = VideoPreview.MAX_FPS - VideoPreview.MIN_FPS - 1,
                                 modifier = Modifier.testTag("gifFpsSlider"),
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(16.dp))
                             Text("Preview width: ${current.gifPreviewMaxWidthPx} px")
                             Slider(
                                 value = current.gifPreviewMaxWidthPx.toFloat(),
@@ -1186,17 +1215,18 @@ fun SettingsScreen(
                                 .padding(top = 20.dp, bottom = 8.dp)
                                 .testTag(sectionTag("About Level 2")),
                         )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Version ${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
                         BodyText(
                             "Everyone has the right to feel secure regardless of income, so " +
                                 "\"Level 2\" was born. A free, privacy-first security cam application " +
                                 "with advanced features such as person detection, face recognition, " +
                                 "dog/cat detection (including their noises) and much more. If anything " +
                                 "is missing, feel free to create an issue on github.",
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Version ${BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.bodySmall,
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(
@@ -1514,7 +1544,6 @@ private fun scheduleSummary(window: ScheduleWindow): String {
 @Composable
 private fun DetectorCard(
     config: DetectorConfig,
-    channels: List<io.securitycam.level2.core.ChannelConfig>,
     onChanged: (DetectorConfig) -> Unit,
 ) {
     var expanded by rememberSaveable("detector_${config.type}") { mutableStateOf(false) }
@@ -1698,29 +1727,6 @@ private fun DetectorCard(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
-                Text("Route to channels", style = MaterialTheme.typography.bodySmall)
-                for (channel in channels) {
-                    val id = channel.id
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val routes = config.routeToChannelIds.toMutableList()
-                                if (id in routes) routes.remove(id) else routes.add(id)
-                                onChanged(config.copy(routeToChannelIds = routes))
-                            }
-                            .padding(vertical = 2.dp)
-                            .testTag("detectorRoute_${config.type}_$id"),
-                    ) {
-                        Checkbox(
-                            checked = id in config.routeToChannelIds,
-                            onCheckedChange = null,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(channelDisplayName(channel, channels))
-                    }
-                }
             },
     )
 }
@@ -1734,10 +1740,9 @@ private fun detectorLabel(type: String): String =
  * frame, and sound is never gated on vision.
  */
 private fun motionGateNote(type: String): String? = when (type) {
-    TriggerType.motion, TriggerType.health -> null
+    TriggerType.motion, TriggerType.health,
+    TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise -> null
     TriggerType.tamper -> "Runs on every frame — tamper needs to see still frames too."
-    TriggerType.babyCry, TriggerType.glassBreak, TriggerType.loudNoise ->
-        "Always listening — sound is never gated on motion."
     TriggerType.dog, TriggerType.cat ->
         "Sight runs after motion is detected (saves battery); sound is always listening."
     else -> "Runs after motion is detected (saves battery)."
@@ -1877,7 +1882,7 @@ private fun ChannelCard(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete $name?") },
-            text = { Text("Remove this ${channelTitle(config.type)} account? Its detector routes will be cleared.") },
+            text = { Text("Remove this ${channelTitle(config.type)} account?") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -2318,6 +2323,14 @@ private val combinedPetOrder = listOf(
     TriggerType.cat,
 )
 
+/** One-line explainer under each detector group heading (health has none). */
+private fun detectorGroupHint(label: String): String? = when (label) {
+    "Camera" -> "Spot things the camera sees — motion, people, faces, vehicles, animals and tampering."
+    "Audio" -> "Listen for sounds — loud noises, glass breaking and baby cries."
+    "Combined" -> "Use the camera and microphone together — pets seen or heard."
+    else -> null
+}
+
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
     label: String?,
@@ -2332,12 +2345,12 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag("detectorGroup_$label"),
         )
+        detectorGroupHint(label)?.let { BodyText(it) }
     }
     for (type in types) {
         val config = settings.detectorConfigs[type] ?: continue
         DetectorCard(
             config = config,
-            channels = settings.channelConfigs.filter { it.type != ChannelTypes.LOG },
             onChanged = { next -> onChanged(type, next) },
         )
     }

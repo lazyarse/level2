@@ -36,7 +36,6 @@ class DetectorConfigTest {
         assertEquals(0.5, c.threshold, 0.0)
         assertEquals(2, c.persistenceFrames)
         assertEquals(Duration.ofSeconds(5), c.cooldown)
-        assertEquals(emptyList<String>(), c.routeToChannelIds)
         assertFalse(c.motionGated)
     }
 
@@ -48,7 +47,6 @@ class DetectorConfigTest {
             threshold = 0.3,
             persistenceFrames = 3,
             cooldown = Duration.ofSeconds(5),
-            routeToChannelIds = listOf("telegram", "log"),
             motionGated = true,
         )
         val back = DetectorConfig.fromJson(c.toJson())
@@ -58,6 +56,17 @@ class DetectorConfigTest {
     @Test
     fun unknownJsonFieldsAreTolerated() {
         val back = DetectorConfig.fromJson(mapOf("type" to "motion", "bogus" to 1))
+        assertEquals("motion", back.type)
+        assertEquals(0.5, back.threshold, 0.0)
+    }
+
+    @Test
+    fun legacyRouteToChannelIdsKeyIsIgnored() {
+        // Blobs written before per-detector routing was removed still carry
+        // the key; it must parse without affecting the config.
+        val back = DetectorConfig.fromJson(
+            mapOf("type" to "motion", "routeToChannelIds" to listOf("telegram")),
+        )
         assertEquals("motion", back.type)
         assertEquals(0.5, back.threshold, 0.0)
     }

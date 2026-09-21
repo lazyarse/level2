@@ -8,12 +8,10 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Webhook
 import io.securitycam.level2.core.ChannelConfig
-import io.securitycam.level2.detection.DetectorConfig
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Unit tests for multi-account channel helpers (id allocation, naming, pruning). */
+/** Unit tests for multi-account channel helpers (id allocation, naming). */
 class ChannelAccountsTest {
 
     @Test
@@ -68,16 +66,4 @@ class ChannelAccountsTest {
         assertEquals(Icons.Filled.NotificationImportant, channelIcon("nope"))
     }
 
-    @Test
-    fun pruneRemovesChannelFromDetectorRoutes() {
-        val detectors = mapOf(
-            "motion" to DetectorConfig(type = "motion", routeToChannelIds = listOf("email", "email-2")),
-            "tamper" to DetectorConfig(type = "tamper", routeToChannelIds = listOf("email-2")),
-        )
-
-        val pruned = pruneChannelFromDetectors(detectors, "email-2")
-
-        assertEquals(listOf("email"), pruned.getValue("motion").routeToChannelIds)
-        assertTrue(pruned.getValue("tamper").routeToChannelIds.isEmpty())
-    }
 }

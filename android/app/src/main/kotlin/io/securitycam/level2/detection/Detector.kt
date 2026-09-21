@@ -14,7 +14,6 @@ data class DetectorConfig(
     val threshold: Double = 0.5,
     val persistenceFrames: Int = 2,
     val cooldown: Duration = Duration.ofSeconds(5),
-    val routeToChannelIds: List<String> = emptyList(),
     /**
      * Legacy JSON ballast: motion gating is now a fixed pipeline rule
      * (everything except motion/tamper is gated, audio never is), so this
@@ -38,7 +37,6 @@ data class DetectorConfig(
         "threshold" to threshold,
         "persistenceFrames" to persistenceFrames,
         "cooldownMs" to cooldown.toMillis(),
-        "routeToChannelIds" to routeToChannelIds,
         "motionGated" to motionGated,
         "dwellSeconds" to dwellSeconds,
         "audioThreshold" to audioThreshold,
@@ -54,9 +52,6 @@ data class DetectorConfig(
             cooldown = Duration.ofMillis(
                 (json["cooldownMs"] as? Number)?.toLong() ?: 5_000L,
             ),
-            routeToChannelIds = (json["routeToChannelIds"] as? List<*>)
-                ?.map { it as String }
-                ?: emptyList(),
             motionGated = json["motionGated"] as? Boolean ?: false,
             dwellSeconds = (json["dwellSeconds"] as? Number)?.toInt() ?: 10,
             audioThreshold = (json["audioThreshold"] as? Number)?.toDouble(),

@@ -28,8 +28,8 @@ typealias ChannelFactory = (ChannelConfig) -> Channel
 
 /**
  * Turns a [TriggerBatch] into stored events and channel alerts (port of
- * `lib/event/event_pipeline.dart`). Routing = enabled channels ∩ trigger-type
- * routes; empty routes → all enabled channels plus log. Per-channel retry with
+ * `lib/event/event_pipeline.dart`). Routing = all enabled channels plus the
+ * log feed, for every trigger batch. Per-channel retry with
  * backoff; merged events carry the trigger-types list.
  */
 class EventPipeline(
@@ -245,28 +245,16 @@ class EventPipeline(
     }
 
     /**
-     * Channels an alert routes to for the given batch's triggers (enabled ∪
-     * log, filtered by per-detector routes). Public so the monitoring runtime
-     * can derive the GIF-preview target set from the same routing rules.
+     * Channels an alert routes to: every enabled channel plus the log feed
+     * (the log feed is always targeted so the Events tab keeps working, even
+     * when disabled). Unknown detector ids contribute nothing. Public so the
+     * monitoring runtime can derive the GIF-preview target set from the same
+     * routing rules.
      */
     fun targetsFor(triggers: List<TriggerEvent>): List<ChannelConfig> {
-        val anyKnownDetector = triggers.any { detectorConfigs.containsKey(it.detectorId) }
-        val anyEmptyRoutes = triggers.any { t ->
-            val config = detectorConfigs[t.detectorId]
-            config != null && config.routeToChannelIds.isEmpty()
-        }
+        if (triggers.none { detectorConfigs.containsKey(it.detectorId) }) return emptyList()
         return channelConfigs.values
             .filter { c -> c.enabled || c.type == "log" }
-            .filter { c ->
-                // Every active detector's alert is logged unconditionally:
-                // the log feed is not a per-detector route option.
-                (c.type == "log" && anyKnownDetector) ||
-                    anyEmptyRoutes ||
-                    triggers.any { t ->
-                        val config = detectorConfigs[t.detectorId]
-                        config != null && config.routeToChannelIds.contains(c.id)
-                    }
-            }
     }
 
     private fun alertText(batch: TriggerBatch): String {

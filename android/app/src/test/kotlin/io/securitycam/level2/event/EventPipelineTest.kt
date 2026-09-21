@@ -24,12 +24,11 @@ class EventPipelineTest {
     private fun trigger(type: String, detectorId: String, score: Double = 0.7): TriggerEvent =
         TriggerEvent(timestamp = base, triggerType = type, score = score, detectorId = detectorId)
 
-    private fun config(type: String, routes: List<String> = listOf("telegram")): DetectorConfig =
+    private fun config(type: String): DetectorConfig =
         DetectorConfig(
             type = type,
             threshold = 0.5,
             persistenceFrames = 1,
-            routeToChannelIds = routes,
         )
 
     private fun telegramConfig(): ChannelConfig = ChannelConfig(id = "telegram", type = "telegram")
@@ -127,8 +126,8 @@ class EventPipelineTest {
         val log = FakeChannel("log", "log")
         builder.channels = mapOf("log" to logConfig())
         builder.detectors = mapOf(
-            "tamper" to config("tamper", routes = listOf("log")),
-            "health" to config("health", routes = listOf("log")),
+            "tamper" to config("tamper"),
+            "health" to config("health"),
         )
         builder.factories = mapOf("log" to { _: ChannelConfig -> log })
         val p = builder.build()
@@ -199,7 +198,7 @@ class EventPipelineTest {
         val builder = PipelineBuilder()
         val log = FakeChannel("log", "log")
         builder.channels = mapOf("log" to logConfig())
-        builder.detectors = mapOf("motion" to config("motion", routes = listOf("log")))
+        builder.detectors = mapOf("motion" to config("motion"))
         builder.factories = mapOf("log" to { _: ChannelConfig -> log })
         builder.build().handleBatch(batch(listOf(trigger(TriggerType.motion, "motion"))))
 
@@ -243,8 +242,8 @@ class EventPipelineTest {
         val log = FakeChannel("log", "log")
         builder.channels = mapOf("log" to logConfig())
         builder.detectors = mapOf(
-            "motion" to config("motion", routes = listOf("log")),
-            TriggerType.faceKnown to config(TriggerType.faceKnown, routes = listOf("log")),
+            "motion" to config("motion"),
+            TriggerType.faceKnown to config(TriggerType.faceKnown),
         )
         builder.factories = mapOf("log" to { _: ChannelConfig -> log })
         val p = builder.build()
@@ -296,12 +295,12 @@ class EventPipelineTest {
     }
 
     @Test
-    fun emptyRouteToChannelIdsTargetsAllEnabledChannels() = runBlocking {
+    fun detectorRoutesToAllEnabledChannels() = runBlocking {
         val log = FakeChannel("log", "log")
         val tg = FakeChannel("telegram", "telegram")
         val builder = PipelineBuilder()
         builder.channels = mapOf("telegram" to telegramConfig(), "log" to logConfig())
-        builder.detectors = mapOf("motion" to config("motion", routes = emptyList()))
+        builder.detectors = mapOf("motion" to config("motion"))
         builder.factories = mapOf("telegram" to { _: ChannelConfig -> tg }, "log" to { _: ChannelConfig -> log })
         val p = builder.build()
 
@@ -320,7 +319,7 @@ class EventPipelineTest {
         val log = FakeChannel("log", "log")
         val builder = PipelineBuilder()
         builder.channels = mapOf("log" to ChannelConfig(id = "log", type = "log", enabled = false))
-        builder.detectors = mapOf("motion" to config("motion", routes = emptyList()))
+        builder.detectors = mapOf("motion" to config("motion"))
         builder.factories = mapOf("log" to { _: ChannelConfig -> log })
         val p = builder.build()
 
@@ -331,19 +330,29 @@ class EventPipelineTest {
     }
 
     @Test
-    fun logChannelAlwaysTargetedEvenWhenDetectorRoutesExcludeIt() = runBlocking {
+    fun disabledNonLogChannelsAreSkipped() = runBlocking {
         val log = FakeChannel("log", "log")
         val tg = FakeChannel("telegram", "telegram")
+        val email = FakeChannel("email", "email")
         val builder = PipelineBuilder()
-        builder.channels = mapOf("telegram" to telegramConfig(), "log" to logConfig())
-        builder.detectors = mapOf("motion" to config("motion", routes = listOf("telegram")))
-        builder.factories = mapOf("telegram" to { _: ChannelConfig -> tg }, "log" to { _: ChannelConfig -> log })
+        builder.channels = mapOf(
+            "telegram" to telegramConfig(),
+            "email" to ChannelConfig(id = "email", type = "email", enabled = false),
+            "log" to logConfig(),
+        )
+        builder.detectors = mapOf("motion" to config("motion"))
+        builder.factories = mapOf(
+            "telegram" to { _: ChannelConfig -> tg },
+            "email" to { _: ChannelConfig -> email },
+            "log" to { _: ChannelConfig -> log },
+        )
         val p = builder.build()
 
         p.handleBatch(batch(listOf(trigger("motion", "motion"))))
 
         assertEquals(1, log.sent.size)
         assertEquals(1, tg.sent.size)
+        assertEquals(0, email.sent.size)
         assertEquals(
             mapOf("log" to "delivered", "telegram" to "delivered"),
             builder.recorder.recorded.single().channelStatuses,
@@ -454,7 +463,7 @@ class EventPipelineTest {
             "email" to ChannelConfig(id = "email", type = "email"),
         )
         builder.detectors = mapOf(
-            "motion" to config("motion", routes = listOf("telegram", "email")),
+            "motion" to config("motion"),
         )
         builder.factories = mapOf(
             "telegram" to { _: ChannelConfig -> tg },
@@ -543,7 +552,7 @@ class EventPipelineTest {
             "telegram" to telegramConfig(),
             "email" to ChannelConfig(id = "email", type = "email"),
         )
-        builder.detectors = mapOf("motion" to config("motion", routes = listOf("telegram", "email")))
+        builder.detectors = mapOf("motion" to config("motion"))
         builder.factories = mapOf(
             "telegram" to { _: ChannelConfig -> tg },
             "email" to { _: ChannelConfig -> email },
@@ -569,7 +578,7 @@ class EventPipelineTest {
             "slow" to ChannelConfig(id = "slow", type = "email"),
             "fast" to ChannelConfig(id = "fast", type = "telegram"),
         )
-        builder.detectors = mapOf("motion" to config("motion", routes = listOf("slow", "fast")))
+        builder.detectors = mapOf("motion" to config("motion"))
         builder.factories = mapOf(
             "email" to { _: ChannelConfig -> slow },
             "telegram" to { _: ChannelConfig -> fast },

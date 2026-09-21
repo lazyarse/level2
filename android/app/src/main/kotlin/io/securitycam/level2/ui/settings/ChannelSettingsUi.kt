@@ -179,15 +179,4 @@ internal fun nextFreeChannelId(
     return "$type-$n"
 }
 
-/** Drops [channelId] from every detector's channel routes (account deletion). */
-internal fun pruneChannelFromDetectors(
-    detectors: Map<String, io.securitycam.level2.detection.DetectorConfig>,
-    channelId: String,
-): Map<String, io.securitycam.level2.detection.DetectorConfig> =
-    detectors.mapValues { (_, config) ->
-        if (channelId in config.routeToChannelIds) {
-            config.copy(routeToChannelIds = config.routeToChannelIds - channelId)
-        } else {
-            config
-        }
-    }
+
