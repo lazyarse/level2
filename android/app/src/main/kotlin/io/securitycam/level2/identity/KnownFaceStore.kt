@@ -1,9 +1,9 @@
 package io.securitycam.level2.identity
 
 import android.content.Context
+import io.securitycam.level2.detection.face.FaceEmbeddingEngine
 import java.io.File
 import java.io.IOException
-import kotlin.math.sqrt
 
 /**
  * Persists per-person centroid embeddings as bins in
@@ -27,7 +27,7 @@ class KnownFaceStore(private val facesDir: File) {
     @Synchronized
     fun enroll(id: String, embedding: FloatArray): Int {
         require(embedding.isNotEmpty()) { "empty embedding" }
-        val existing = readOrNull(id)
+        val existing = readBinOrNull(id)
         val (centroid, count) = if (existing == null) {
             embedding.copyOf() to 1
         } else {
@@ -43,7 +43,8 @@ class KnownFaceStore(private val facesDir: File) {
 
     /** The stored centroid for [id], L2-normalized, or null when absent/corrupt. */
     @Synchronized
-    fun load(id: String): FloatArray? = readRaw(id)?.let(::normalize)
+    fun load(id: String): FloatArray? =
+        readBinOrNull(id)?.first?.let(FaceEmbeddingEngine::l2Normalize)
 
     /** Number of merged samples for [id] (0 when absent/corrupt). */
     @Synchronized
@@ -58,7 +59,7 @@ class KnownFaceStore(private val facesDir: File) {
         fileFor(id).delete()
         smpFileFor(id).delete()
         listPhotos(id).forEach { it.delete() }
-        File(facesDir, "$id.jpg").delete()
+        legacyJpgFile(id).delete()
     }
 
     /** Row thumbnail: first gallery photo, or the legacy path pre-migration. */
@@ -66,7 +67,7 @@ class KnownFaceStore(private val facesDir: File) {
     fun thumbFileFor(id: String): File {
         validateId(id)
         migrateLegacyJpg(id)
-        return listPhotos(id).firstOrNull() ?: File(facesDir, "$id.jpg")
+        return listPhotos(id).firstOrNull() ?: legacyJpgFile(id)
     }
 
     /** Gallery photos for [id], sorted by index; runs the legacy migration. */
@@ -74,9 +75,9 @@ class KnownFaceStore(private val facesDir: File) {
     fun listPhotos(id: String): List<File> {
         validateId(id)
         migrateLegacyJpg(id)
-        val prefix = "${id}_"
+        val pattern = photoRegex(id)
         val files = facesDir.listFiles { f ->
-            f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".jpg")
+            f.isFile && pattern.matchEntire(f.name) != null
         } ?: return emptyList()
         return files.mapNotNull { f ->
             photoIndexOf(id, f)?.let { it to f }
@@ -90,8 +91,7 @@ class KnownFaceStore(private val facesDir: File) {
 
     /** Gallery index parsed from a photo file name (null when foreign). */
     fun photoIndexOf(id: String, file: File): Int? =
-        Regex("^" + Regex.escape(id) + "_(\\d+)\\.jpg$")
-            .matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()
+        photoRegex(id).matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()
 
     /** Number of gallery photos for [id] (0 when none). */
     @Synchronized
@@ -101,7 +101,7 @@ class KnownFaceStore(private val facesDir: File) {
     fun photoFileFor(id: String, index: Int): File {
         validateId(id)
         require(index >= 0) { "negative photo index: $index" }
-        return File(facesDir, "${id}_$index.jpg")
+        return File(facesDir, photoName(id, index))
     }
 
     /** Journals one raw sample embedding for photo [index] (overwrites it). */
@@ -162,14 +162,22 @@ class KnownFaceStore(private val facesDir: File) {
     }
 
     private fun validateId(id: String) {
-        require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "unsafe face id: $id" }
+        require(id.matches(ID_PATTERN)) { "unsafe face id: $id" }
     }
+
+    private fun photoName(id: String, index: Int): String = "${id}_$index.jpg"
+
+    /** Pre-gallery single thumbnail (migrated to photo 0 on first access). */
+    private fun legacyJpgFile(id: String): File = File(facesDir, "$id.jpg")
+
+    private fun photoRegex(id: String): Regex =
+        Regex("^" + Regex.escape(id) + "_(\\d+)\\.jpg$")
 
     /** One-time move of the pre-gallery single thumbnail into the gallery. */
     private fun migrateLegacyJpg(id: String) {
-        val legacy = File(facesDir, "$id.jpg")
+        val legacy = legacyJpgFile(id)
         if (!legacy.isFile) return
-        val target = File(facesDir, "${id}_0.jpg")
+        val target = File(facesDir, photoName(id, 0))
         if (target.exists()) return
         runCatching { legacy.renameTo(target) }
     }
@@ -250,14 +258,8 @@ class KnownFaceStore(private val facesDir: File) {
         return File(facesDir, "$id.bin")
     }
 
-    private fun readOrNull(id: String): Pair<FloatArray, Int>? = try {
+    private fun readBinOrNull(id: String): Pair<FloatArray, Int>? = try {
         readBinStrict(fileFor(id))
-    } catch (_: IOException) {
-        null
-    }
-
-    private fun readRaw(id: String): FloatArray? = try {
-        readBinStrict(fileFor(id)).first
     } catch (_: IOException) {
         null
     }
@@ -267,14 +269,7 @@ class KnownFaceStore(private val facesDir: File) {
         val bytes = file.readBytes()
         if (bytes.size < 8 || (bytes.size - 4) % 4 != 0) throw IOException("corrupt bin")
         var off = 0
-        fun le32(): Int {
-            val v = (bytes[off].toInt() and 0xFF) or
-                ((bytes[off + 1].toInt() and 0xFF) shl 8) or
-                ((bytes[off + 2].toInt() and 0xFF) shl 16) or
-                ((bytes[off + 3].toInt() and 0xFF) shl 24)
-            off += 4
-            return v
-        }
+        fun le32(): Int = readLe32(bytes, off).also { off += 4 }
         val count = le32()
         if (count <= 0) throw IOException("corrupt bin header")
         val floats = FloatArray((bytes.size - 4) / 4)
@@ -284,17 +279,9 @@ class KnownFaceStore(private val facesDir: File) {
 
     private fun writeBin(file: File, floats: FloatArray, count: Int) {
         val out = ByteArray(4 + floats.size * 4)
-        out[0] = (count and 0xFF).toByte()
-        out[1] = ((count shr 8) and 0xFF).toByte()
-        out[2] = ((count shr 16) and 0xFF).toByte()
-        out[3] = ((count shr 24) and 0xFF).toByte()
+        writeLe32(out, 0, count)
         for ((i, v) in floats.withIndex()) {
-            val bits = v.toRawBits()
-            val off = 4 + i * 4
-            out[off] = (bits and 0xFF).toByte()
-            out[off + 1] = ((bits shr 8) and 0xFF).toByte()
-            out[off + 2] = ((bits shr 16) and 0xFF).toByte()
-            out[off + 3] = ((bits shr 24) and 0xFF).toByte()
+            writeLe32(out, 4 + i * 4, v.toRawBits())
         }
         file.writeBytes(out)
     }
@@ -302,15 +289,10 @@ class KnownFaceStore(private val facesDir: File) {
     companion object {
         const val DIR_NAME = "known_faces"
 
+        /** Face ids are path-safe by construction; enforced on every entry point. */
+        private val ID_PATTERN = Regex("[A-Za-z0-9_-]+")
+
         /** Version stamp of the `<id>.smp` sample journal format. */
         private const val SMP_VERSION = 1
-
-        fun normalize(v: FloatArray): FloatArray {
-            var norm = 0.0
-            for (x in v) norm += x.toDouble() * x
-            norm = sqrt(norm)
-            if (norm == 0.0) return v.copyOf()
-            return FloatArray(v.size) { (v[it] / norm).toFloat() }
-        }
     }
 }

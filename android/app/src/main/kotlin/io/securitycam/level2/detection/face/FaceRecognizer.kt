@@ -82,7 +82,7 @@ class FaceRecognizer(
         if (people.isEmpty()) return null
         val raw = embedder.embed(color, doubleArrayOf(best.x1, best.y1, best.x2, best.y2))
             ?: return null
-        val emb = KnownFaceStore.normalize(raw)
+        val emb = FaceEmbeddingEngine.l2Normalize(raw)
         var bestPerson: KnownFace? = null
         var bestDistance = Double.MAX_VALUE
         for (person in people) {

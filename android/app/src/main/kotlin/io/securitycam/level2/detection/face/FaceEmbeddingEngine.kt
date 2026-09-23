@@ -94,6 +94,28 @@ class FaceEmbeddingEngine private constructor(
         }
 
         /**
+         * Square window centered on the pixel rect, clamped to stay in-frame.
+         * Returns (sx0, sy0, side): the window's top-left origin and edge.
+         * Shared with [FaceThumbs.crop] so thumbnails and embeddings cover
+         * exactly the same pixels.
+         */
+        fun squareWindow(
+            w: Int,
+            h: Int,
+            px0: Int,
+            py0: Int,
+            px1: Int,
+            py1: Int,
+        ): Triple<Double, Double, Double> {
+            val pw = px1 - px0
+            val ph = py1 - py0
+            val side = max(pw, ph).toDouble()
+            val cx = (px0 + pw / 2.0).coerceIn(side / 2.0, w - side / 2.0)
+            val cy = (py0 + ph / 2.0).coerceIn(side / 2.0, h - side / 2.0)
+            return Triple(cx - side / 2.0, cy - side / 2.0, side)
+        }
+
+        /**
          * Builds the 1x112x112x3 float32 NHWC input: square-padded crop of
          * [frame] covering the normalized [box] (x1,y1,x2,y2 in 0..1), BGR→RGB,
          * each byte mapped to (v - 127.5) / 127.5.
@@ -106,16 +128,7 @@ class FaceEmbeddingEngine private constructor(
             val py0 = (box[1] * h).roundToInt().coerceIn(0, h - 1)
             val px1 = (box[2] * w).roundToInt().coerceIn(px0 + 1, w)
             val py1 = (box[3] * h).roundToInt().coerceIn(py0 + 1, h)
-            val pw = px1 - px0
-            val ph = py1 - py0
-            // Square window centered on the box, clamped to stay in-frame.
-            val side = max(pw, ph)
-            var cx = px0 + pw / 2.0
-            var cy = py0 + ph / 2.0
-            cx = cx.coerceIn(side / 2.0, w - side / 2.0)
-            cy = cy.coerceIn(side / 2.0, h - side / 2.0)
-            val sx0 = cx - side / 2.0
-            val sy0 = cy - side / 2.0
+            val (sx0, sy0, side) = squareWindow(w, h, px0, py0, px1, py1)
 
             val image = FloatArray(INPUT_SIZE * INPUT_SIZE * 3)
             for (oy in 0 until INPUT_SIZE) {

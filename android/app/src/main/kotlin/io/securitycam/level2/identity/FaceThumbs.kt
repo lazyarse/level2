@@ -3,7 +3,6 @@ package io.securitycam.level2.identity
 import android.graphics.Bitmap
 import io.securitycam.level2.detection.ColorBitmap
 import java.io.File
-import kotlin.math.max
 
 /**
  * Square face photos cropped from analysis frames: pure geometry here,
@@ -30,15 +29,10 @@ object FaceThumbs {
         val py0 = (box[1] * h).toInt().coerceIn(0, h - 1)
         val px1 = (box[2] * w).toInt().coerceIn(px0 + 1, w)
         val py1 = (box[3] * h).toInt().coerceIn(py0 + 1, h)
-        val pw = px1 - px0
-        val ph = py1 - py0
-        val side = max(pw, ph).toDouble()
-        var cx = px0 + pw / 2.0
-        var cy = py0 + ph / 2.0
-        cx = cx.coerceIn(side / 2.0, w - side / 2.0)
-        cy = cy.coerceIn(side / 2.0, h - side / 2.0)
-        val sx0 = cx - side / 2.0
-        val sy0 = cy - side / 2.0
+        val (sx0, sy0, side) =
+            io.securitycam.level2.detection.face.FaceEmbeddingEngine.squareWindow(
+                w, h, px0, py0, px1, py1,
+            )
 
         val out = IntArray(size * size)
         for (oy in 0 until size) {
