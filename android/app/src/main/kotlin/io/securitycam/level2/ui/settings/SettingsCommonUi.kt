@@ -34,6 +34,28 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.ui.theme.AppButtonShape
 
+/** Slug for test tags: lowercase alphanumerics, runs joined by `_`. */
+internal fun tagSlug(s: String): String =
+    s.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+
+/** Animated expand/collapse chevron shared by all collapsible headers. */
+@Composable
+internal fun ExpandChevron(
+    expanded: Boolean,
+    contentDescription: String?,
+    label: String,
+) {
+    val chevron by animateFloatAsState(
+        if (expanded) 180f else 0f,
+        label = label,
+    )
+    Icon(
+        Icons.Filled.KeyboardArrowDown,
+        contentDescription = contentDescription,
+        modifier = Modifier.graphicsLayer { rotationZ = chevron },
+    )
+}
+
 /**
  * Shared expand-chevron card container for DetectorCard/ChannelCard.
  * The caller owns [expanded] state (with its own rememberSaveable key) so
@@ -54,10 +76,6 @@ internal fun ExpandableCard(
     headerContent: @Composable RowScope.() -> Unit,
     bodyContent: @Composable ColumnScope.() -> Unit,
 ) {
-    val chevron by animateFloatAsState(
-        if (expanded) 180f else 0f,
-        label = chevronLabel,
-    )
     Card(modifier = cardModifier) {
         Column(
             modifier = Modifier
@@ -77,14 +95,14 @@ internal fun ExpandableCard(
                     .clickable(onClick = onToggle)
                     .testTag(headerTestTag),
             ) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
+                ExpandChevron(
+                    expanded = expanded,
                     contentDescription = if (expanded) {
                         collapseContentDescription
                     } else {
                         expandContentDescription
                     },
-                    modifier = Modifier.graphicsLayer { rotationZ = chevron },
+                    label = chevronLabel,
                 )
                 Spacer(Modifier.width(8.dp))
                 headerContent()

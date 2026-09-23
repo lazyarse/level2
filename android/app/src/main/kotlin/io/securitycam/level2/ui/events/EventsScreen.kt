@@ -66,6 +66,7 @@ import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.event.triggerLabel
 import io.securitycam.level2.storage.RecordedEventRow
+import io.securitycam.level2.ui.settings.ExpandChevron
 import io.securitycam.level2.ui.settings.MessageSnackbar
 import java.time.LocalDate
 import java.time.ZoneId
@@ -394,10 +395,6 @@ private fun DayHeader(
         today.minusDays(1) -> "Yesterday"
         else -> date.format(DateTimeFormatter.ISO_LOCAL_DATE)
     }
-    val chevron by animateFloatAsState(
-        if (expanded) 180f else 0f,
-        label = "day_chevron_$date",
-    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -407,14 +404,14 @@ private fun DayHeader(
             .padding(horizontal = 12.dp, vertical = 12.dp)
             .testTag("dayHeader_$date"),
     ) {
-        Icon(
-            Icons.Filled.KeyboardArrowDown,
+        ExpandChevron(
+            expanded = expanded,
             contentDescription = if (expanded) {
                 "Collapse $label"
             } else {
                 "Expand $label"
             },
-            modifier = Modifier.graphicsLayer { rotationZ = chevron },
+            label = "day_chevron_$date",
         )
         Spacer(Modifier.width(8.dp))
         Text(

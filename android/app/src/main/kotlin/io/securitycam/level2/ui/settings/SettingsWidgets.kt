@@ -147,7 +147,7 @@ import kotlinx.coroutines.withContext
  * never share a tag.
  */
 internal fun fieldTag(channelId: String, label: String): String =
-    "field_${channelId}_" + label.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+    "field_${channelId}_" + tagSlug(label)
 
 @Composable
 internal fun SwitchRow(
@@ -170,7 +170,7 @@ internal fun SwitchRow(
 }
 
 internal fun switchTag(title: String): String =
-    "switch_" + title.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+    "switch_" + tagSlug(title)
 
 @Composable
 internal fun StepperRow(
@@ -212,7 +212,6 @@ internal fun CollapsibleSection(
     content: @Composable () -> Unit,
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
-    val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron_$title")
     Column(modifier = Modifier.animateContentSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -228,10 +227,10 @@ internal fun CollapsibleSection(
                 Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
+            ExpandChevron(
+                expanded = expanded,
                 contentDescription = if (expanded) "collapse_$title" else "expand_$title",
-                modifier = Modifier.graphicsLayer { rotationZ = chevron },
+                label = "chevron_$title",
             )
         }
         if (expanded) content()
@@ -239,7 +238,7 @@ internal fun CollapsibleSection(
 }
 
 internal fun sectionTag(title: String): String =
-    "section_" + title.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+    "section_" + tagSlug(title)
 
 /** Thin overlay thumb for a vertically scrolling column; hidden when it fits. */
 @Composable
