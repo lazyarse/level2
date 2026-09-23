@@ -325,6 +325,82 @@ class ShellNavigationTest {
         org.junit.Assert.assertEquals(null, instances.single().capturedFrame.value)
     }
 
+    /** addSample that waits on a gate so the overlay spans real frames. */
+    private class GateCoordinator(
+        app: android.app.Application,
+        private val face: io.securitycam.level2.core.KnownFace,
+    ) : io.securitycam.level2.identity.FaceEnrollmentCoordinator(
+        store = io.securitycam.level2.identity.KnownFaceStore(
+            java.io.File(app.filesDir, "kf-gate-${System.nanoTime()}"),
+        ),
+        embedder = null,
+        faceFinder = io.securitycam.level2.identity.FaceFinder { null },
+        settingsLoader = { AppSettings() },
+        settingsSaver = { },
+    ) {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        override suspend fun addSample(id: String): Result<io.securitycam.level2.core.KnownFace> {
+            gate.await()
+            return Result.success(face)
+        }
+    }
+
+    @Test
+    fun addPhotoKeepsFaceCardExpanded() {
+        val app = androidx.test.core.app.ApplicationProvider
+            .getApplicationContext<android.app.Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.CAMERA,
+        )
+        val face = io.securitycam.level2.core.KnownFace(id = "face_keep", label = "Keep")
+        val initial = with(AppSettings) {
+            AppSettings().copyWith(knownFaces = listOf(face)).withFaceRecognition(true)
+        }
+        val instances = mutableListOf<SettingsViewModel>()
+        val coordinators = mutableListOf<GateCoordinator>()
+        val settingsFactory = viewModelFactory {
+            initializer {
+                SettingsViewModel(
+                    settingsLoader = { initial },
+                    settingsSaver = { },
+                    eventsClearer = { _ -> },
+                    enrollmentFactory = { _ ->
+                        GateCoordinator(app, face).also { coordinators.add(it) }
+                    },
+                    cameraActive = { true },
+                ).also { instances.add(it) }
+            }
+        }
+        compose.setContent { SecurityCamApp(settingsFactory = settingsFactory) }
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Settings").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(sectionTag("Detectors")).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("addSample_face_keep").performScrollTo().assertIsDisplayed()
+
+        compose.runOnIdle { instances.single().startSampleCapture(face) }
+        compose.waitForIdle()
+        // The overlay must actually render (intermediate composition) —
+        // otherwise the round trip below proves nothing.
+        compose.onNodeWithText("Enrol face").assertIsDisplayed()
+
+        compose.runOnIdle { coordinators.single().gate.complete(Unit) }
+        compose.waitForIdle()
+
+        // The enrollment overlay came and went; the face card must still be
+        // open (regression: the old swap-instead-of-stack rebuild collapsed
+        // every section on return).
+        org.junit.Assert.assertEquals(
+            "Added photo for Keep",
+            instances.single().message.value,
+        )
+        compose.onNodeWithTag("addSample_face_keep").performScrollTo().assertIsDisplayed()
+    }
+
     private fun backOwner(): OnBackPressedDispatcherOwner {
         val lifecycleOwner = object : LifecycleOwner {
             val registry = LifecycleRegistry(this)

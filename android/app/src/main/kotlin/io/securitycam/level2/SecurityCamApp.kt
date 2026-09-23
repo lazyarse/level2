@@ -90,23 +90,10 @@ fun SecurityCamApp(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            if (enrollmentActive) {
-                val capturedFrame by settingsViewModel.capturedFrame.collectAsState()
-                val enrollmentError by settingsViewModel.enrollmentError.collectAsState()
-                val shutterArmed by settingsViewModel.shutterArmed.collectAsState()
-                FaceEnrollmentScreen(
-                    label = enrollingLabel.orEmpty(),
-                    onCancel = { settingsViewModel.cancelEnrollment() },
-                    onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
-                    canFlipCamera = enrollmentSessionLocal && capturedFrame == null,
-                    capturedFrame = capturedFrame,
-                    error = enrollmentError,
-                    shutterArmed = shutterArmed,
-                    onShutter = { settingsViewModel.requestCapture() },
-                    onUsePhoto = { settingsViewModel.useCapturedPhoto() },
-                    onRetake = { settingsViewModel.retakeCapturedPhoto() },
-                )
-            } else if (showZoneEditor) {
+            // Settings stays composed under the enrollment page so section
+            // expansion and scroll position survive the round trip (the
+            // enrollment state is composition-local and defaults collapsed).
+            if (showZoneEditor) {
                 // Live camera behind the editor so zones land on real
                 // features; session ownership is released on any exit path.
                 DisposableEffect(Unit) {
@@ -150,6 +137,25 @@ fun SecurityCamApp(
                         onOpenAlertLog = { showAlertLog = true },
                     )
                 }
+            }
+            if (enrollmentActive) {
+                val capturedFrame by settingsViewModel.capturedFrame.collectAsState()
+                val enrollmentError by settingsViewModel.enrollmentError.collectAsState()
+                val shutterArmed by settingsViewModel.shutterArmed.collectAsState()
+                val frontCamera by settingsViewModel.enrollmentFrontCamera.collectAsState()
+                FaceEnrollmentScreen(
+                    label = enrollingLabel.orEmpty(),
+                    onCancel = { settingsViewModel.cancelEnrollment() },
+                    onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
+                    canFlipCamera = enrollmentSessionLocal && capturedFrame == null,
+                    capturedFrame = capturedFrame,
+                    error = enrollmentError,
+                    shutterArmed = shutterArmed,
+                    onShutter = { settingsViewModel.requestCapture() },
+                    onUsePhoto = { settingsViewModel.useCapturedPhoto() },
+                    onRetake = { settingsViewModel.retakeCapturedPhoto() },
+                    mirrorFront = frontCamera,
+                )
             }
         }
     }
