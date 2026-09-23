@@ -78,13 +78,19 @@ class KnownFaceStore(private val facesDir: File) {
         val files = facesDir.listFiles { f ->
             f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".jpg")
         } ?: return emptyList()
-        val pattern = Regex("^" + Regex.escape(id) + "_(\\d+)\\.jpg$")
         return files.mapNotNull { f ->
-            val index = pattern.matchEntire(f.name)?.groupValues?.get(1)?.toIntOrNull()
-                ?: return@mapNotNull null
-            index to f
+            photoIndexOf(id, f)?.let { it to f }
         }.sortedBy { it.first }.map { it.second }
     }
+
+    /** Next free gallery index for [id] (0 when no photos). */
+    @Synchronized
+    fun nextPhotoIndex(id: String): Int =
+        listPhotos(id).mapNotNull { photoIndexOf(id, it) }.maxOrNull()?.plus(1) ?: 0
+
+    private fun photoIndexOf(id: String, file: File): Int? =
+        Regex("^" + Regex.escape(id) + "_(\\d+)\\.jpg$")
+            .matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()
 
     /** Number of gallery photos for [id] (0 when none). */
     @Synchronized

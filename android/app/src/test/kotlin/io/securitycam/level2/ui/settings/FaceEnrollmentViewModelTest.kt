@@ -164,6 +164,7 @@ class FaceEnrollmentViewModelTest {
                     onCapture = hooks.onCapture,
                     confirm = hooks.confirm,
                     onNoFace = hooks.onNoFace,
+                    onEnrolled = hooks.onEnrolled,
                 )
             },
             cameraActive = { session.active },
@@ -697,13 +698,19 @@ class FaceEnrollmentViewModelTest {
                 floatArrayOf(1f, 0f)
         }
         lateinit var hook: (ColorBitmap, FaceDetection) -> Unit
+        lateinit var enrolledHook: (String, FloatArray) -> Unit
+        val facesDir = java.io.File(
+            app.filesDir,
+            io.securitycam.level2.identity.KnownFaceStore.DIR_NAME,
+        )
         val realCoordinator = FaceEnrollmentCoordinator(
-            store = KnownFaceStore(createTempDir()),
+            store = KnownFaceStore(facesDir),
             embedder = embedder,
             faceFinder = { frame to det },
             settingsLoader = { AppSettings.defaults() },
             settingsSaver = {},
             onCapture = { f, d -> hook(f, d) },
+            onEnrolled = { id, embedding -> enrolledHook(id, embedding) },
         )
         val session = CameraSession()
         val vm = SettingsViewModel(
@@ -713,6 +720,7 @@ class FaceEnrollmentViewModelTest {
             eventsClearer = {},
             enrollmentFactory = { hooks ->
                 hook = hooks.onCapture
+                enrolledHook = hooks.onEnrolled
                 realCoordinator
             },
             cameraActive = { session.active },
@@ -729,11 +737,219 @@ class FaceEnrollmentViewModelTest {
         assertEquals("Enrolled Tee" + suffix, vm.message.value)
         val face = vm.draft.value?.knownFaces?.single()
         assertTrue(face != null)
-        val thumb = java.io.File(
-            java.io.File(app.filesDir, io.securitycam.level2.identity.KnownFaceStore.DIR_NAME),
-            "${face!!.id}.jpg",
+        val photo = java.io.File(facesDir, "${face!!.id}_0.jpg")
+        assertTrue(photo.exists() && photo.length() > 0)
+        assertEquals(listOf(photo), vm.listFacePhotos(face.id))
+        assertEquals(1, vm.facePhotoCount(face.id))
+        assertEquals(1, KnownFaceStore(facesDir).sampleCount(face.id))
+    }
+
+    @Test
+    fun secondSampleWritesNextIndexAndJournalsBoth() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.CAMERA,
         )
-        assertTrue(thumb.exists() && thumb.length() > 0)
+        val frame = io.securitycam.level2.detection.ColorBitmap(
+            32, 32, ByteArray(3 * 32 * 32) { 0x40 },
+        )
+        val det = io.securitycam.level2.detection.face.FaceDetection(
+            0.125, 0.125, 0.875, 0.875, 0.9,
+        )
+        val embedder = object : io.securitycam.level2.detection.face.FaceEmbedder {
+            override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =
+                floatArrayOf(1f, 0f)
+        }
+        val facesDir = java.io.File(
+            app.filesDir,
+            io.securitycam.level2.identity.KnownFaceStore.DIR_NAME,
+        )
+        lateinit var hooks: EnrollmentHooks
+        // Stateful so addSample finds the face the coordinator itself saved.
+        var coordSettings = AppSettings.defaults()
+        val realCoordinator = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(facesDir),
+            embedder = embedder,
+            faceFinder = { frame to det },
+            settingsLoader = { coordSettings },
+            settingsSaver = { coordSettings = it },
+            onCapture = { f, d -> hooks.onCapture(f, d) },
+            onEnrolled = { id, embedding -> hooks.onEnrolled(id, embedding) },
+        )
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            application = app,
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { h ->
+                hooks = h
+                realCoordinator
+            },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.bindLater() },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+
+        vm.startEnrollment("Tee")
+        pumpUntilIdle(vm)
+        val face = vm.draft.value?.knownFaces?.single()!!
+        session.active = false
+
+        vm.startSampleCapture(face)
+        pumpUntilIdle(vm)
+
+        assertEquals("Added photo for Tee", vm.message.value?.substringBefore(" —"))
+        assertEquals(2, vm.facePhotoCount(face.id))
+        assertTrue(java.io.File(facesDir, "${face.id}_0.jpg").exists())
+        assertTrue(java.io.File(facesDir, "${face.id}_1.jpg").exists())
+        assertTrue(java.io.File(facesDir, "${face.id}.smp").exists())
+        assertEquals(2, KnownFaceStore(facesDir).sampleCount(face.id))
+    }
+
+    @Test
+    fun deleteFacePhotoRemovesPhotoAndUnlearns() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.CAMERA,
+        )
+        val frame = io.securitycam.level2.detection.ColorBitmap(
+            32, 32, ByteArray(3 * 32 * 32) { 0x40 },
+        )
+        val det = io.securitycam.level2.detection.face.FaceDetection(
+            0.125, 0.125, 0.875, 0.875, 0.9,
+        )
+        var embedCount = 0
+        val embedder = object : io.securitycam.level2.detection.face.FaceEmbedder {
+            override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray {
+                embedCount++
+                return floatArrayOf(embedCount.toFloat(), 0f)
+            }
+        }
+        val facesDir = java.io.File(
+            app.filesDir,
+            io.securitycam.level2.identity.KnownFaceStore.DIR_NAME,
+        )
+        lateinit var hooks: EnrollmentHooks
+        // Stateful so addSample finds the face the coordinator itself saved.
+        var coordSettings = AppSettings.defaults()
+        val realCoordinator = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(facesDir),
+            embedder = embedder,
+            faceFinder = { frame to det },
+            settingsLoader = { coordSettings },
+            settingsSaver = { coordSettings = it },
+            onCapture = { f, d -> hooks.onCapture(f, d) },
+            onEnrolled = { id, embedding -> hooks.onEnrolled(id, embedding) },
+        )
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            application = app,
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { h ->
+                hooks = h
+                realCoordinator
+            },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.bindLater() },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+
+        vm.startEnrollment("Tee")
+        pumpUntilIdle(vm)
+        val face = vm.draft.value?.knownFaces?.single()!!
+        session.active = false
+        vm.startSampleCapture(face)
+        pumpUntilIdle(vm)
+        assertEquals(2, vm.facePhotoCount(face.id))
+
+        vm.deleteFacePhoto(face, 1)
+        pumpUntilIdle(vm)
+
+        assertEquals("Photo removed", vm.message.value)
+        assertEquals(1, vm.facePhotoCount(face.id))
+        assertTrue(java.io.File(facesDir, "${face.id}_0.jpg").exists())
+        assertTrue(!java.io.File(facesDir, "${face.id}_1.jpg").exists())
+        val remaining = KnownFaceStore(facesDir).load(face.id)!!
+        // Only the first sample (1, 0) survives, normalized.
+        assertEquals(1.0, remaining[0].toDouble(), 1e-6)
+        assertEquals(0.0, remaining[1].toDouble(), 1e-6)
+    }
+
+    @Test
+    fun deleteFacePhotoRefusesLastPhoto() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.CAMERA,
+        )
+        val frame = io.securitycam.level2.detection.ColorBitmap(
+            32, 32, ByteArray(3 * 32 * 32) { 0x40 },
+        )
+        val det = io.securitycam.level2.detection.face.FaceDetection(
+            0.125, 0.125, 0.875, 0.875, 0.9,
+        )
+        val embedder = object : io.securitycam.level2.detection.face.FaceEmbedder {
+            override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =
+                floatArrayOf(1f, 0f)
+        }
+        val facesDir = java.io.File(
+            app.filesDir,
+            io.securitycam.level2.identity.KnownFaceStore.DIR_NAME,
+        )
+        lateinit var hooks: EnrollmentHooks
+        // Stateful so addSample finds the face the coordinator itself saved.
+        var coordSettings = AppSettings.defaults()
+        val realCoordinator = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(facesDir),
+            embedder = embedder,
+            faceFinder = { frame to det },
+            settingsLoader = { coordSettings },
+            settingsSaver = { coordSettings = it },
+            onCapture = { f, d -> hooks.onCapture(f, d) },
+            onEnrolled = { id, embedding -> hooks.onEnrolled(id, embedding) },
+        )
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            application = app,
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { h ->
+                hooks = h
+                realCoordinator
+            },
+            cameraActive = { session.active },
+            startCameraSession = { _ -> session.bindLater() },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+
+        vm.startEnrollment("Tee")
+        pumpUntilIdle(vm)
+        val face = vm.draft.value?.knownFaces?.single()!!
+
+        vm.deleteFacePhoto(face, 0)
+        pumpUntilIdle(vm)
+
+        assertEquals("Cannot remove the last photo", vm.message.value)
+        assertEquals(1, vm.facePhotoCount(face.id))
+        assertTrue(java.io.File(facesDir, "${face.id}_0.jpg").exists())
     }
 
     private companion object {

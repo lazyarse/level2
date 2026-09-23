@@ -6,13 +6,16 @@ import java.io.File
 import kotlin.math.max
 
 /**
- * Square face thumbnails cropped from analysis frames: pure geometry here,
+ * Square face photos cropped from analysis frames: pure geometry here,
  * JPEG encoding at the [writeJpg] edge so tests cover the math on the JVM.
- * Files live next to their centroids as `<id>.jpg`.
+ * Files live next to their centroids as `<id>_<index>.jpg`.
  */
 object FaceThumbs {
 
     const val SIZE = 144
+
+    /** Gallery photo edge: large enough for the zoomable full view. */
+    const val PHOTO_SIZE = 512
 
     /**
      * Square window centered on the normalized [box] (`x1,y1,x2,y2` in 0..1),
@@ -52,13 +55,20 @@ object FaceThumbs {
         return out
     }
 
-    /** Encodes the cropped thumbnail as JPEG into `<dir>/<id>.jpg`. */
-    fun writeJpg(dir: File, id: String, frame: ColorBitmap, box: DoubleArray) {
-        val pixels = crop(frame, box)
-        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
-        bmp.setPixels(pixels, 0, SIZE, 0, 0, SIZE, SIZE)
+    /** Encodes the cropped photo as JPEG into `<dir>/<id>_<index>.jpg`. */
+    fun writeJpg(
+        dir: File,
+        id: String,
+        index: Int,
+        frame: ColorBitmap,
+        box: DoubleArray,
+        size: Int = PHOTO_SIZE,
+    ) {
+        val pixels = crop(frame, box, size)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(pixels, 0, size, 0, 0, size, size)
         dir.mkdirs()
-        File(dir, "$id.jpg").outputStream().use { out ->
+        File(dir, "${id}_$index.jpg").outputStream().use { out ->
             bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
         }
         bmp.recycle()

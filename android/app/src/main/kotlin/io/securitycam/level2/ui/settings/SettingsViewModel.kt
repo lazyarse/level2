@@ -56,6 +56,8 @@ data class EnrollmentHooks(
     val awaitShutter: suspend () -> Unit,
     val confirm: suspend (ColorBitmap, FaceDetection) -> Boolean,
     val onNoFace: () -> Unit,
+    /** Fires after a sample merges, with the raw embedding (photo journal). */
+    val onEnrolled: (String, FloatArray) -> Unit,
 )
 
 /**
@@ -137,8 +139,12 @@ class SettingsViewModel(
     private var sessionCameraId: String = "0"
 
     // Frame/box from the most recent capture in the active enrollment; used
-    // to persist a thumbnail once the enrollment succeeds.
+    // to persist a photo once the enrollment succeeds.
     private var pendingCapture: Pair<ColorBitmap, FaceDetection>? = null
+
+    // Raw embedding of the most recent accepted sample; journaled next to the
+    // photo so deleting the photo can unlearn exactly this sample.
+    private var pendingEmbedding: FloatArray? = null
 
     // Gates the coordinator parks on between phases; nulled when consumed or
     // when the enrollment ends. Shutter armed = finder is waiting for a press.
@@ -178,6 +184,37 @@ class SettingsViewModel(
     /** Merged-sample count for [faceId] (photos folded into the centroid). */
     fun sampleCount(faceId: String): Int =
         faceStore?.sampleCount(faceId) ?: 0
+
+    /** Gallery photo count for [faceId] (what the badge shows). */
+    fun facePhotoCount(faceId: String): Int =
+        faceStore?.photoCount(faceId) ?: 0
+
+    /** Gallery photo files for [faceId], sorted by index. */
+    fun listFacePhotos(faceId: String): List<File> =
+        faceStore?.listPhotos(faceId).orEmpty()
+
+    /**
+     * Removes gallery photo [index] and unlearns its sample from the
+     * centroid. Refuses the last photo — the row trash removes whole faces.
+     */
+    fun deleteFacePhoto(face: KnownFace, index: Int) {
+        viewModelScope.launch {
+            val store = faceStore ?: return@launch
+            if (store.photoCount(face.id) < 2) {
+                _message.value = "Cannot remove the last photo"
+                return@launch
+            }
+            val path = store.photoFileFor(face.id, index)
+            val result = runCatching { store.removeSample(face.id, index) }
+            if (result.isSuccess) {
+                io.securitycam.level2.ui.events.ThumbCache.evict("face:${path.absolutePath}")
+                _message.value = "Photo removed"
+            } else {
+                _message.value =
+                    "Couldn't remove photo: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+            }
+        }
+    }
 
     /** Factories exposed so the UI can gate the send-test button on validate(). */
     val testFactories: Map<String, ChannelFactory> get() = channelFactories
@@ -352,6 +389,7 @@ class SettingsViewModel(
                 }
             },
             onNoFace = { _enrollmentError.value = "No face detected — try again" },
+            onEnrolled = { _, embedding -> pendingEmbedding = embedding },
         )
         val coordinator = enrollmentFactory(hooks)
         if (coordinator == null) {
@@ -368,6 +406,7 @@ class SettingsViewModel(
         _enrollmentFrontCamera.value = false
         sessionCameraId = baseEnrollmentCameraId()
         pendingCapture = null
+        pendingEmbedding = null
         _capturedFrame.value = null
         _enrollmentError.value = null
         _shutterArmed.value = false
@@ -495,7 +534,12 @@ class SettingsViewModel(
                 ),
             )
             for (id in residueIds) {
+                val photos = faceStore?.listPhotos(id).orEmpty()
                 faceStore?.delete(id)
+                for (photo in photos) {
+                    io.securitycam.level2.ui.events.ThumbCache.evict("face:${photo.absolutePath}")
+                }
+                // Pre-migration cache entries live under the legacy path.
                 thumbFile(id)?.let { path ->
                     io.securitycam.level2.ui.events.ThumbCache.evict("face:${path.absolutePath}")
                 }
@@ -561,18 +605,34 @@ class SettingsViewModel(
         }
     }
 
-    /** Persists the stashed capture as `<id>.jpg`; best-effort, never fatal. */
+    /**
+     * Persists the stashed capture as the next `<id>_<index>.jpg` photo and
+     * journals its embedding; best-effort, never fatal. A failed journal
+     * entry rolls the photo back so no vectordess photo can masquerade as a
+     * legacy one at delete time.
+     */
     private fun persistThumbnail(faceId: String) {
         val app = application ?: return
         val (frame, det) = pendingCapture ?: return
+        val embedding = pendingEmbedding ?: return
+        val store = faceStore ?: return
         runCatching {
+            val dir = File(app.filesDir, KnownFaceStore.DIR_NAME)
+            val index = store.nextPhotoIndex(faceId)
             FaceThumbs.writeJpg(
-                File(app.filesDir, KnownFaceStore.DIR_NAME),
+                dir,
                 faceId,
+                index,
                 frame,
                 doubleArrayOf(det.x1, det.y1, det.x2, det.y2),
             )
-        }.onFailure { android.util.Log.w("FaceEnroll", "thumbnail write failed", it) }
+            try {
+                store.appendSample(faceId, index, embedding)
+            } catch (e: Exception) {
+                store.photoFileFor(faceId, index).delete()
+                throw e
+            }
+        }.onFailure { android.util.Log.w("FaceEnroll", "photo persist failed", it) }
     }
 
     /** CAMERA is the only permission face enrollment needs (no audio). */
@@ -636,11 +696,16 @@ class SettingsViewModel(
             false
         }
 
-    /** Remove a face: centroid, thumbnail, and draft entry. */
+    /** Remove a face: centroid, journal, all photos, and draft entry. */
     fun deleteFace(face: KnownFace) {
         viewModelScope.launch {
             val current = _draft.value ?: return@launch
+            val photos = faceStore?.listPhotos(face.id).orEmpty()
             faceStore?.delete(face.id)
+            for (photo in photos) {
+                io.securitycam.level2.ui.events.ThumbCache.evict("face:${photo.absolutePath}")
+            }
+            // Pre-migration cache entries live under the legacy path.
             thumbFile(face.id)?.let { path ->
                 io.securitycam.level2.ui.events.ThumbCache.evict("face:${path.absolutePath}")
             }
@@ -720,6 +785,7 @@ class SettingsViewModel(
                             onCapture = hooks.onCapture,
                             confirm = hooks.confirm,
                             onNoFace = hooks.onNoFace,
+                            onEnrolled = hooks.onEnrolled,
                         )
                     },
                 )
