@@ -367,32 +367,7 @@ class SettingsViewModel(
         sample: Boolean,
         block: suspend (FaceEnrollmentCoordinator) -> Result<KnownFace>,
     ) {
-        val hooks = EnrollmentHooks(
-            onCapture = { frame, det -> pendingCapture = frame to det },
-            awaitShutter = {
-                val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-                shutterGate = gate
-                _shutterArmed.value = true
-                try {
-                    gate.await()
-                } finally {
-                    if (shutterGate === gate) _shutterArmed.value = false
-                }
-            },
-            confirm = { frame, det ->
-                _capturedFrame.value = frame to det
-                val gate = kotlinx.coroutines.CompletableDeferred<Boolean>()
-                reviewGate = gate
-                try {
-                    gate.await()
-                } finally {
-                    if (reviewGate === gate) reviewGate = null
-                }
-            },
-            onNoFace = { _enrollmentError.value = "No face detected — try again" },
-            onEnrolled = { _, embedding -> pendingEmbedding = embedding },
-        )
-        val coordinator = enrollmentFactory(hooks)
+        val coordinator = enrollmentFactory(buildEnrollmentHooks())
         if (coordinator == null) {
             _message.value = "Face enrollment unavailable"
             return
@@ -403,19 +378,7 @@ class SettingsViewModel(
             return
         }
         if (_enrollingLabel.value != null) return
-        // Session camera choice resets every capture (session-only). The
-        // front flag follows actual facing — not just flip presses — so the
-        // review mirror matches the persisted photo when the session starts
-        // on the front camera (active monitoring, front base camera).
-        sessionCameraId = baseEnrollmentCameraId()
-        _enrollmentFrontCamera.value = isFrontId(sessionCameraId)
-        pendingCapture = null
-        pendingEmbedding = null
-        _capturedFrame.value = null
-        _enrollmentError.value = null
-        _shutterArmed.value = false
-        shutterGate = null
-        reviewGate = null
+        resetEnrollmentTransient()
         enrollmentJob = viewModelScope.launch {
             // Heal phantom residue before the coordinator's duplicate guard
             // runs: persisted entries for this label that never made it into
@@ -424,52 +387,24 @@ class SettingsViewModel(
             purgeStaleEnrollmentResidue(progressLabel)
             _enrollingLabel.value = progressLabel
             try {
-                val weStartedCamera = !cameraActive()
-                _enrollmentSessionLocal.value = weStartedCamera
-                try {
-                    if (weStartedCamera) {
-                        startCameraSession(sessionCameraId)
-                        check(awaitFramesFlowing()) { "Camera did not start" }
-                        // Heal a flip that landed before the service was up.
-                        switchPreviewCamera(sessionCameraId)
+                val result = withLocalCameraSession { block(coordinator) }
+                var enrolledFace: KnownFace? = null
+                var enabledSuffix = ""
+                result.getOrNull()?.let { face ->
+                    enrolledFace = face
+                    persistThumbnail(face.id)
+                    syncFaceIntoDraft(face)
+                    enabledSuffix = ensureRecognitionEnabled()
+                }
+                _message.value = when {
+                    result.isSuccess && sample ->
+                        "Added photo for ${enrolledFace?.label}" + enabledSuffix
+                    result.isSuccess ->
+                        "Enrolled ${enrolledFace?.label}" + enabledSuffix
+                    else -> {
+                        purgeStaleEnrollmentResidue(progressLabel)
+                        "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
                     }
-                    val result = block(coordinator)
-                    var enrolledFace: KnownFace? = null
-                    var enabledSuffix = ""
-                    result.getOrNull()?.let { face ->
-                        enrolledFace = face
-                        persistThumbnail(face.id)
-                        syncFaceIntoDraft(face)
-                                    // First-class feature enablement: recognition is a
-                        // no-op until its routing configs exist, so seed them
-                        // on enroll and persist immediately (restart needed
-                        // for a live session to pick the recognizer up).
-                        val latest = _draft.value
-                        if (latest != null && !AppSettings.faceRecognitionEnabled(latest)) {
-                            update {
-                                with(AppSettings) { it.withFaceRecognition(true) }
-                            }
-                            enabledSuffix =
-                                " — face recognition enabled; restart monitoring to apply"
-                            _draft.value?.let { d ->
-                                viewModelScope.launch {
-                                    runCatching { settingsSaver(d) }
-                                }
-                            }
-                        }
-                    }
-                    _message.value = when {
-                        result.isSuccess && sample ->
-                            "Added photo for ${enrolledFace?.label}" + enabledSuffix
-                        result.isSuccess ->
-                            "Enrolled ${enrolledFace?.label}" + enabledSuffix
-                        else -> {
-                            purgeStaleEnrollmentResidue(progressLabel)
-                            "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
-                        }
-                    }
-                } finally {
-                    if (weStartedCamera) stopCameraSession()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 _message.value = "Enrollment cancelled"
@@ -489,6 +424,91 @@ class SettingsViewModel(
                 _enrollingLabel.value = null
             }
         }
+    }
+
+    /** Interactive-capture hooks: stash frames, park on gates, surface errors. */
+    private fun buildEnrollmentHooks(): EnrollmentHooks = EnrollmentHooks(
+        onCapture = { frame, det -> pendingCapture = frame to det },
+        awaitShutter = {
+            val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+            shutterGate = gate
+            _shutterArmed.value = true
+            try {
+                gate.await()
+            } finally {
+                if (shutterGate === gate) _shutterArmed.value = false
+            }
+        },
+        confirm = { frame, det ->
+            _capturedFrame.value = frame to det
+            val gate = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            reviewGate = gate
+            try {
+                gate.await()
+            } finally {
+                if (reviewGate === gate) reviewGate = null
+            }
+        },
+        onNoFace = { _enrollmentError.value = "No face detected — try again" },
+        onEnrolled = { _, embedding -> pendingEmbedding = embedding },
+    )
+
+    /** Clears per-attempt capture state (session-only camera choice included). */
+    private fun resetEnrollmentTransient() {
+        // Session camera choice resets every capture (session-only). The
+        // front flag follows actual facing — not just flip presses — so the
+        // review mirror matches the persisted photo when the session starts
+        // on the front camera (active monitoring, front base camera).
+        sessionCameraId = baseEnrollmentCameraId()
+        _enrollmentFrontCamera.value = isFrontId(sessionCameraId)
+        pendingCapture = null
+        pendingEmbedding = null
+        _capturedFrame.value = null
+        _enrollmentError.value = null
+        _shutterArmed.value = false
+        shutterGate = null
+        reviewGate = null
+    }
+
+    /**
+     * Runs [block] with a temporary camera session when monitoring isn't
+     * already publishing frames. Tears the session down on every exit path,
+     * including cancellation.
+     */
+    private suspend fun <T> withLocalCameraSession(block: suspend () -> T): T {
+        val weStartedCamera = !cameraActive()
+        _enrollmentSessionLocal.value = weStartedCamera
+        try {
+            if (weStartedCamera) {
+                startCameraSession(sessionCameraId)
+                check(awaitFramesFlowing()) { "Camera did not start" }
+                // Heal a flip that landed before the service was up.
+                switchPreviewCamera(sessionCameraId)
+            }
+            return block()
+        } finally {
+            if (weStartedCamera) stopCameraSession()
+        }
+    }
+
+    /**
+     * First-class feature enablement: recognition is a no-op until its
+     * routing configs exist, so seed them on enroll and persist immediately
+     * (restart needed for a live session to pick the recognizer up).
+     * Returns the message suffix (empty when already enabled).
+     */
+    private fun ensureRecognitionEnabled(): String {
+        val latest = _draft.value
+        if (latest == null || AppSettings.faceRecognitionEnabled(latest)) return ""
+        update {
+            with(AppSettings) { it.withFaceRecognition(true) }
+        }
+        _draft.value?.let { d ->
+            viewModelScope.launch {
+                runCatching { settingsSaver(d) }
+            }
+        }
+        return " — face recognition enabled; restart monitoring to apply"
     }
 
     /** Shutter press on the LIVE phase: releases the finder's await. */
@@ -553,7 +573,7 @@ class SettingsViewModel(
     /** Keeps the settings draft in step so the UI and Save reflect enrollments. */
     private fun syncFaceIntoDraft(face: KnownFace) {
         val current = _draft.value ?: return
-        _draft.value = current.copy(
+        _draft.value = current.copyWith(
             knownFaces = current.knownFaces.filterNot { it.id == face.id } + face,
         )
     }
