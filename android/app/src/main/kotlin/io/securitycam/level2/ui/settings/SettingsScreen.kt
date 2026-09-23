@@ -1150,23 +1150,6 @@ fun SettingsScreen(
                                 )
                             }
                             Spacer(Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(onClick = onOpenAlertLog)
-                                    .padding(vertical = 12.dp)
-                                    .testTag("openAlertLog"),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(Icons.Filled.Terminal, contentDescription = null)
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    "View Alert Log",
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                            }
-                            Spacer(Modifier.height(16.dp))
                             SettingSlider(
                                 label = "Merge window: ${mergeLabel(current.notificationMergeWindow)}",
                                 value = current.notificationMergeWindow.toSeconds().toFloat(),
@@ -1248,6 +1231,22 @@ fun SettingsScreen(
                                     }
                                 },
                             )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onOpenAlertLog)
+                                .padding(vertical = 12.dp)
+                                .testTag("openAlertLog"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.Terminal, contentDescription = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "View Alert Log",
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null)
                         }
                         HorizontalDivider()
                         Text(
