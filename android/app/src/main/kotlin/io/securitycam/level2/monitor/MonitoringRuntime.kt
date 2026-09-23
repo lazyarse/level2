@@ -163,8 +163,7 @@ class MonitoringRuntime private constructor(
     val detectorRegistry: DetectorRegistry get() = scopedRegistry
 
     /**
-     * Face roster snapshot taken at creation (Wave 4): later
-     * [io.securitycam.level2.identity.FaceDirectory] updates do not move a
+     * Face roster snapshot taken at creation: later enrollments do not move a
      * live session; a restart picks them up. Cleared on [stop].
      */
     var faceRoster: List<KnownFace> = emptyList()
@@ -228,8 +227,7 @@ class MonitoringRuntime private constructor(
             } else {
                 null
             }
-            // Wave 4: snapshot the live roster instead of publishing into the
-            // process-global FaceDirectory — overlapping runtimes (monitoring
+            // Snapshot the live roster — overlapping runtimes (monitoring
             // + face-enrollment capture) keep independent rosters. Later
             // enrollments/deletes take effect on restart.
             runtime.faceRoster = if (recognitionOn) settings.knownFaces.toList() else emptyList()

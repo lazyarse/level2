@@ -24,7 +24,6 @@ import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.detection.face.FaceEmbeddingEngine
 import io.securitycam.level2.detection.face.MediaPipeFaceEngine
 import io.securitycam.level2.event.ChannelFactory
-import io.securitycam.level2.identity.FaceDirectory
 import io.securitycam.level2.identity.FaceEnrollmentCoordinator
 import io.securitycam.level2.identity.FaceThumbs
 import io.securitycam.level2.identity.KnownFaceStore
@@ -226,7 +225,6 @@ class SettingsViewModel(
     init {
         viewModelScope.launch {
             _draft.value = settingsLoader()
-            _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
         }
         viewModelScope.launch {
             val app = application ?: return@launch
@@ -245,7 +243,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 settingsSaver(current)
-                FaceDirectory.setAll(current.knownFaces)
                 _message.value = "Settings saved"
             } catch (t: Throwable) {
                 // Secret-store failures now propagate instead of silently
@@ -443,8 +440,7 @@ class SettingsViewModel(
                         enrolledFace = face
                         persistThumbnail(face.id)
                         syncFaceIntoDraft(face)
-                        _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
-                        // First-class feature enablement: recognition is a
+                                    // First-class feature enablement: recognition is a
                         // no-op until its routing configs exist, so seed them
                         // on enroll and persist immediately (restart needed
                         // for a live session to pick the recognizer up).
@@ -721,7 +717,6 @@ class SettingsViewModel(
             _draft.value = current.copy(
                 knownFaces = current.knownFaces.filterNot { it.id == face.id },
             )
-            _draft.value?.let { FaceDirectory.setAll(it.knownFaces) }
             _message.value = "Removed ${face.label}"
         }
     }

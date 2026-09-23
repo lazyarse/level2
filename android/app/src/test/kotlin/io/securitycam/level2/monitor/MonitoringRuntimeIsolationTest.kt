@@ -17,7 +17,6 @@ import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.detection.face.FaceEmbedder
 import io.securitycam.level2.detection.face.FaceRecognizer
 import io.securitycam.level2.detection.face.MockFaceEngine
-import io.securitycam.level2.identity.FaceDirectory
 import io.securitycam.level2.identity.KnownFaceStore
 import java.io.File
 import java.time.Instant
@@ -37,9 +36,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Wave 4: overlapping runtimes keep independent detector registries and face
- * rosters — creation must not mutate the process-global [DetectorRegistry] or
- * [FaceDirectory], and stop() must drop the runtime's own state.
+ * Overlapping runtimes keep independent detector registries and face
+ * rosters — creation must not mutate the process-global [DetectorRegistry],
+ * and stop() must drop the runtime's own state.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -139,9 +138,8 @@ class MonitoringRuntimeIsolationTest {
             assertEquals(listOf(alice), a.faceRoster)
             assertEquals(listOf(bob), b.faceRoster)
 
-            // Post-creation global churn (an enrollment landing mid-session)
-            // must not move either live snapshot.
-            FaceDirectory.setAll(listOf(KnownFace(id = "face_eve", label = "Eve")))
+            // Later enrollments must not move either live snapshot (rosters
+            // are per-runtime; only a restart picks up new faces).
             assertEquals(listOf(alice), a.faceRoster)
             assertEquals(listOf(bob), b.faceRoster)
 
@@ -170,7 +168,6 @@ class MonitoringRuntimeIsolationTest {
             assertTrue(a.faceRoster.isEmpty())
             assertEquals(listOf(bob), b.faceRoster)
         } finally {
-            FaceDirectory.setAll(emptyList())
             runCatching { a.stop() }
             runCatching { b.stop() }
         }
