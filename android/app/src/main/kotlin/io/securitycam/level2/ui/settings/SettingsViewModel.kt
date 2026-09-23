@@ -47,6 +47,18 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
+ * UI-side hooks the coordinator drives during interactive capture: stash the
+ * frame, park until the shutter fires, gate on the review decision, and
+ * surface a no-face snap inline.
+ */
+data class EnrollmentHooks(
+    val onCapture: (ColorBitmap, FaceDetection) -> Unit,
+    val awaitShutter: suspend () -> Unit,
+    val confirm: suspend (ColorBitmap, FaceDetection) -> Boolean,
+    val onNoFace: () -> Unit,
+)
+
+/**
  * Draft-commit settings state (port of the Flutter `SettingsScreen._draft` +
  * `MonitorController.updateSettings` pattern). Loads once, mutates a draft,
  * and persists on save. Event clearing mirrors the Dart controller's
@@ -58,9 +70,8 @@ class SettingsViewModel(
     private val settingsSaver: suspend (AppSettings) -> Unit,
     private val eventsClearer: suspend (Duration?) -> Unit,
     private val channelFactories: Map<String, ChannelFactory> = ChannelRegistry.factories,
-    /** Builds a coordinator wired to the VM's capture stash. */
-    private val enrollmentFactory:
-        (onCapture: (ColorBitmap, FaceDetection) -> Unit) -> FaceEnrollmentCoordinator? =
+    /** Builds a coordinator wired to the VM's interactive-capture hooks. */
+    private val enrollmentFactory: (EnrollmentHooks) -> FaceEnrollmentCoordinator? =
         { null },
     /** True when a camera session is already publishing frames to the bus. */
     private val cameraActive: () -> Boolean = {
@@ -128,6 +139,24 @@ class SettingsViewModel(
     // Frame/box from the most recent capture in the active enrollment; used
     // to persist a thumbnail once the enrollment succeeds.
     private var pendingCapture: Pair<ColorBitmap, FaceDetection>? = null
+
+    // Gates the coordinator parks on between phases; nulled when consumed or
+    // when the enrollment ends. Shutter armed = finder is waiting for a press.
+    private var shutterGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    private var reviewGate: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+
+    /** Captured frame under review; non-null = REVIEW phase (else LIVE). */
+    private val _capturedFrame = MutableStateFlow<Pair<ColorBitmap, FaceDetection>?>(null)
+    val capturedFrame: StateFlow<Pair<ColorBitmap, FaceDetection>?> =
+        _capturedFrame.asStateFlow()
+
+    /** Inline hint on the LIVE phase (e.g. no-face-after-snap error). */
+    private val _enrollmentError = MutableStateFlow<String?>(null)
+    val enrollmentError: StateFlow<String?> = _enrollmentError.asStateFlow()
+
+    /** True while the finder is parked awaiting a shutter press. */
+    private val _shutterArmed = MutableStateFlow(false)
+    val shutterArmed: StateFlow<Boolean> = _shutterArmed.asStateFlow()
 
     /** Person store for centroid/thumbnail files; null without an app. */
     private val faceStore: KnownFaceStore? by lazy {
@@ -300,7 +329,31 @@ class SettingsViewModel(
         sample: Boolean,
         block: suspend (FaceEnrollmentCoordinator) -> Result<KnownFace>,
     ) {
-        val coordinator = enrollmentFactory { frame, det -> pendingCapture = frame to det }
+        val hooks = EnrollmentHooks(
+            onCapture = { frame, det -> pendingCapture = frame to det },
+            awaitShutter = {
+                val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+                shutterGate = gate
+                _shutterArmed.value = true
+                try {
+                    gate.await()
+                } finally {
+                    if (shutterGate === gate) _shutterArmed.value = false
+                }
+            },
+            confirm = { frame, det ->
+                _capturedFrame.value = frame to det
+                val gate = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                reviewGate = gate
+                try {
+                    gate.await()
+                } finally {
+                    if (reviewGate === gate) reviewGate = null
+                }
+            },
+            onNoFace = { _enrollmentError.value = "No face detected — try again" },
+        )
+        val coordinator = enrollmentFactory(hooks)
         if (coordinator == null) {
             _message.value = "Face enrollment unavailable"
             return
@@ -315,6 +368,11 @@ class SettingsViewModel(
         _enrollmentFrontCamera.value = false
         sessionCameraId = baseEnrollmentCameraId()
         pendingCapture = null
+        _capturedFrame.value = null
+        _enrollmentError.value = null
+        _shutterArmed.value = false
+        shutterGate = null
+        reviewGate = null
         enrollmentJob = viewModelScope.launch {
             // Heal phantom residue before the coordinator's duplicate guard
             // runs: persisted entries for this label that never made it into
@@ -380,10 +438,36 @@ class SettingsViewModel(
             } finally {
                 enrollmentJob = null
                 pendingCapture = null
+                shutterGate = null
+                reviewGate = null
+                _capturedFrame.value = null
+                _enrollmentError.value = null
+                _shutterArmed.value = false
                 _enrollmentSessionLocal.value = false
                 _enrollingLabel.value = null
             }
         }
+    }
+
+    /** Shutter press on the LIVE phase: releases the finder's await. */
+    fun requestCapture() {
+        val gate = shutterGate ?: return
+        if (gate.isCompleted) return
+        _enrollmentError.value = null
+        _shutterArmed.value = false
+        gate.complete(Unit)
+    }
+
+    /** Review: accept the captured frame; embedding proceeds. */
+    fun useCapturedPhoto() {
+        reviewGate?.complete(true)
+    }
+
+    /** Review: reject and return to the LIVE phase for another shutter press. */
+    fun retakeCapturedPhoto() {
+        val gate = reviewGate ?: return
+        if (!gate.complete(false)) return
+        _capturedFrame.value = null
     }
 
     /**
@@ -619,12 +703,13 @@ class SettingsViewModel(
                         SettingsStore(app, EncryptedSecretStore(app)).save(settings)
                     },
                     eventsClearer = defaultEventsClearer(app),
-                    enrollmentFactory = { onCapture ->
+                    enrollmentFactory = { hooks ->
                         FaceEnrollmentCoordinator(
                             store = sharedFaceStore,
                             embedder = enrollmentEmbedder,
-                            faceFinder = FaceEnrollmentCoordinator.busFinder(
+                            faceFinder = FaceEnrollmentCoordinator.captureOnDemandFinder(
                                 engineFactory = { MediaPipeFaceEngine(app) },
+                                awaitShutter = hooks.awaitShutter,
                             ),
                             settingsLoader = {
                                 SettingsStore(app, EncryptedSecretStore(app)).load()
@@ -632,7 +717,9 @@ class SettingsViewModel(
                             settingsSaver = {
                                 SettingsStore(app, EncryptedSecretStore(app)).save(it)
                             },
-                            onCapture = onCapture,
+                            onCapture = hooks.onCapture,
+                            confirm = hooks.confirm,
+                            onNoFace = hooks.onNoFace,
                         )
                     },
                 )

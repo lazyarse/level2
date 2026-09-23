@@ -27,6 +27,12 @@ fun interface FaceFinder {
  * registers the person ([enroll]) or folds another angle into an existing
  * person's centroid ([addSample]). Duplicate labels are rejected outright —
  * use [addSample] to improve an existing person's recognition.
+ *
+ * With a [confirm] hook the capture becomes interactive: each face found is
+ * offered to the hook, and a rejected snap (or a snap with no face, via
+ * [onNoFace]) loops back for another shutter press instead of failing.
+ * Without [confirm] the original one-shot semantics apply (first face wins,
+ * no face ⇒ failure).
  */
 open class FaceEnrollmentCoordinator(
     private val store: KnownFaceStore,
@@ -36,6 +42,10 @@ open class FaceEnrollmentCoordinator(
     private val settingsSaver: suspend (AppSettings) -> Unit,
     /** Invoked with the exact frame/box used for embedding (thumbnail source). */
     private val onCapture: ((ColorBitmap, FaceDetection) -> Unit)? = null,
+    /** Review gate: return false to reject the snap and capture again. */
+    private val confirm: (suspend (ColorBitmap, FaceDetection) -> Boolean)? = null,
+    /** Interactive mode only: a shutter snap found no face — surface inline. */
+    private val onNoFace: (() -> Unit)? = null,
 ) {
 
     /** Enrolls a NEW person; fails when [label] already exists. */
@@ -62,29 +72,43 @@ open class FaceEnrollmentCoordinator(
         faceFor: () -> KnownFace,
     ): Result<KnownFace> {
         val embedder = embedder ?: return failure("Embedding model unavailable")
-        val (frame, face) = try {
-            faceFinder.nextFace() ?: return failure("No face seen")
-        } catch (e: Exception) {
-            return failure("Camera error: ${e.message}")
-        }
-        onCapture?.invoke(frame, face)
-        // TFLite failures surface as IllegalStateException from run(); report
-        // them as a normal result instead of crashing the caller's snackbar
-        // with a raw native message.
-        val embedding = try {
-            embedder.embed(frame, doubleArrayOf(face.x1, face.y1, face.x2, face.y2))
-        } catch (e: Exception) {
-            Log.w(TAG, "embedding failed", e)
-            return failure("Embedding failed")
-        } ?: return failure("Embedding failed")
-        if (embedding.isEmpty()) return failure("Embedding failed")
+        while (true) {
+            val found = try {
+                faceFinder.nextFace()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Cancel parks here (shutter/review wait): must propagate so the
+                // caller's catch reports "Enrollment cancelled", not a failure.
+                throw e
+            } catch (e: Exception) {
+                return failure("Camera error: ${e.message}")
+            }
+            if (found == null) {
+                // Interactive mode retries with an inline error; legacy fails.
+                if (confirm == null) return failure("No face seen")
+                onNoFace?.invoke()
+                continue
+            }
+            val (frame, face) = found
+            onCapture?.invoke(frame, face)
+            if (confirm?.invoke(frame, face) == false) continue
+            // TFLite failures surface as IllegalStateException from run(); report
+            // them as a normal result instead of crashing the caller's snackbar
+            // with a raw native message.
+            val embedding = try {
+                embedder.embed(frame, doubleArrayOf(face.x1, face.y1, face.x2, face.y2))
+            } catch (e: Exception) {
+                Log.w(TAG, "embedding failed", e)
+                return failure("Embedding failed")
+            } ?: return failure("Embedding failed")
+            if (embedding.isEmpty()) return failure("Embedding failed")
 
-        store.enroll(id, embedding)
-        val updated = faceFor()
-        // Reload so concurrent edits between capture and save are preserved.
-        val current = settingsLoader()
-        settingsSaver(current.copyWith(knownFaces = current.knownFaces.filterNot { it.id == id } + updated))
-        return Result.success(updated)
+            store.enroll(id, embedding)
+            val updated = faceFor()
+            // Reload so concurrent edits between capture and save are preserved.
+            val current = settingsLoader()
+            settingsSaver(current.copyWith(knownFaces = current.knownFaces.filterNot { it.id == id } + updated))
+            return Result.success(updated)
+        }
     }
 
     private fun newId(): String = "face_" + UUID.randomUUID().toString().substring(0, 8)
@@ -94,16 +118,21 @@ open class FaceEnrollmentCoordinator(
     companion object {
         private const val TAG = "FaceEnroll"
 
-        const val DEFAULT_TIMEOUT_MS = 10_000L
+        /** Post-shutter grab budget: frames arrive every 250 ms on the bus. */
+        const val CAPTURE_TIMEOUT_MS = 2_000L
 
         /**
-         * Bus-driven finder: feeds published frames to a detection worker and
-         * completes with the first face found; null on timeout.
+         * Shutter-gated finder: parks on [awaitShutter] first (no engine, no
+         * bus subscription — zero CPU while the user lines up the shot), then
+         * grabs the freshest frame and runs a single detection pass. Null when
+         * that frame has no face (or none arrives within [timeoutMs]).
          */
-        fun busFinder(
+        fun captureOnDemandFinder(
             engineFactory: () -> io.securitycam.level2.detection.face.FaceEngine,
-            timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+            awaitShutter: suspend () -> Unit,
+            timeoutMs: Long = CAPTURE_TIMEOUT_MS,
         ): FaceFinder = FaceFinder {
+            awaitShutter()
             coroutineScope {
                 val engine = engineFactory()
                 // DROP_OLDEST: under load we always test the freshest frame.
@@ -112,23 +141,23 @@ open class FaceEnrollmentCoordinator(
                 )
                 val hit = CompletableDeferred<Pair<ColorBitmap, FaceDetection>?>()
                 val worker = launch(Dispatchers.IO) {
-                    var result: Pair<ColorBitmap, FaceDetection>? = null
-                    while (result == null) {
-                        val frame = runCatching { frames.receiveCatching().getOrNull() }
-                            .getOrNull() ?: break
+                    val frame = runCatching { frames.receiveCatching().getOrNull() }.getOrNull()
+                    val result = if (frame == null) {
+                        null
+                    } else {
                         val best = runCatching { engine.detectFaces(frame) }
                             .getOrDefault(emptyList())
-                            .maxByOrNull { it.score } ?: continue
-                        result = frame to best
+                            .maxByOrNull { it.score }
+                        if (best == null) null else frame to best
                     }
                     hit.complete(result)
                 }
                 val listener: (ByteArray, Int, Int) -> Unit = { bgr, w, h ->
                     frames.trySend(ColorBitmap(w, h, bgr))
                 }
-                CameraFrameBus.add(listener)
                 try {
                     engine.init()
+                    CameraFrameBus.add(listener)
                     try {
                         withTimeout(timeoutMs) { hit.await() }
                     } catch (_: TimeoutCancellationException) {

@@ -8,6 +8,7 @@ import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.identity.FaceEnrollmentCoordinator
+import io.securitycam.level2.identity.FaceFinder
 import io.securitycam.level2.identity.KnownFaceStore
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -118,6 +119,195 @@ class FaceEnrollmentViewModelTest {
             looper.runToEndOfTasks()
         }
         looper.runToEndOfTasks()
+    }
+
+    /** Pumps the main looper until [condition] holds (or the try budget runs out). */
+    private fun pumpUntil(condition: () -> Boolean) {
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (!condition() && tries++ < 200) {
+            looper.runToEndOfTasks()
+        }
+    }
+
+    private class PhaseEmbedder : io.securitycam.level2.detection.face.FaceEmbedder {
+        override fun embed(f: ColorBitmap, box: DoubleArray): FloatArray =
+            floatArrayOf(1f, 0f)
+    }
+
+    /**
+     * Real coordinator whose finder awaits the shutter hook, with the VM's
+     * confirm/onNoFace hooks wired through — the production phase machine.
+     * [findFace] decides each capture's outcome (null = no face).
+     */
+    private fun phaseViewModel(
+        session: CameraSession,
+        findFace: (call: Int) -> Pair<ColorBitmap, FaceDetection>?,
+    ): SettingsViewModel {
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        var calls = 0
+        return SettingsViewModel(
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            eventsClearer = {},
+            enrollmentFactory = { hooks ->
+                FaceEnrollmentCoordinator(
+                    store = KnownFaceStore(createTempDir()),
+                    embedder = PhaseEmbedder(),
+                    faceFinder = FaceFinder {
+                        hooks.awaitShutter()
+                        findFace(++calls)
+                    },
+                    settingsLoader = { AppSettings.defaults() },
+                    settingsSaver = {},
+                    onCapture = hooks.onCapture,
+                    confirm = hooks.confirm,
+                    onNoFace = hooks.onNoFace,
+                )
+            },
+            cameraActive = { session.active },
+            startCameraSession = { _ ->
+                session.startCount++
+                session.bindLater()
+            },
+            stopCameraSession = {
+                session.stopCount++
+                session.active = false
+            },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+    }
+
+    @Test
+    fun shutterArmCaptureUse_completesEnrollment() {
+        val session = CameraSession()
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        val vm = phaseViewModel(session) { frame to det }
+
+        vm.startEnrollment("Bob")
+        pumpUntil { vm.shutterArmed.value }
+        assertTrue(vm.shutterArmed.value)
+        assertEquals(null, vm.capturedFrame.value)
+
+        vm.requestCapture()
+        pumpUntil { vm.capturedFrame.value != null }
+        assertTrue(vm.capturedFrame.value != null)
+        assertEquals(false, vm.shutterArmed.value)
+
+        vm.useCapturedPhoto()
+        pumpUntilIdle(vm)
+
+        assertEquals(null, vm.enrollingLabel.value)
+        assertEquals(null, vm.capturedFrame.value)
+        assertEquals(false, vm.shutterArmed.value)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Bob" + suffix, vm.message.value)
+    }
+
+    @Test
+    fun retake_rearmsShutter_thenUseSucceeds() {
+        val session = CameraSession()
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        var calls = 0
+        val vm = phaseViewModel(session) { calls++; frame to det }
+
+        vm.startEnrollment("Cara")
+        pumpUntil { vm.shutterArmed.value }
+        vm.requestCapture()
+        pumpUntil { vm.capturedFrame.value != null }
+
+        vm.retakeCapturedPhoto()
+        pumpUntil { vm.capturedFrame.value == null && vm.shutterArmed.value }
+        assertTrue(vm.shutterArmed.value)
+
+        vm.requestCapture()
+        pumpUntil { vm.capturedFrame.value != null }
+        vm.useCapturedPhoto()
+        pumpUntilIdle(vm)
+
+        assertEquals(2, calls)
+        val suffix = " — face recognition enabled; restart monitoring to apply"
+        assertEquals("Enrolled Cara" + suffix, vm.message.value)
+    }
+
+    @Test
+    fun noFace_setsInlineError_andRearms() {
+        val session = CameraSession()
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        var lastCall = 0
+        val vm = phaseViewModel(session) { n ->
+            lastCall = n
+            if (n == 1) null else frame to det
+        }
+
+        vm.startEnrollment("Dee")
+        pumpUntil { vm.shutterArmed.value }
+        vm.requestCapture()
+        pumpUntil {
+            vm.enrollmentError.value != null || vm.capturedFrame.value != null
+        }
+        assertEquals("No face detected — try again", vm.enrollmentError.value)
+        assertEquals(null, vm.capturedFrame.value)
+        // Interactive mode re-arms for the next press after the miss.
+        pumpUntil { vm.shutterArmed.value }
+        assertTrue(vm.shutterArmed.value)
+
+        vm.requestCapture()
+        pumpUntil { vm.capturedFrame.value != null }
+        assertEquals(null, vm.enrollmentError.value) // cleared by the press
+        vm.useCapturedPhoto()
+        pumpUntilIdle(vm)
+
+        assertEquals(2, lastCall)
+        assertTrue(vm.message.value?.contains("Enrolled Dee") == true)
+        assertEquals(null, vm.enrollmentError.value)
+    }
+
+    @Test
+    fun requestCapture_beforeArmed_isDropped() {
+        val session = CameraSession()
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        val vm = phaseViewModel(session) { frame to det }
+
+        vm.startEnrollment("Fay")
+        // Press before the finder parks: gate is null, nothing happens.
+        vm.requestCapture()
+        assertEquals(null, vm.capturedFrame.value)
+
+        pumpUntil { vm.shutterArmed.value }
+        assertTrue(vm.shutterArmed.value)
+        assertEquals(null, vm.capturedFrame.value)
+        vm.cancelEnrollment()
+        pumpUntilIdle(vm)
+        assertEquals(null, vm.enrollingLabel.value)
+    }
+
+    @Test
+    fun cancelDuringReview_stopsSessionAndClearsState() {
+        val session = CameraSession()
+        val frame = ColorBitmap(8, 8, ByteArray(3 * 8 * 8))
+        val det = FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        val vm = phaseViewModel(session) { frame to det }
+
+        vm.startEnrollment("Gus")
+        pumpUntil { vm.shutterArmed.value }
+        vm.requestCapture()
+        pumpUntil { vm.capturedFrame.value != null }
+
+        vm.cancelEnrollment()
+        pumpUntilIdle(vm)
+
+        assertEquals(null, vm.enrollingLabel.value)
+        assertEquals(null, vm.capturedFrame.value)
+        assertEquals(false, vm.shutterArmed.value)
+        assertEquals(1, session.stopCount)
+        assertEquals("Enrollment cancelled", vm.message.value)
     }
 
     @Test
@@ -521,8 +711,8 @@ class FaceEnrollmentViewModelTest {
             settingsLoader = { AppSettings.defaults() },
             settingsSaver = {},
             eventsClearer = {},
-            enrollmentFactory = { onCapture ->
-                hook = onCapture
+            enrollmentFactory = { hooks ->
+                hook = hooks.onCapture
                 realCoordinator
             },
             cameraActive = { session.active },

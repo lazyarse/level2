@@ -91,11 +91,20 @@ fun SecurityCamApp(
                 .padding(innerPadding),
         ) {
             if (enrollmentActive) {
+                val capturedFrame by settingsViewModel.capturedFrame.collectAsState()
+                val enrollmentError by settingsViewModel.enrollmentError.collectAsState()
+                val shutterArmed by settingsViewModel.shutterArmed.collectAsState()
                 FaceEnrollmentScreen(
                     label = enrollingLabel.orEmpty(),
                     onCancel = { settingsViewModel.cancelEnrollment() },
                     onFlipCamera = { settingsViewModel.flipEnrollmentCamera() },
-                    canFlipCamera = enrollmentSessionLocal,
+                    canFlipCamera = enrollmentSessionLocal && capturedFrame == null,
+                    capturedFrame = capturedFrame,
+                    error = enrollmentError,
+                    shutterArmed = shutterArmed,
+                    onShutter = { settingsViewModel.requestCapture() },
+                    onUsePhoto = { settingsViewModel.useCapturedPhoto() },
+                    onRetake = { settingsViewModel.retakeCapturedPhoto() },
                 )
             } else if (showZoneEditor) {
                 // Live camera behind the editor so zones land on real

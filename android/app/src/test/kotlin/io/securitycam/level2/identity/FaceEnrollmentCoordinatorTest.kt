@@ -5,7 +5,12 @@ import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.face.FaceDetection
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -36,6 +41,8 @@ class FaceEnrollmentCoordinatorTest {
         store: KnownFaceStore,
         finder: FaceFinder,
         embedder: io.securitycam.level2.detection.face.FaceEmbedder? = FakeEmbedder(),
+        confirm: (suspend (ColorBitmap, FaceDetection) -> Boolean)? = null,
+        onNoFace: (() -> Unit)? = null,
     ): Pair<FaceEnrollmentCoordinator, MutableList<AppSettings>> {
         var settings = AppSettings.defaults()
         val saves = mutableListOf<AppSettings>()
@@ -45,6 +52,8 @@ class FaceEnrollmentCoordinatorTest {
             faceFinder = finder,
             settingsLoader = { settings },
             settingsSaver = { saves.add(it); settings = it },
+            confirm = confirm,
+            onNoFace = onNoFace,
         )
         return c to saves
     }
@@ -159,5 +168,88 @@ class FaceEnrollmentCoordinatorTest {
         assertTrue(result.isFailure)
         assertEquals("Embedding failed", result.exceptionOrNull()?.message)
         assertTrue(saves.isEmpty())
+    }
+
+    @Test
+    fun rejectedCaptureLoopsUntilAccepted() = runBlocking {
+        var finderCalls = 0
+        var confirmCalls = 0
+        val (c, saves) = coordinator(
+            KnownFaceStore(tmp.newFolder("kf")),
+            finder = { finderCalls++; frame to face },
+            confirm = { _, _ -> confirmCalls++; confirmCalls > 1 },
+        )
+        val result = c.enroll("Alice")
+        assertTrue(result.isSuccess)
+        assertEquals(2, finderCalls)
+        assertEquals(2, confirmCalls)
+        assertEquals(1, saves.size)
+    }
+
+    @Test
+    fun noFaceInInteractiveModeInvokesCallbackAndRetries() = runBlocking {
+        var calls = 0
+        var noFaceCount = 0
+        val (c, saves) = coordinator(
+            KnownFaceStore(tmp.newFolder("kf")),
+            finder = { calls++; if (calls == 1) null else frame to face },
+            confirm = { _, _ -> true },
+            onNoFace = { noFaceCount++ },
+        )
+        val result = c.enroll("Alice")
+        assertTrue(result.isSuccess)
+        assertEquals(1, noFaceCount)
+        assertEquals(2, calls)
+        assertEquals(1, saves.size)
+    }
+
+    @Test
+    fun captureOnDemandFinderWaitsForShutterThenCaptures() = runBlocking {
+        val engine = io.securitycam.level2.detection.face.MockFaceEngine().apply {
+            faces.add(face)
+        }
+        val shutter = CompletableDeferred<Unit>()
+        val finder = FaceEnrollmentCoordinator.captureOnDemandFinder(
+            engineFactory = { engine },
+            awaitShutter = { shutter.await() },
+            timeoutMs = 5_000,
+        )
+        val pending = async(Dispatchers.Default) { finder.nextFace() }
+        // A frame published before the press is ignored (no listener yet).
+        io.securitycam.level2.camera_service.CameraFrameBus.publish(
+            frame.bgr, frame.width, frame.height,
+        )
+        delay(100)
+        assertTrue(!pending.isCompleted)
+        shutter.complete(Unit)
+        delay(200) // listener attach + engine init
+        io.securitycam.level2.camera_service.CameraFrameBus.publish(
+            frame.bgr, frame.width, frame.height,
+        )
+        val hit = withTimeout(5_000) { pending.await() }
+        // ColorBitmap is identity-equality; assert the geometry instead.
+        assertEquals(frame.width, hit?.first?.width)
+        assertEquals(frame.height, hit?.first?.height)
+        assertEquals(face, hit?.second)
+    }
+
+    @Test
+    fun captureOnDemandFinderReturnsNullWhenEngineFindsNoFace() = runBlocking {
+        val engine = io.securitycam.level2.detection.face.MockFaceEngine() // no faces
+        val shutter = CompletableDeferred<Unit>()
+        val finder = FaceEnrollmentCoordinator.captureOnDemandFinder(
+            engineFactory = { engine },
+            awaitShutter = { shutter.await() },
+            timeoutMs = 5_000,
+        )
+        val pending = async(Dispatchers.Default) { finder.nextFace() }
+        delay(50)
+        shutter.complete(Unit)
+        delay(200)
+        io.securitycam.level2.camera_service.CameraFrameBus.publish(
+            frame.bgr, frame.width, frame.height,
+        )
+        val hit = withTimeout(5_000) { pending.await() }
+        assertTrue(hit == null)
     }
 }

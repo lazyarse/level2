@@ -257,6 +257,74 @@ class ShellNavigationTest {
         )
     }
 
+    /** Parks in the REVIEW phase (finder immediate + confirm hook awaiting). */
+    private class ReviewParkedCoordinator(
+        app: android.app.Application,
+        private val hooks: io.securitycam.level2.ui.settings.EnrollmentHooks,
+    ) : io.securitycam.level2.identity.FaceEnrollmentCoordinator(
+        store = io.securitycam.level2.identity.KnownFaceStore(
+            java.io.File(app.filesDir, "kf-review-${System.nanoTime()}"),
+        ),
+        embedder = object : io.securitycam.level2.detection.face.FaceEmbedder {
+            override fun embed(
+                f: io.securitycam.level2.detection.ColorBitmap,
+                box: DoubleArray,
+            ): FloatArray = floatArrayOf(1f, 0f)
+        },
+        faceFinder = {
+            io.securitycam.level2.detection.ColorBitmap(8, 8, ByteArray(192)) to
+                io.securitycam.level2.detection.face.FaceDetection(0.1, 0.1, 0.5, 0.5, 0.9)
+        },
+        settingsLoader = { AppSettings() },
+        settingsSaver = { },
+        onCapture = hooks.onCapture,
+        confirm = hooks.confirm,
+        onNoFace = hooks.onNoFace,
+    )
+
+    @Test
+    fun systemBackDuringReviewCancelsEnrollment() {
+        val app = androidx.test.core.app.ApplicationProvider
+            .getApplicationContext<android.app.Application>()
+        val instances = mutableListOf<SettingsViewModel>()
+        val settingsFactory = viewModelFactory {
+            initializer {
+                SettingsViewModel(
+                    settingsLoader = { AppSettings() },
+                    settingsSaver = { },
+                    eventsClearer = { _ -> },
+                    enrollmentFactory = { hooks -> ReviewParkedCoordinator(app, hooks) },
+                    cameraActive = { true },
+                ).also { instances.add(it) }
+            }
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides backOwner()) {
+                SecurityCamApp(settingsFactory = settingsFactory)
+            }
+        }
+        compose.waitForIdle()
+
+        compose.runOnIdle { instances.single().startEnrollment("Bea") }
+        compose.waitForIdle()
+        // Finder is immediate: capture lands in REVIEW (confirm parks on the gate).
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithTag("usePhotoButton").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Enrol face").assertIsDisplayed()
+        compose.onNodeWithTag("usePhotoButton").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("enrollmentPreview").assertDoesNotExist()
+
+        compose.runOnIdle { backDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Enrol face").assertDoesNotExist()
+        org.junit.Assert.assertEquals(
+            "Enrollment cancelled",
+            instances.single().message.value,
+        )
+        org.junit.Assert.assertEquals(null, instances.single().capturedFrame.value)
+    }
+
     private fun backOwner(): OnBackPressedDispatcherOwner {
         val lifecycleOwner = object : LifecycleOwner {
             val registry = LifecycleRegistry(this)
