@@ -9,7 +9,7 @@ import io.securitycam.level2.core.TriggerType
  */
 class TripwireDetector(
     override val config: DetectorConfig,
-) : FrameDetector() {
+) : ZoneFilteredDetector() {
 
     var tripwireZones: List<DetectionZone> = emptyList()
 
@@ -114,14 +114,6 @@ class TripwireDetector(
 
         return result
     }
-
-    private fun result(ts: java.time.Instant, score: Double, triggered: Boolean): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-        )
 
     companion object {
         private const val MATCH_THRESHOLD = 0.15

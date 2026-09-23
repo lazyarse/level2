@@ -24,25 +24,16 @@ class FaceRecognizer(
     engine: FaceEngine? = null,
 ) : FaceDetector(config, engine) {
 
-    private var persistenceCount = 0
-
-    override fun reset() {
-        super.reset()
-        persistenceCount = 0
-    }
-
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val top = topFace(frame) ?: run {
             persistenceCount = 0
             return result(frame.timestamp, 0.0, false)
         }
         val (color, best) = top
-        val above = best.score >= config.threshold
-        persistenceCount = if (above) persistenceCount + 1 else 0
-        if (persistenceCount < config.persistenceFrames) {
-            return result(frame.timestamp, best.score, false)
+        val (score, triggered, _) = gate(best.score, present = true)
+        if (!triggered) {
+            return result(frame.timestamp, score, false)
         }
-        persistenceCount = 0
 
         return when (val identity = identify(color, best)) {
             null ->
@@ -98,20 +89,4 @@ class FaceRecognizer(
             ?.let { Identity.Known(it) }
             ?: Identity.Unknown
     }
-
-    private fun result(
-        ts: java.time.Instant,
-        score: Double,
-        triggered: Boolean,
-        triggerType: String = config.type,
-        detail: String? = null,
-        detectorId: String? = null,
-    ): DetectionResult = DetectionResult(
-        timestamp = ts,
-        triggerType = triggerType,
-        score = score,
-        triggered = triggered,
-        detail = detail,
-        detectorId = detectorId,
-    )
 }

@@ -24,7 +24,6 @@ class DogDetector(
 ) : HybridDetector() {
 
     private val engine: DogEngine = visualEngine ?: YoloDogEngine(AppContextHolder.require())
-    private var visualStreak = 0
     private var audioStreak = 0
 
     override val id: String get() = config.type
@@ -35,7 +34,7 @@ class DogDetector(
     }
 
     override fun reset() {
-        visualStreak = 0
+        super.reset()
         audioStreak = 0
     }
 
@@ -46,34 +45,18 @@ class DogDetector(
     // ---- sight ----
 
     override fun analyzeFrame(frame: AnalysisFrame): DetectionResult =
-        result(frame.timestamp, 0.0, false, null)
+        result(frame.timestamp, 0.0, false, detail = null)
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
-        val color = frame.color ?: return result(frame.timestamp, 0.0, false, null)
-        var dogs = engine.detectDogs(color)
-        if (dogs.isNotEmpty()) {
-            dogs = dogs.filter { p ->
-                val bx = p.x1 / color.width
-                val by = p.y1 / color.height
-                val bw = (p.x2 - p.x1) / color.width
-                val bh = (p.y2 - p.y1) / color.height
-                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
-                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
-            }
-        }
+        val color = frame.color ?: return result(frame.timestamp, 0.0, false, detail = null)
+        val dogs = keepPixelBoxes(engine.detectDogs(color), color.width, color.height)
         latestBoxes = dogs
-        if (dogs.isEmpty()) {
-            visualStreak = 0
-            return result(frame.timestamp, 0.0, false, null)
+        val outcome = if (dogs.isEmpty()) {
+            gate(0.0, present = false)
+        } else {
+            gate(dogs.maxOf { it.score }, present = true, fireDetail = DETAIL_SEEN)
         }
-        val maxScore = dogs.maxOf { it.score }
-        val above = maxScore >= config.threshold
-        visualStreak = if (above) visualStreak + 1 else 0
-        if (visualStreak >= config.persistenceFrames) {
-            visualStreak = 0
-            return result(frame.timestamp, maxScore, true, DETAIL_SEEN)
-        }
-        return result(frame.timestamp, maxScore, false, null)
+        return result(frame.timestamp, outcome.score, outcome.triggered, detail = outcome.detail)
     }
 
     // ---- sound ----
@@ -88,24 +71,11 @@ class DogDetector(
         if (audioStreak >= config.persistenceFrames) {
             audioStreak = 0
             val detail = if (bark >= growl) DETAIL_BARK else DETAIL_GROWL
-            return result(scores.timestamp, soundScore, true, detail)
+            return result(scores.timestamp, soundScore, true, detail = detail)
         }
-        return result(scores.timestamp, soundScore, false, null)
+        return result(scores.timestamp, soundScore, false, detail = null)
     }
 
-    private fun result(
-        ts: java.time.Instant,
-        score: Double,
-        triggered: Boolean,
-        detail: String?,
-    ): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-            detail = detail,
-        )
 
     companion object {
         const val DETAIL_SEEN = "seen"

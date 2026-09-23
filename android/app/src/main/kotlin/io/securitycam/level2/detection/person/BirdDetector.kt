@@ -4,8 +4,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
-import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.ZoneFilter
+import io.securitycam.level2.detection.ZoneFilteredDetector
 
 /**
  * Bird-detection trigger. Runs on color analysis frames (motion-gated by the
@@ -17,20 +16,14 @@ import io.securitycam.level2.detection.ZoneFilter
 class BirdDetector(
     override val config: DetectorConfig,
     engine: BirdEngine? = null,
-) : FrameDetector() {
+) : ZoneFilteredDetector() {
 
     private val engine: BirdEngine = engine ?: YoloBirdEngine(AppContextHolder.require())
-    private var persistenceCount = 0
-
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.bird
 
     override suspend fun init() {
         engine.init()
-    }
-
-    override fun reset() {
-        persistenceCount = 0
     }
 
     override suspend fun dispose() {
@@ -42,37 +35,14 @@ class BirdDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        var birds = engine.detectBirds(color)
-        if (birds.isNotEmpty()) {
-            birds = birds.filter { p ->
-                val bx = p.x1 / color.width
-                val by = p.y1 / color.height
-                val bw = (p.x2 - p.x1) / color.width
-                val bh = (p.y2 - p.y1) / color.height
-                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
-                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
-            }
-        }
+        val birds = keepPixelBoxes(engine.detectBirds(color), color.width, color.height)
         latestBoxes = birds
-        if (birds.isEmpty()) {
-            persistenceCount = 0
-            return result(frame.timestamp, 0.0, false)
+        val outcome = if (birds.isEmpty()) {
+            gate(0.0, present = false)
+        } else {
+            gate(birds.maxOf { it.score }, present = true)
         }
-        val maxScore = birds.maxOf { it.score }
-        val above = maxScore >= config.threshold
-        persistenceCount = if (above) persistenceCount + 1 else 0
-        if (persistenceCount >= config.persistenceFrames) {
-            persistenceCount = 0
-            return result(frame.timestamp, maxScore, true)
-        }
-        return result(frame.timestamp, maxScore, false)
+        return result(frame.timestamp, outcome.score, outcome.triggered)
     }
 
-    private fun result(ts: java.time.Instant, score: Double, triggered: Boolean): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-        )
 }

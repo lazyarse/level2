@@ -4,8 +4,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
-import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.ZoneFilter
+import io.securitycam.level2.detection.ZoneFilteredDetector
 
 /**
  * Vehicle-detection trigger (car/motorcycle/bus/truck). Runs on color analysis
@@ -18,20 +17,14 @@ import io.securitycam.level2.detection.ZoneFilter
 class VehicleDetector(
     override val config: DetectorConfig,
     engine: VehicleEngine? = null,
-) : FrameDetector() {
+) : ZoneFilteredDetector() {
 
     private val engine: VehicleEngine = engine ?: YoloVehicleEngine(AppContextHolder.require())
-    private var persistenceCount = 0
-
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.vehicle
 
     override suspend fun init() {
         engine.init()
-    }
-
-    override fun reset() {
-        persistenceCount = 0
     }
 
     override suspend fun dispose() {
@@ -43,37 +36,14 @@ class VehicleDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        var vehicles = engine.detectVehicles(color)
-        if (vehicles.isNotEmpty()) {
-            vehicles = vehicles.filter { p ->
-                val bx = p.x1 / color.width
-                val by = p.y1 / color.height
-                val bw = (p.x2 - p.x1) / color.width
-                val bh = (p.y2 - p.y1) / color.height
-                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
-                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
-            }
-        }
+        val vehicles = keepPixelBoxes(engine.detectVehicles(color), color.width, color.height)
         latestBoxes = vehicles
-        if (vehicles.isEmpty()) {
-            persistenceCount = 0
-            return result(frame.timestamp, 0.0, false)
+        val outcome = if (vehicles.isEmpty()) {
+            gate(0.0, present = false)
+        } else {
+            gate(vehicles.maxOf { it.score }, present = true)
         }
-        val maxScore = vehicles.maxOf { it.score }
-        val above = maxScore >= config.threshold
-        persistenceCount = if (above) persistenceCount + 1 else 0
-        if (persistenceCount >= config.persistenceFrames) {
-            persistenceCount = 0
-            return result(frame.timestamp, maxScore, true)
-        }
-        return result(frame.timestamp, maxScore, false)
+        return result(frame.timestamp, outcome.score, outcome.triggered)
     }
 
-    private fun result(ts: java.time.Instant, score: Double, triggered: Boolean): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-        )
 }

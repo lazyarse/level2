@@ -4,8 +4,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
-import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.ZoneFilter
+import io.securitycam.level2.detection.ZoneFilteredDetector
 
 /**
  * Livestock-detection trigger (cow/sheep/horse). Runs on color analysis frames
@@ -18,20 +17,14 @@ import io.securitycam.level2.detection.ZoneFilter
 class LivestockDetector(
     override val config: DetectorConfig,
     engine: LivestockEngine? = null,
-) : FrameDetector() {
+) : ZoneFilteredDetector() {
 
     private val engine: LivestockEngine = engine ?: YoloLivestockEngine(AppContextHolder.require())
-    private var persistenceCount = 0
-
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.livestock
 
     override suspend fun init() {
         engine.init()
-    }
-
-    override fun reset() {
-        persistenceCount = 0
     }
 
     override suspend fun dispose() {
@@ -43,37 +36,14 @@ class LivestockDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        var animals = engine.detectLivestock(color)
-        if (animals.isNotEmpty()) {
-            animals = animals.filter { p ->
-                val bx = p.x1 / color.width
-                val by = p.y1 / color.height
-                val bw = (p.x2 - p.x1) / color.width
-                val bh = (p.y2 - p.y1) / color.height
-                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
-                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
-            }
-        }
+        val animals = keepPixelBoxes(engine.detectLivestock(color), color.width, color.height)
         latestBoxes = animals
-        if (animals.isEmpty()) {
-            persistenceCount = 0
-            return result(frame.timestamp, 0.0, false)
+        val outcome = if (animals.isEmpty()) {
+            gate(0.0, present = false)
+        } else {
+            gate(animals.maxOf { it.score }, present = true)
         }
-        val maxScore = animals.maxOf { it.score }
-        val above = maxScore >= config.threshold
-        persistenceCount = if (above) persistenceCount + 1 else 0
-        if (persistenceCount >= config.persistenceFrames) {
-            persistenceCount = 0
-            return result(frame.timestamp, maxScore, true)
-        }
-        return result(frame.timestamp, maxScore, false)
+        return result(frame.timestamp, outcome.score, outcome.triggered)
     }
 
-    private fun result(ts: java.time.Instant, score: Double, triggered: Boolean): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-        )
 }

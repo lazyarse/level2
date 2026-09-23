@@ -86,11 +86,90 @@ abstract class AudioDetector : Detector {
 }
 
 /**
+ * Frame detector with zone filtering, threshold/persistence gating, and
+ * result construction shared by every box-based detector. Subclasses keep
+ * only engine wiring and any custom logic (dwell timing, audio paths,
+ * crossing tracks); the visual streak always lives here.
+ */
+abstract class ZoneFilteredDetector : FrameDetector() {
+    protected var persistenceCount = 0
+
+    override fun reset() {
+        persistenceCount = 0
+    }
+
+    /** Zone predicate on normalized box coords; exclusion wins. */
+    protected fun keepBox(nx: Double, ny: Double, nw: Double, nh: Double): Boolean =
+        ZoneFilter.rectOverlapsAny(zones, nx, ny, nw, nh) &&
+            !ZoneFilter.boxHitsAnyExclusion(exclusionZones, nx, ny, nw, nh)
+
+    /** [keepBox] over a pixel-space [DetectedBox] list. */
+    protected fun keepPixelBoxes(
+        boxes: List<DetectedBox>,
+        frameW: Int,
+        frameH: Int,
+    ): List<DetectedBox> = boxes.filter { p ->
+        keepBox(
+            p.x1 / frameW,
+            p.y1 / frameH,
+            (p.x2 - p.x1) / frameW,
+            (p.y2 - p.y1) / frameH,
+        )
+    }
+
+    protected data class GateOutcome(
+        val score: Double,
+        val triggered: Boolean,
+        val detail: String?,
+    )
+
+    /**
+     * Threshold/persistence gate. Misses reset the streak; firing resets it
+     * too and carries [fireDetail].
+     */
+    protected fun gate(
+        score: Double,
+        present: Boolean,
+        fireDetail: String? = null,
+    ): GateOutcome {
+        if (!present) {
+            persistenceCount = 0
+            return GateOutcome(0.0, false, null)
+        }
+        val above = score >= config.threshold
+        persistenceCount = if (above) persistenceCount + 1 else 0
+        return if (persistenceCount >= config.persistenceFrames) {
+            persistenceCount = 0
+            GateOutcome(score, true, fireDetail)
+        } else {
+            GateOutcome(score, false, null)
+        }
+    }
+
+    protected fun result(
+        ts: java.time.Instant,
+        score: Double,
+        triggered: Boolean,
+        detail: String? = null,
+        triggerType: String = config.type,
+        detectorId: String? = null,
+    ): DetectionResult = DetectionResult(
+        timestamp = ts,
+        triggerType = triggerType,
+        score = score,
+        triggered = triggered,
+        detail = detail,
+        detectorId = detectorId,
+    )
+}
+
+/**
  * A frame detector that also reacts to classifier scores (combined pet
  * detectors: sight OR sound). Registered under one config; the pipeline feeds
  * it frames through [analyzeFrameAsync] and audio windows through
- * [analyzeScores], each with its own persistence counter.
+ * [analyzeScores]; the visual streak lives in [ZoneFilteredDetector], audio
+ * keeps its own counter.
  */
-abstract class HybridDetector : FrameDetector() {
+abstract class HybridDetector : ZoneFilteredDetector() {
     abstract fun analyzeScores(scores: AudioEventScores): DetectionResult
 }

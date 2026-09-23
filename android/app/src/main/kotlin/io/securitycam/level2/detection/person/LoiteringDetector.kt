@@ -4,8 +4,7 @@ import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.AnalysisFrame
 import io.securitycam.level2.detection.DetectionResult
 import io.securitycam.level2.detection.DetectorConfig
-import io.securitycam.level2.detection.FrameDetector
-import io.securitycam.level2.detection.ZoneFilter
+import io.securitycam.level2.detection.ZoneFilteredDetector
 
 /**
  * Loitering trigger: fires when a person stays inside an inclusion zone for
@@ -17,7 +16,7 @@ import io.securitycam.level2.detection.ZoneFilter
 class LoiteringDetector(
     override val config: DetectorConfig,
     engine: PersonEngine? = null,
-) : FrameDetector() {
+) : ZoneFilteredDetector() {
 
     private val engine: PersonEngine = engine ?: YoloPersonEngine(AppContextHolder.require())
 
@@ -52,21 +51,11 @@ class LoiteringDetector(
     }
 
     override fun analyzeFrame(frame: AnalysisFrame): DetectionResult =
-        result(frame.timestamp, 0.0, false, null)
+        result(frame.timestamp, 0.0, false, detail = null)
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
-        val color = frame.color ?: return result(frame.timestamp, 0.0, false, null)
-        var people = engine.detectPersons(color)
-        if (people.isNotEmpty()) {
-            people = people.filter { p ->
-                val bx = p.x1 / color.width
-                val by = p.y1 / color.height
-                val bw = (p.x2 - p.x1) / color.width
-                val bh = (p.y2 - p.y1) / color.height
-                ZoneFilter.rectOverlapsAny(zones, bx, by, bw, bh) &&
-                    !ZoneFilter.boxHitsAnyExclusion(exclusionZones, bx, by, bw, bh)
-            }
-        }
+        val color = frame.color ?: return result(frame.timestamp, 0.0, false, detail = null)
+        val people = keepPixelBoxes(engine.detectPersons(color), color.width, color.height)
         val nowMs = frame.timestamp.toEpochMilli()
 
         if (people.isEmpty()) {
@@ -76,7 +65,7 @@ class LoiteringDetector(
                 presentMs = 0
                 episodeActive = false
             }
-            return result(frame.timestamp, 0.0, false, null)
+            return result(frame.timestamp, 0.0, false, detail = null)
         }
 
         // Returning from an absence: within grace the clock pauses (no credit);
@@ -94,7 +83,7 @@ class LoiteringDetector(
         if (maxScore < config.threshold) {
             lastPresentAt = nowMs
             hasSeen = true
-            return result(frame.timestamp, maxScore, false, null)
+            return result(frame.timestamp, maxScore, false, detail = null)
         }
 
         val delta = when {
@@ -108,24 +97,12 @@ class LoiteringDetector(
 
         if (!episodeActive && presentMs >= config.dwellSeconds * 1000L) {
             episodeActive = true
-            return result(frame.timestamp, maxScore, true, "loitered ${config.dwellSeconds}s")
+            return result(frame.timestamp, maxScore, true, detail = "loitered ${config.dwellSeconds}s")
         }
-        return result(frame.timestamp, maxScore, false, null)
+        return result(frame.timestamp, maxScore, false, detail = null)
     }
 
-    private fun result(
-        ts: java.time.Instant,
-        score: Double,
-        triggered: Boolean,
-        detail: String?,
-    ): DetectionResult =
-        DetectionResult(
-            timestamp = ts,
-            triggerType = triggerType,
-            score = score,
-            triggered = triggered,
-            detail = detail,
-        )
+
 
     companion object {
         /** Absence shorter than this keeps the accumulated dwell clock. */
