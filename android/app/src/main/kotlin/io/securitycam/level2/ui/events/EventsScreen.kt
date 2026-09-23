@@ -105,6 +105,52 @@ private fun triggerColor(type: String): Color = when (type) {
 private fun effectiveTriggerTypes(triggerType: String, triggerTypes: List<String>): List<String> =
     if (triggerTypes.isEmpty()) listOf(triggerType) else triggerTypes
 
+/** Per-row derived display strings, computed once per event. */
+private data class EventDerived(
+    val typeLabel: String,
+    val iconType: String,
+    val detectorTypes: List<String>,
+    val faceName: String?,
+    val timeText: String,
+)
+
+private fun RecordedEventRow.derived(): EventDerived {
+    // Recognised-face events carry the person's name as detail; inline it.
+    val faceName = detail?.takeIf {
+        triggerTypes.contains(TriggerType.faceKnown) || triggerType == TriggerType.faceKnown
+    }
+    val local = timestamp.atZone(ZoneId.systemDefault())
+    return EventDerived(
+        typeLabel = if (triggerTypes.isEmpty()) {
+            triggerLabel(triggerType)
+        } else {
+            triggerTypes.joinToString(" + ") { triggerLabel(it) }
+        },
+        iconType = triggerTypes.firstOrNull() ?: triggerType,
+        detectorTypes = effectiveTriggerTypes(triggerType, triggerTypes),
+        faceName = faceName,
+        timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second),
+    )
+}
+
+/** "Recognised: <name>" subline, shown only for known-face events. */
+@Composable
+private fun RecognisedLine(faceName: String?) {
+    val subline = buildString {
+        if (faceName != null) {
+            append("Recognised: ")
+            append(faceName)
+        }
+    }
+    if (subline.isNotEmpty()) {
+        Text(
+            subline,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** Detector icons for an event, shared by list rows, timeline cards and gallery tiles. */
 @Composable
 private fun DetectorIconsRow(
@@ -430,20 +476,7 @@ private fun EventRow(
 ) {
 
     // First line shows icons only; the label survives as thumbnail/dialog title.
-    val typeLabel = if (event.triggerTypes.isEmpty()) {
-        triggerLabel(event.triggerType)
-    } else {
-        event.triggerTypes.joinToString(" + ") { triggerLabel(it) }
-    }
-    // Recognised-face events carry the person's name as detail; inline it.
-    val faceName = event.detail?.takeIf {
-        event.triggerTypes.contains(TriggerType.faceKnown) ||
-            event.triggerType == TriggerType.faceKnown
-    }
-    val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
-    val detectorTypes = effectiveTriggerTypes(event.triggerType, event.triggerTypes)
-    val local = event.timestamp.atZone(ZoneId.systemDefault())
-    val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
+    val (typeLabel, iconType, detectorTypes, faceName, timeText) = event.derived()
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -488,19 +521,7 @@ private fun EventRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val subline = buildString {
-                if (faceName != null) {
-                    append("Recognised: ")
-                    append(faceName)
-                }
-            }
-            if (subline.isNotEmpty()) {
-                Text(
-                    subline,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            RecognisedLine(faceName)
         }
         if (event.videoName != null && showPlayButton) {
             IconButton(
@@ -672,19 +693,7 @@ private fun TimelineDetailCard(
     onPlay: (String) -> Unit,
     showPlayButton: Boolean,
 ) {
-    val typeLabel = if (event.triggerTypes.isEmpty()) {
-        triggerLabel(event.triggerType)
-    } else {
-        event.triggerTypes.joinToString(" + ") { triggerLabel(it) }
-    }
-    val iconType = event.triggerTypes.firstOrNull() ?: event.triggerType
-    val detectorTypes = effectiveTriggerTypes(event.triggerType, event.triggerTypes)
-    val faceName = event.detail?.takeIf {
-        event.triggerTypes.contains(TriggerType.faceKnown) ||
-            event.triggerType == TriggerType.faceKnown
-    }
-    val local = event.timestamp.atZone(ZoneId.systemDefault())
-    val timeText = "%02d:%02d:%02d".format(local.hour, local.minute, local.second)
+    val (typeLabel, iconType, detectorTypes, faceName, timeText) = event.derived()
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -730,19 +739,7 @@ private fun TimelineDetailCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            val subline = buildString {
-                if (faceName != null) {
-                    append("Recognised: ")
-                    append(faceName)
-                }
-            }
-            if (subline.isNotEmpty()) {
-                Text(
-                    subline,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            RecognisedLine(faceName)
         }
         if (event.videoName != null && showPlayButton) {
             IconButton(onClick = { onPlay(event.videoName) }) {
