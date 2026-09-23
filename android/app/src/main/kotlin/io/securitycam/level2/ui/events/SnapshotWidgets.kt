@@ -197,9 +197,9 @@ internal fun ZoomableSnapshotDialog(
     Dialog(onDismissRequest = onClose) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, modifier = Modifier.padding(8.dp))
+            // Zoom-only: the image stays centered at every scale (no pan,
+            // so it can never drift around under the finger).
             var scale by remember { mutableFloatStateOf(1f) }
-            var offsetX by remember { mutableFloatStateOf(0f) }
-            var offsetY by remember { mutableFloatStateOf(0f) }
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -217,14 +217,10 @@ internal fun ZoomableSnapshotDialog(
                             .graphicsLayer(
                                 scaleX = scale,
                                 scaleY = scale,
-                                translationX = offsetX,
-                                translationY = offsetY,
                             )
                             .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
+                                detectTransformGestures { _, _, zoom, _ ->
                                     scale = (scale * zoom).coerceIn(1f, 8f)
-                                    offsetX += pan.x
-                                    offsetY += pan.y
                                 }
                             },
                     )
