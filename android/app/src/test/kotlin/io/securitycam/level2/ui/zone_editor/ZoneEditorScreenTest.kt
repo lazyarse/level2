@@ -6,11 +6,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.geometry.Offset
 import io.securitycam.level2.detection.DetectionZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -118,5 +121,39 @@ class ZoneEditorScreenTest {
         compose.waitForIdle()
         assertEquals(1, savedInclusions!!.size)
         assertEquals(1, savedExclusions!!.size)
+    }
+
+    @Test
+    fun swipeFromCornerResizesSelectedZone() {
+        setContent()
+        // Drag the seeded rect's bottom-right corner (0.5, 0.8) outward.
+        // Corner pixels derive from the laid-out canvas via fitCenterBox —
+        // the same mapping production uses.
+        compose.onNodeWithTag("zoneCanvas").performTouchInput {
+            val box = fitCenterBox(width.toFloat(), height.toFloat(), 320, 240)
+            swipe(
+                start = Offset(
+                    box.offsetX + 0.5f * box.width,
+                    box.offsetY + 0.8f * box.height,
+                ),
+                end = Offset(
+                    box.offsetX + 0.7f * box.width,
+                    box.offsetY + 0.9f * box.height,
+                ),
+            )
+        }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("zoneDone").performClick()
+        compose.waitForIdle()
+        val out = savedInclusions!!.single().points
+        // Anchor held, dragged corner followed: loose bounds keep the
+        // gesture-timing-tolerant assertion meaningful, not brittle.
+        assertEquals(0.1, out[0], 1e-9)
+        assertEquals(0.2, out[1], 1e-9)
+        assertTrue("x1 grew toward 0.7 but was ${out[2]}", out[2] > 0.55)
+        assertTrue("y1 grew toward 0.9 but was ${out[3]}", out[3] > 0.82)
+        assertTrue("stays ordered", out[0] < out[2] && out[1] < out[3])
+        assertTrue("stays clamped", out.all { it in 0.0..1.0 })
     }
 }

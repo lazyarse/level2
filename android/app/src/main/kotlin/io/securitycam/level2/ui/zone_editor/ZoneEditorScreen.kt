@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
+import io.securitycam.level2.detection.ZoneFilter.pointInZone
 import io.securitycam.level2.ui.monitor.PreviewSurface
 import io.securitycam.level2.ui.theme.AppButtonShape
 
@@ -383,10 +384,14 @@ private fun EditorCanvas(
                     val box = fitCenterBox(
                         size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
                     )
+                    // Pixel-space handle radius: a real touch target regardless
+                    // of canvas size or frame aspect.
+                    val grabRadiusPx = 24.dp.toPx()
                     detectDragGestures(
                         onDragStart = { off ->
+                            val grab = hitGrabTarget(vm.zones, off.x, off.y, box, grabRadiusPx)
                             val (nx, ny) = screenToNorm(off.x, off.y, box)
-                            vm.onPanStart(nx, ny)
+                            vm.onPanStart(nx, ny, grab)
                         },
                         onDrag = { change, _ ->
                             change.consume()
@@ -404,11 +409,26 @@ private fun EditorCanvas(
                 val fill = base.copy(alpha = 0.18f)
                 val isSelected = i == vm.selected
                 if (r.shape == DetectionZoneShape.rect && r.points.size >= 4) {
+                    // Min/max so mid-drag transients (and legacy inverted
+                    // rects) still render as the box the detector will see
+                    // once normalized on release.
                     val rect = Rect(
-                        left = normToScreen(r.points[0], b.offsetX, b.width),
-                        top = normToScreen(r.points[1], b.offsetY, b.height),
-                        right = normToScreen(r.points[2], b.offsetX, b.width),
-                        bottom = normToScreen(r.points[3], b.offsetY, b.height),
+                        left = minOf(
+                            normToScreen(r.points[0], b.offsetX, b.width),
+                            normToScreen(r.points[2], b.offsetX, b.width),
+                        ),
+                        top = minOf(
+                            normToScreen(r.points[1], b.offsetY, b.height),
+                            normToScreen(r.points[3], b.offsetY, b.height),
+                        ),
+                        right = maxOf(
+                            normToScreen(r.points[0], b.offsetX, b.width),
+                            normToScreen(r.points[2], b.offsetX, b.width),
+                        ),
+                        bottom = maxOf(
+                            normToScreen(r.points[1], b.offsetY, b.height),
+                            normToScreen(r.points[3], b.offsetY, b.height),
+                        ),
                     )
                     drawRect(fill, topLeft = rect.topLeft, size = rect.size)
                     drawRect(base, topLeft = rect.topLeft, size = rect.size, style = Stroke(width = 2f))
@@ -506,6 +526,68 @@ internal fun screenToNorm(x: Float, y: Float, box: DisplayBox): Pair<Double, Dou
 internal fun normToScreen(norm: Double, offset: Float, extent: Float): Float =
     offset + (norm * extent).toFloat()
 
+/**
+ * Pixel-space grab resolution: handles first (topmost zone wins, nearest
+ * handle within [radiusPx] per zone), then zone bodies, else empty space.
+ * Rect corners are 0=TL, 1=TR, 2=BR, 3=BL; poly hits are vertex indices.
+ */
+internal fun hitGrabTarget(
+    zones: List<DetectionZone>,
+    x: Float,
+    y: Float,
+    box: DisplayBox,
+    radiusPx: Float,
+): ZoneGrab {
+    fun distTo(o: Offset): Float =
+        kotlin.math.hypot((x - o.x).toDouble(), (y - o.y).toDouble()).toFloat()
+
+    fun screenPt(nx: Double, ny: Double): Offset = Offset(
+        normToScreen(nx, box.offsetX, box.width),
+        normToScreen(ny, box.offsetY, box.height),
+    )
+
+    for (i in zones.indices.reversed()) {
+        val r = zones[i]
+        if (r.shape == DetectionZoneShape.rect && r.points.size >= 4) {
+            val p = r.points
+            val corners = arrayOf(
+                screenPt(p[0], p[1]),
+                screenPt(p[2], p[1]),
+                screenPt(p[2], p[3]),
+                screenPt(p[0], p[3]),
+            )
+            var best = -1
+            var bestD = radiusPx
+            corners.forEachIndexed { c, o ->
+                val d = distTo(o)
+                if (d <= bestD) {
+                    best = c
+                    bestD = d
+                }
+            }
+            if (best >= 0) return ZoneGrab.RectCorner(i, best)
+        } else if (r.points.size >= 2) {
+            var best = -1
+            var bestD = radiusPx
+            var v = 0
+            while (v * 2 + 1 < r.points.size) {
+                val d = distTo(screenPt(r.points[v * 2], r.points[v * 2 + 1]))
+                if (d <= bestD) {
+                    best = v
+                    bestD = d
+                }
+                v++
+            }
+            if (best >= 0) return ZoneGrab.PolyVertex(i, best)
+        }
+    }
+    val (nx, ny) = screenToNorm(x, y, box)
+    for (i in zones.indices.reversed()) {
+        if (pointInZone(zones[i], nx, ny)) return ZoneGrab.Body(i)
+    }
+    return ZoneGrab.Empty
+}
+
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHandle(c: Offset) {
-    drawCircle(Color.White, radius = 5f, center = c)
+    drawCircle(Color.White, radius = 8f, center = c)
 }

@@ -1,6 +1,9 @@
 package io.securitycam.level2.ui.zones
 
+import io.securitycam.level2.detection.DetectionZone
+import io.securitycam.level2.detection.DetectionZoneShape
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -64,5 +67,91 @@ class ZoneEditorGeometryTest {
         val box = fitCenterBox(0f, 400f, 320, 240)
         assertEquals(0f, box.offsetX, 1e-3f)
         assertEquals(400f, box.height, 1e-3f)
+    }
+
+    // ---- hitGrabTarget (pixel-space handle resolution) ----
+
+    private fun rectZone(id: String, points: List<Double>) = DetectionZone(
+        id = id,
+        shape = DetectionZoneShape.rect,
+        label = id,
+        points = points,
+    )
+
+    @Test
+    fun grabFindsAllFourRectCorners() {
+        // Exact-fit canvas: norm (0.2,0.2,0.8,0.8) → px (64,48,256,192).
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(rectZone("r0", listOf(0.2, 0.2, 0.8, 0.8)))
+        assertEquals(ZoneGrab.RectCorner(0, 0), hitGrabTarget(zones, 64f, 48f, box, 24f))
+        assertEquals(ZoneGrab.RectCorner(0, 1), hitGrabTarget(zones, 256f, 48f, box, 24f))
+        assertEquals(ZoneGrab.RectCorner(0, 2), hitGrabTarget(zones, 256f, 192f, box, 24f))
+        assertEquals(ZoneGrab.RectCorner(0, 3), hitGrabTarget(zones, 64f, 192f, box, 24f))
+    }
+
+    @Test
+    fun grabInsideRectAwayFromHandlesIsBody() {
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(rectZone("r0", listOf(0.2, 0.2, 0.8, 0.8)))
+        assertEquals(ZoneGrab.Body(0), hitGrabTarget(zones, 160f, 120f, box, 24f))
+    }
+
+    @Test
+    fun grabOutsideEverythingIsEmpty() {
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(rectZone("r0", listOf(0.2, 0.2, 0.8, 0.8)))
+        assertEquals(ZoneGrab.Empty, hitGrabTarget(zones, 10f, 10f, box, 24f))
+    }
+
+    @Test
+    fun topmostZoneHandleWins() {
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(
+            rectZone("r0", listOf(0.1, 0.1, 0.9, 0.9)),
+            rectZone("r1", listOf(0.2, 0.2, 0.8, 0.8)),
+        )
+        // (64,48) is r1's corner 0 and inside r0's body: the handle wins.
+        assertEquals(ZoneGrab.RectCorner(1, 0), hitGrabTarget(zones, 64f, 48f, box, 24f))
+    }
+
+    @Test
+    fun grabFindsPolyVertices() {
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(
+            DetectionZone(
+                id = "p0",
+                shape = DetectionZoneShape.poly,
+                label = "tri",
+                points = listOf(0.1, 0.1, 0.9, 0.1, 0.5, 0.9),
+            ),
+        )
+        // Vertex 2 → px (160, 216).
+        assertEquals(ZoneGrab.PolyVertex(0, 2), hitGrabTarget(zones, 160f, 216f, box, 24f))
+    }
+
+    @Test
+    fun grabOutsideRadiusFallsThrough() {
+        val box = fitCenterBox(320f, 240f, 320, 240)
+        val zones = listOf(rectZone("r0", listOf(0.2, 0.2, 0.8, 0.8)))
+        // (94,60) is ~32px from corner 0 (64,48): outside the 24px radius,
+        // comfortably inside the body.
+        val grab = hitGrabTarget(zones, 94f, 60f, box, 24f)
+        assertTrue("expected Body but was $grab", grab is ZoneGrab.Body)
+    }
+
+    @Test
+    fun grabAccountsForLetterboxOffset() {
+        // Tall canvas: 4:3 frame width-limited, image vertically centered.
+        val box = fitCenterBox(320f, 480f, 320, 240)
+        assertTrue(box.offsetY > 0f)
+        val zones = listOf(rectZone("r0", listOf(0.2, 0.2, 0.8, 0.8)))
+        // Corner 0 sits at (64, offsetY + 48), not (64, 48).
+        assertEquals(
+            ZoneGrab.RectCorner(0, 0),
+            hitGrabTarget(zones, 68f, box.offsetY + 52f, box, 24f),
+        )
+        // Letterbox taps clamp into the image edge — here (0.0125, 0.0),
+        // outside the zone entirely.
+        assertEquals(ZoneGrab.Empty, hitGrabTarget(zones, 4f, 4f, box, 24f))
     }
 }
