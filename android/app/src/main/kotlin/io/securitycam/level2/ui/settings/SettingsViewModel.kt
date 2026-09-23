@@ -316,6 +316,11 @@ class SettingsViewModel(
         sessionCameraId = baseEnrollmentCameraId()
         pendingCapture = null
         enrollmentJob = viewModelScope.launch {
+            // Heal phantom residue before the coordinator's duplicate guard
+            // runs: persisted entries for this label that never made it into
+            // the draft (unsaved delete, failed enroll) would otherwise
+            // reject the attempt as "already enrolled".
+            purgeStaleEnrollmentResidue(progressLabel)
             _enrollingLabel.value = progressLabel
             try {
                 val weStartedCamera = !cameraActive()
@@ -358,8 +363,10 @@ class SettingsViewModel(
                             "Added photo for ${enrolledFace?.label}" + enabledSuffix
                         result.isSuccess ->
                             "Enrolled ${enrolledFace?.label}" + enabledSuffix
-                        else ->
+                        else -> {
+                            purgeStaleEnrollmentResidue(progressLabel)
                             "Enroll failed: ${result.exceptionOrNull()?.message ?: "unknown error"}"
+                        }
                     }
                 } finally {
                     if (weStartedCamera) stopCameraSession()
@@ -368,12 +375,46 @@ class SettingsViewModel(
                 _message.value = "Enrollment cancelled"
                 throw e
             } catch (e: Exception) {
+                purgeStaleEnrollmentResidue(progressLabel)
                 _message.value = "Enroll failed: ${e.message ?: "unknown error"}"
             } finally {
                 enrollmentJob = null
                 pendingCapture = null
                 _enrollmentSessionLocal.value = false
                 _enrollingLabel.value = null
+            }
+        }
+    }
+
+    /**
+     * Removes phantom persisted faces for [label]: entries present in stored
+     * settings but absent from the draft. Those arise when an enrollment
+     * persisted its label without syncing the draft (failed attempt, process
+     * death in between) or when a face was deleted without saving — either
+     * way the coordinator's persisted-settings duplicate guard would reject
+     * the name as "already enrolled" although nobody is enrolled. Genuine
+     * entries always exist in the draft too, so only residue matches.
+     * Best-effort: must never fail an enrollment.
+     */
+    private suspend fun purgeStaleEnrollmentResidue(label: String) {
+        runCatching {
+            val persisted = settingsLoader()
+            val draftIds = _draft.value?.knownFaces?.map { it.id }.orEmpty().toSet()
+            val residueIds = persisted.knownFaces
+                .filter { it.label.equals(label, ignoreCase = true) && it.id !in draftIds }
+                .map { it.id }
+                .toSet()
+            if (residueIds.isEmpty()) return@runCatching
+            settingsSaver(
+                persisted.copyWith(
+                    knownFaces = persisted.knownFaces.filterNot { it.id in residueIds },
+                ),
+            )
+            for (id in residueIds) {
+                faceStore?.delete(id)
+                thumbFile(id)?.let { path ->
+                    io.securitycam.level2.ui.events.ThumbCache.evict("face:${path.absolutePath}")
+                }
             }
         }
     }

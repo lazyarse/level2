@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class FaceEnrollmentViewModelTest {
 
-    private class FakeCoordinator(
+    private open class FakeCoordinator(
         private val result: Result<KnownFace>,
         private val onAddSample: ((String) -> Result<KnownFace>)? = null,
     ) : FaceEnrollmentCoordinator(
@@ -379,6 +379,95 @@ class FaceEnrollmentViewModelTest {
         assertTrue(vm.message.value?.contains("already enrolled") == true)
         assertEquals(0, session.startCount)
         assertTrue(coordinator.enrolledLabels.isEmpty())
+    }
+
+    @Test
+    fun stalePersistedEntryAfterUnsavedDelete_doesNotBlockReenrollment() {
+        // Persisted settings still hold Alice (deleted from the draft without
+        // saving); the draft does not.
+        val stale = KnownFace(id = "face_stale", label = "Alice")
+        var settings = AppSettings.defaults().copyWith(knownFaces = listOf(stale))
+        val fresh = KnownFace(id = "face_new", label = "Alice")
+        val coordinator = FakeCoordinator(Result.success(fresh))
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            settingsLoader = { settings },
+            settingsSaver = { s -> settings = s },
+            eventsClearer = {},
+            enrollmentFactory = { _ -> coordinator },
+            cameraActive = { session.active },
+            startCameraSession = { _ ->
+                session.startCount++
+                session.bindLater()
+            },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        // Wait for the async initial draft load.
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+        // Simulate the unsaved delete: draft drops Alice, persisted keeps her.
+        vm.update { it.copy(knownFaces = emptyList()) }
+
+        vm.startEnrollment("Alice")
+        pumpUntilIdle(vm)
+
+        // The coordinator ran (not rejected) and the stale entry is purged.
+        assertEquals(listOf("Alice"), coordinator.enrolledLabels)
+        assertTrue(settings.knownFaces.none { it.id == "face_stale" })
+        assertEquals(listOf(fresh), vm.draft.value?.knownFaces)
+    }
+
+    @Test
+    fun failedEnrollmentPurgesPersistedResidueAndFreesTheName() {
+        var settings = AppSettings.defaults()
+        val residue = KnownFace(id = "face_orphan", label = "Zed")
+        val failing = object : FakeCoordinator(
+            Result.failure(IllegalStateException("No face seen")),
+        ) {
+            override suspend fun enroll(label: String): Result<KnownFace> {
+                enrolledLabels.add(label)
+                // Simulate the partial persist: label saved, then failure.
+                settings = settings.copyWith(knownFaces = settings.knownFaces + residue)
+                return Result.failure(IllegalStateException("No face seen"))
+            }
+        }
+        var active: FaceEnrollmentCoordinator = failing
+        val session = CameraSession()
+        val vm = SettingsViewModel(
+            settingsLoader = { settings },
+            settingsSaver = { s -> settings = s },
+            eventsClearer = {},
+            enrollmentFactory = { _ -> active },
+            cameraActive = { session.active },
+            startCameraSession = { _ ->
+                session.startCount++
+                session.bindLater()
+            },
+            stopCameraSession = { session.active = false },
+            framesWaitTimeoutMs = 200,
+            framesSettleMs = 10,
+        )
+        val looper = shadowOf(Looper.getMainLooper())
+        var tries = 0
+        while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+
+        vm.startEnrollment("Zed")
+        pumpUntilIdle(vm)
+
+        assertEquals("Enroll failed: No face seen", vm.message.value)
+        assertTrue(settings.knownFaces.isEmpty())
+
+        // The name is reusable immediately.
+        val fresh = KnownFace(id = "face_new", label = "Zed")
+        active = FakeCoordinator(Result.success(fresh))
+        vm.startEnrollment("Zed")
+        pumpUntilIdle(vm)
+
+        assertTrue(vm.message.value?.contains("Enrolled Zed") == true)
+        assertEquals(listOf(fresh), vm.draft.value?.knownFaces)
     }
 
     @Test
