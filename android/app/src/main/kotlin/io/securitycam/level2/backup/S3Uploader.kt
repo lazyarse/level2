@@ -2,19 +2,20 @@ package io.securitycam.level2.backup
 
 import io.securitycam.level2.core.CloudBackupSettings
 import java.io.InputStream
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * S3-compatible backend (AWS S3, Backblaze B2, Minio, Wasabi) via path-style
  * addressing and Signature V4 with UNSIGNED-PAYLOAD — no SDK dependency.
  */
-class S3Uploader(private val settings: CloudBackupSettings) : CloudUploader {
+class S3Uploader(private val settings: CloudBackupSettings) : HttpCloudUploader() {
 
     override val backendId: String get() = "s3"
+
+    override val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS
+    override val readTimeoutMs: Int = READ_TIMEOUT_MS
+    override val chunkSize: Int = CHUNK_SIZE
 
     private fun urlFor(remoteKey: String): Pair<URL, String> {
         val endpoint = settings.serverUrl.trim().trimEnd('/')
@@ -26,43 +27,38 @@ class S3Uploader(private val settings: CloudBackupSettings) : CloudUploader {
         return url to canonicalUri
     }
 
-    private fun openConnection(url: URL): HttpURLConnection {
-        val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = CONNECT_TIMEOUT_MS
-        conn.readTimeout = READ_TIMEOUT_MS
-        return conn
+    private fun hostOf(url: URL): String =
+        url.host + if (url.port !in listOf(-1, 80, 443)) ":${url.port}" else ""
+
+    private fun sign(
+        method: String,
+        url: URL,
+        canonicalUri: String,
+        contentType: String? = null,
+    ): Map<String, String> {
+        val signed = SigV4.sign(
+            method = method,
+            host = hostOf(url),
+            canonicalUri = canonicalUri,
+            canonicalQuery = "",
+            region = settings.region.ifBlank { "us-east-1" },
+            service = "s3",
+            accessKeyId = settings.username,
+            secretAccessKey = settings.password,
+            extraHeaders = if (contentType != null) mapOf("content-type" to contentType) else emptyMap(),
+            payloadHash = SigV4.UNSIGNED_PAYLOAD,
+        )
+        return mapOf(
+            "Authorization" to signed.authorizationHeader,
+            "x-amz-date" to signed.amzDate,
+            "x-amz-content-sha256" to signed.payloadHash,
+        )
     }
 
-    override suspend fun validate(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            if (!CloudUploaderRegistry.plainHttpAllowed(settings.serverUrl)) return@withContext false
-            val (url, canonicalUri) = urlFor("")
-            val host = url.host + if (url.port !in listOf(-1, 80, 443)) ":${url.port}" else ""
-            val signed = SigV4.sign(
-                method = "HEAD",
-                host = host,
-                canonicalUri = canonicalUri,
-                canonicalQuery = "",
-                region = settings.region.ifBlank { "us-east-1" },
-                service = "s3",
-                accessKeyId = settings.username,
-                secretAccessKey = settings.password,
-                payloadHash = SigV4.UNSIGNED_PAYLOAD,
-            )
-            val conn = openConnection(url).apply {
-                requestMethod = "HEAD"
-                setRequestProperty("Authorization", signed.authorizationHeader)
-                setRequestProperty("x-amz-date", signed.amzDate)
-                setRequestProperty("x-amz-content-sha256", signed.payloadHash)
-            }
-            try {
-                conn.responseCode in 200..299 || conn.responseCode == 404
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
+    override suspend fun validate(): Boolean = attempt {
+        if (!CloudUploaderRegistry.plainHttpAllowed(settings.serverUrl)) return@attempt false
+        val (url, canonicalUri) = urlFor("")
+        openConnection(url, "HEAD", sign("HEAD", url, canonicalUri)).finishOk(404)
     }
 
     override suspend fun upload(
@@ -70,43 +66,14 @@ class S3Uploader(private val settings: CloudBackupSettings) : CloudUploader {
         contentType: String,
         size: Long,
         openInput: () -> InputStream,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean = attempt {
+        if (!CloudUploaderRegistry.plainHttpAllowed(settings.serverUrl)) return@attempt false
+        val (url, canonicalUri) = urlFor(remoteKey)
+        val conn = openConnection(url, "PUT", sign("PUT", url, canonicalUri, contentType))
         try {
-            if (!CloudUploaderRegistry.plainHttpAllowed(settings.serverUrl)) return@withContext false
-            val (url, canonicalUri) = urlFor(remoteKey)
-            val host = url.host + if (url.port !in listOf(-1, 80, 443)) ":${url.port}" else ""
-            val signed = SigV4.sign(
-                method = "PUT",
-                host = host,
-                canonicalUri = canonicalUri,
-                canonicalQuery = "",
-                region = settings.region.ifBlank { "us-east-1" },
-                service = "s3",
-                accessKeyId = settings.username,
-                secretAccessKey = settings.password,
-                extraHeaders = mapOf("content-type" to contentType),
-                payloadHash = SigV4.UNSIGNED_PAYLOAD,
-            )
-            val conn = openConnection(url).apply {
-                requestMethod = "PUT"
-                doOutput = true
-                setRequestProperty("Authorization", signed.authorizationHeader)
-                setRequestProperty("x-amz-date", signed.amzDate)
-                setRequestProperty("x-amz-content-sha256", signed.payloadHash)
-                setRequestProperty("Content-Type", contentType)
-                if (size >= 0) setFixedLengthStreamingMode(size)
-                else setChunkedStreamingMode(CHUNK_SIZE)
-            }
-            try {
-                openInput().use { input ->
-                    conn.outputStream.use { output -> input.copyTo(output) }
-                }
-                conn.responseCode in 200..299
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            false
+            conn.putBytes(contentType, size, openInput)
+        } finally {
+            conn.disconnect()
         }
     }
 

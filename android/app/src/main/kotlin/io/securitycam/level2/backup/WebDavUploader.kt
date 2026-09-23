@@ -6,17 +6,19 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * WebDAV backend: PUT for uploads, PROPFIND (Depth: 0) as the connection
  * probe. Basic auth over TLS; plain HTTP is refused unless the host is a
  * private/LAN address.
  */
-class WebDavUploader(private val settings: CloudBackupSettings) : CloudUploader {
+class WebDavUploader(private val settings: CloudBackupSettings) : HttpCloudUploader() {
 
     override val backendId: String get() = "webdav"
+
+    override val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS
+    override val readTimeoutMs: Int = READ_TIMEOUT_MS
+    override val chunkSize: Int = CHUNK_SIZE
 
     private fun urlFor(remoteKey: String): URL {
         val base = settings.serverUrl.trim().trimEnd('/')
@@ -32,31 +34,23 @@ class WebDavUploader(private val settings: CloudBackupSettings) : CloudUploader 
             Base64.NO_WRAP,
         )
 
-    private fun openConnection(url: URL, method: String): HttpURLConnection {
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = method
-        conn.connectTimeout = CONNECT_TIMEOUT_MS
-        conn.readTimeout = READ_TIMEOUT_MS
-        if (settings.username.isNotEmpty() || settings.password.isNotEmpty()) {
-            conn.setRequestProperty("Authorization", "Basic ${basicAuth()}")
-        }
-        return conn
-    }
+    private fun openAuthenticated(url: URL, method: String): HttpURLConnection =
+        openConnection(
+            url,
+            method,
+            headers = if (settings.username.isNotEmpty() || settings.password.isNotEmpty()) {
+                mapOf("Authorization" to "Basic ${basicAuth()}")
+            } else {
+                emptyMap()
+            },
+        )
 
-    override suspend fun validate(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val url = urlFor(settings.bucketOrPath.ifBlank { "" })
-            if (!CloudUploaderRegistry.plainHttpAllowed(url.toString())) return@withContext false
-            val conn = openConnection(url, "PROPFIND")
-            conn.setRequestProperty("Depth", "0")
-            try {
-                conn.responseCode in 200..299 || conn.responseCode == 404
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
+    override suspend fun validate(): Boolean = attempt {
+        val url = urlFor(settings.bucketOrPath.ifBlank { "" })
+        if (!CloudUploaderRegistry.plainHttpAllowed(url.toString())) return@attempt false
+        val conn = openAuthenticated(url, "PROPFIND")
+        conn.setRequestProperty("Depth", "0")
+        conn.finishOk(404)
     }
 
     override suspend fun upload(
@@ -64,26 +58,15 @@ class WebDavUploader(private val settings: CloudBackupSettings) : CloudUploader 
         contentType: String,
         size: Long,
         openInput: () -> InputStream,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean = attempt {
+        val url = urlFor(remoteKey)
+        if (!CloudUploaderRegistry.plainHttpAllowed(url.toString())) return@attempt false
+        ensureCollection(url)
+        val conn = openAuthenticated(url, "PUT")
         try {
-            val url = urlFor(remoteKey)
-            if (!CloudUploaderRegistry.plainHttpAllowed(url.toString())) return@withContext false
-            ensureCollection(url)
-            val conn = openConnection(url, "PUT")
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", contentType)
-            if (size >= 0) conn.setFixedLengthStreamingMode(size)
-            else conn.setChunkedStreamingMode(CHUNK_SIZE)
-            try {
-                openInput().use { input ->
-                    conn.outputStream.use { output -> input.copyTo(output) }
-                }
-                conn.responseCode in 200..299
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            false
+            conn.putBytes(contentType, size, openInput)
+        } finally {
+            conn.disconnect()
         }
     }
 
@@ -95,8 +78,7 @@ class WebDavUploader(private val settings: CloudBackupSettings) : CloudUploader 
                 fileUrl.protocol, fileUrl.userInfo, fileUrl.host, fileUrl.port,
                 dirPath, null, null,
             ).toURL()
-            val conn = openConnection(dir, "MKCOL")
-            try { conn.responseCode } finally { conn.disconnect() }
+            openAuthenticated(dir, "MKCOL").finishOk()
         } catch (_: Exception) {
         }
     }
