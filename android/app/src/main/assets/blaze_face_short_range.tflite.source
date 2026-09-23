@@ -1,0 +1,12 @@
+Asset: android/app/src/main/assets/blaze_face_short_range.tflite
+sha256: b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f
+Bytes verified 2026-09-24 via `sha256sum`.
+
+Canonical download (byte-identical, no build step):
+  curl -L -o blaze_face_short_range.tflite \
+    https://storage.googleapis.com/mediapipe-assets/face_detection_short_range.tflite
+Model card:
+  https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Short%20Range%29.pdf
+Paper: https://arxiv.org/abs/2006.10204
+Consumed by: detection/face/MediaPipeFaceEngine.kt (MODEL_ASSET).
+Shipped in: full AND fdroid flavors.

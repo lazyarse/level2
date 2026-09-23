@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.camera_service.MonitoringService
 import io.securitycam.level2.camera_service.MonitoringServiceController
 import io.securitycam.level2.camera_service.VideoClipRecorder
@@ -348,6 +349,13 @@ class SettingsViewModel(
      * existing person instead).
      */
     fun startEnrollment(label: String) {
+        // The fdroid flavor ships no embedding weights and hides every
+        // enrollment entry point; belt-and-braces so a restored full-build
+        // backup or stray call can never start a doomed capture there.
+        if (!BuildConfig.FACE_RECOGNITION_SUPPORTED) {
+            _message.value = "Face recognition isn't available in this build"
+            return
+        }
         val trimmed = label.trim()
         if (_draft.value?.knownFaces?.any { it.label.equals(trimmed, ignoreCase = true) } == true) {
             _message.value =
@@ -359,6 +367,10 @@ class SettingsViewModel(
 
     /** Adds another captured angle for an existing person. */
     fun startSampleCapture(face: KnownFace) {
+        if (!BuildConfig.FACE_RECOGNITION_SUPPORTED) {
+            _message.value = "Face recognition isn't available in this build"
+            return
+        }
         if (_enrollingLabel.value != null) return
         launchEnrollment(face.label, sample = true) { it.addSample(face.id) }
     }

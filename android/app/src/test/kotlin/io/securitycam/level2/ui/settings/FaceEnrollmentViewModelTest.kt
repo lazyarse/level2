@@ -3,6 +3,7 @@ package io.securitycam.level2.ui.settings
 import android.app.Application
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.detection.ColorBitmap
@@ -13,6 +14,8 @@ import io.securitycam.level2.identity.KnownFaceStore
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,6 +30,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class FaceEnrollmentViewModelTest {
+
+    /**
+     * Every test below drives enrollment, which the fdroid flavor refuses
+     * up-front (no weights, no UI entry points) — skip the whole class
+     * there; [FaceEnrollmentUnsupportedTest] covers the refusal itself.
+     */
+    @Before
+    fun requireFaceRecognition() {
+        Assume.assumeTrue(
+            "enrollment is hidden in the fdroid flavor",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
+    }
 
     private open class FakeCoordinator(
         private val result: Result<KnownFace>,

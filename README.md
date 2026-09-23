@@ -15,8 +15,9 @@ Requires JDK 17 (`JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` here) and an And
 
 ```sh
 cd android
-ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testDebugUnitTest   # JVM suite
-ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug       # debug APK
+ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testFullDebugUnitTest :app:testFdroidDebugUnitTest   # JVM suite (both flavors)
+ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleFullDebug       # debug APK
+ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleFdroidRelease    # F-Droid flavor (no face-recognition weights/UI)
 ```
 
 On-device integration tests need an AOSP emulator (see `AGENTS.md` for emulator discipline).
@@ -73,5 +74,7 @@ then the clip finalizes — expect up to ~2 m8 s to the play button in that case
 
 ## License
 
-AGPL-3.0 (see `LICENSE`). The app bundles YOLO-family / YAMNet-class models which are
-AGPL-3.0-compatible.
+SPDX: `AGPL-3.0-or-later` (see `LICENSE`). On-device model provenance lives
+beside each binary (`android/app/src/main/assets/*.license` +
+`*.source`); the F-Droid flavor additionally excludes face recognition
+(`assembleFdroidRelease`, no `mobilefacenet.tflite`, UI hidden).

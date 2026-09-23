@@ -1,0 +1,16 @@
+Asset: android/app/src/main/assets/yolo26n_w8a32.tflite
+Upstream: Ultralytics YOLO26n detection checkpoint, LiteRT export
+Code repo: https://github.com/ultralytics/ultralytics
+Weights release: https://github.com/ultralytics/assets/releases/tag/v8.4.0
+  ("v8.4.0 - New YOLO26 Models Release", first YOLO26 weights)
+Checkpoint: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+License (code AND weights): GNU AGPL-3.0-only
+  License text: https://github.com/ultralytics/ultralytics/blob/main/LICENSE
+  Commercial terms: https://www.ultralytics.com/license
+  ("All Ultralytics YOLO trained models fall under the AGPL-3.0 License by
+  default... you must either open-source your entire project under AGPL-3.0,
+  or obtain an Ultralytics Enterprise License.")
+Compatibility: this app is AGPL-3.0-or-later (see root LICENSE), which
+  satisfies the weights' AGPL-3.0 requirement for the combined work.
+  Non-AGPL distribution of this asset requires an Ultralytics Enterprise
+  license (not held; not needed for F-Droid main).

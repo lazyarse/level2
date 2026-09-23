@@ -53,6 +53,23 @@ android {
     // R8 regressions surface in every emulator pass, not only in release QA.
     testBuildType = "staging"
 
+    // Distribution flavors: `full` ships everything (including the
+    // face-recognition embedding model), `fdroid` excludes the
+    // MobileFaceNet weights (unknown provenance — see the F-Droid
+    // inclusion plan) and hides the recognition UI at every layer.
+    // F-Droid builds `assembleFdroidRelease`; daily dev uses `full`.
+    flavorDimensions += "dist"
+    productFlavors {
+        create("full") {
+            dimension = "dist"
+            buildConfigField("boolean", "FACE_RECOGNITION_SUPPORTED", "true")
+        }
+        create("fdroid") {
+            dimension = "dist"
+            buildConfigField("boolean", "FACE_RECOGNITION_SUPPORTED", "false")
+        }
+    }
+
     signingConfigs {
         val storeFile = (project.findProperty("LEVEL2_RELEASE_STORE_FILE") as String?)
             ?: System.getenv("LEVEL2_RELEASE_STORE_FILE")
@@ -118,7 +135,7 @@ android {
 
 // Release-only dirty-tree guard: never ship uncommitted state. Staging, debug
 // and unit-test builds stay permissive so the normal dev loop is unaffected.
-tasks.matching { it.name in listOf("assembleRelease", "bundleRelease") }.configureEach {
+tasks.matching { it.name.endsWith("Release") && it.name.matches(Regex(".*(assemble|bundle).*")) }.configureEach {
     doFirst {
         if (gitDescribe?.endsWith("-dirty") == true) {
             throw GradleException(

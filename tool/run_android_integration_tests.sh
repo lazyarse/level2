@@ -19,6 +19,8 @@
 #
 # Build type: instrumentation runs against the MINIFIED "staging" build by
 # default (R8 keeps validated on every pass). Override with BUILD_TYPE=debug.
+# Flavor: the "full" flavor ships all models (default); "fdroid" excludes the
+# face-recognition weights. Override with FLAVOR=fdroid.
 set -uo pipefail
 
 SDK="${ANDROID_HOME:-/home/tpa/code/android-env/android-sdk}"
@@ -27,6 +29,7 @@ SERIAL="${1:-emulator-5554}"
 TEST_CLASS="${2:-io.securitycam.level2.MonitoringInstrumentedTest}"
 EXPECT_AUDIO="${EXPECT_CLIP_AUDIO:-true}"
 BUILD_TYPE="${BUILD_TYPE:-staging}"
+FLAVOR="${FLAVOR:-full}"
 SUFFIX=""
 [ "$BUILD_TYPE" = "staging" ] && SUFFIX=".staging"
 PKG="io.securitycam.level2$SUFFIX"
@@ -57,18 +60,25 @@ case "$BUILD_TYPE" in
   debug)   BT_TASK="Debug" ;;
   *) echo "unsupported BUILD_TYPE=$BUILD_TYPE (staging|debug)"; exit 1 ;;
 esac
+case "$FLAVOR" in
+  full)   FLAVOR_TASK="Full"; FLAVOR_DIR="full" ;;
+  fdroid) FLAVOR_TASK="Fdroid"; FLAVOR_DIR="fdroid" ;;
+  *) echo "unsupported FLAVOR=$FLAVOR (full|fdroid)"; exit 1 ;;
+esac
 # 420s: composite build — a cold pass re-R8s both APKs (~2-3 min).
 # Only build, then install on the target device to avoid pushing staging to
 # physical hardware.
-(cd "$ANDROID_ROOT" && timeout 420 $GRADLE ":app:assemble$BT_TASK" ":app:assemble${BT_TASK}AndroidTest") || {
+(cd "$ANDROID_ROOT" && timeout 420 $GRADLE ":app:assemble$FLAVOR_TASK$BT_TASK" ":app:assemble${FLAVOR_TASK}${BT_TASK}AndroidTest") || {
   echo "gradle build failed"; exit 1
 }
 
-APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/$BUILD_TYPE"
-TEST_APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/androidTest/$BUILD_TYPE"
+APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/$FLAVOR_DIR/$BUILD_TYPE"
+TEST_APK_DIR="$ANDROID_ROOT/app/build/outputs/apk/androidTest/$FLAVOR_DIR/$BUILD_TYPE"
+APK="$APK_DIR/app-$FLAVOR_DIR-$BUILD_TYPE.apk"
+TEST_APK="$TEST_APK_DIR/app-$FLAVOR_DIR-$BUILD_TYPE-androidTest.apk"
 echo "== installing APKs on $SERIAL =="
-adb install -r "$APK_DIR/app-$BUILD_TYPE.apk" || { echo "app install failed"; exit 1; }
-adb install -r "$TEST_APK_DIR/app-$BUILD_TYPE-androidTest.apk" || { echo "test APK install failed"; exit 1; }
+adb install -r "$APK" || { echo "app install failed"; exit 1; }
+adb install -r "$TEST_APK" || { echo "test APK install failed"; exit 1; }
 
 # Grant system permissions on the freshly installed app (never while a
 # streamed install is in flight).

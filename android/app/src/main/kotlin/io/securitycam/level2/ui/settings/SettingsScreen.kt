@@ -339,6 +339,12 @@ fun SettingsScreen(
                                 current,
                                 cameraDetectorOrder,
                                 faceExtraContent = {
+                                    // The fdroid flavor ships no embedding weights:
+                                    // hide the whole recognition section (switch,
+                                    // enrolled list, Add face) instead of offering
+                                    // a doomed enrollment. Plain face detection
+                                    // stays available in the detector card above.
+                                    if (BuildConfig.FACE_RECOGNITION_SUPPORTED) {
                                     Spacer(Modifier.height(8.dp))
                                     Text(
                                         "Face Recognition",
@@ -467,6 +473,7 @@ fun SettingsScreen(
                                             Text("Add face")
                                         }
                                     }
+                                    } // FACE_RECOGNITION_SUPPORTED
                                 },
                             ) { _, next ->
                                 viewModel.update { it.withDetectorConfig(next) }

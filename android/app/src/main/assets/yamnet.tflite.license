@@ -1,0 +1,15 @@
+Assets: android/app/src/main/assets/yamnet.tflite
+        + android/app/src/main/assets/yamnet_labels.txt
+Upstream: Google YAMNet audio event classifier (MobileNet-v1, 521 classes)
+Code + weights: https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+License (model code and weights): Apache License, Version 2.0
+  (tensorflow/models LICENSE covers /research; includes yamnet.h5 weights).
+  https://www.apache.org/licenses/LICENSE-2.0
+License (labels/ontology): the label list derives from the AudioSet ontology,
+  which is CC BY-SA 4.0 (dataset CC BY 4.0):
+  https://research.google.com/audioset/download.html
+  Ontology: https://github.com/audioset/ontology
+Attribution (keep with any redistribution):
+  "YAMNet by Google (tensorflow/models, Apache-2.0); labels derived from the
+  AudioSet ontology by Google, CC BY-SA 4.0."
+  ShareAlike applies to the labels file itself, not to the application.

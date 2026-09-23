@@ -16,10 +16,14 @@ suite under `android/app/src/androidTest/`, driven by
   The native-assets toolchain locates the NDK via `ANDROID_HOME` (NOT `ANDROID_SDK_ROOT`;
   the shell only exports the latter), and host default Java is 25 which Gradle 8.14 refuses.
   Examples:
-  - Unit suite: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testDebugUnitTest`
-  - Debug APK: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleDebug`
+  - Unit suite (both flavors; face-recognition UI tests skip cleanly on fdroid
+    via `Assume`): `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:testFullDebugUnitTest :app:testFdroidDebugUnitTest`
+  - Debug APK: `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleFullDebug`
+  - F-Droid APK (no face-recognition weights/UI): `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:assembleFdroidRelease`
+    (F-Droid builds this flavor itself; GitHub releases ship `assembleFullRelease`.)
   - Instrumentation (or use the runner below, which sets nothing itself):
     `ANDROID_HOME=... JAVA_HOME=... tool/run_android_integration_tests.sh <serial> <fqcn|all>`
+    (runner defaults to the `full` flavor; `FLAVOR=fdroid` overrides).
 - **Cap command timeouts tightly so hangs surface fast.** Measured baselines:
   full unit suite ~45 s; cold Gradle build ~2 min (minified release ~4.5 min);
   emulator boot ~30 s; warm APK install ~35 s; the whole instrumentation "all"
@@ -35,7 +39,8 @@ suite under `android/app/src/androidTest/`, driven by
     beyond ~8 minutes means something hung; kill and diagnose rather than wait.
   - If a timeout fires, diagnose the hang before rerunning; don't just raise the
     timeout.
-- Parse unit failures from `android/app/build/test-results/testDebugUnitTest/TEST-*.xml`
+- Parse unit failures from `android/app/build/test-results/testFullDebugUnitTest/TEST-*.xml`
+  (plus `testFdroidDebugUnitTest/` for the F-Droid flavor)
   (python ElementTree) instead of scrolling Gradle output.
 - Robolectric dialog assertions must poll first: a freshly-opened `Dialog` window lags
   a frame behind, so `assertIsDisplayed` right after the click flakes. Use the
@@ -47,7 +52,7 @@ suite under `android/app/src/androidTest/`, driven by
 
 Prefer the fastest platform that can validate the change:
 
-1. **JVM unit tests** (`./gradlew :app:testDebugUnitTest`, Robolectric for Compose UI) —
+1. **JVM unit tests** (`./gradlew :app:testFullDebugUnitTest :app:testFdroidDebugUnitTest`, Robolectric for Compose UI) —
    instant, no emulator; covers detectors, pipeline, channels, storage, Settings/UI logic.
    Robolectric has no Keystore/Room-server: inject fakes via the view-model factories
    (`SecurityCamApp(eventsFactory=…, settingsFactory=…)` pattern).
@@ -57,10 +62,11 @@ Prefer the fastest platform that can validate the change:
    `app/staging-rules.pro`) so the unshrunk test APK can link into it; it exists to
    catch over-shrinking regressions in reflective third-party code (this is how the
    MediaPipe consumer-rules gap was found). Cold first pass may exceed 5 min (two R8
-   runs + 90 MB install); prewarm with `:app:assembleStaging
-   :app:assembleStagingAndroidTest` when needed.
+   runs + 90 MB install); prewarm with `:app:assembleFullStaging
+   :app:assembleFullStagingAndroidTest` when needed (runner defaults to `full`;
+   `FLAVOR=fdroid` overrides).
 3. **`pixel_34_aosp` release smoke** after touching build rules or dependencies:
-   uninstall debug/staging packages, `adb install app-release.apk`, pm grant the three
+   uninstall debug/staging packages, `adb install app-full-release.apk`, pm grant the three
    permissions, launch, tap the monitor start button, confirm state reaches
    "Hallway — Monitoring" with no FATAL/link errors in logcat (~2 min).
 4. **`pixel_28_aosp`** — min-API baseline checks only (minSdk 28: MediaPipe's JNI needs

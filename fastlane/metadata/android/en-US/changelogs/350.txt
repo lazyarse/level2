@@ -1,0 +1,3 @@
+F-Droid flavor split: new fdroid build variant without the
+face-recognition embedding model and UI (plain face detection kept).
+Fixed stale YOLO instrumentation tests after the unified-engine refactor.

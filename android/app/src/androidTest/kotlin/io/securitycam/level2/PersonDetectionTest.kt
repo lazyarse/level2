@@ -3,7 +3,7 @@ package io.securitycam.level2
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.person.YoloClasses
-import io.securitycam.level2.detection.person.YoloObjectEngine
+import io.securitycam.level2.detection.person.YoloObjectEngineImpl
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,7 +23,7 @@ class PersonDetectionTest {
 
     @Test
     fun personEngineLoadsAndReportsFewBoxesOnABlankFrame() = runBlocking {
-        val engine = YoloObjectEngine(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
+        val engine = YoloObjectEngineImpl(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         val w = 320
         val h = 240
@@ -37,7 +37,7 @@ class PersonDetectionTest {
     }
 
     private fun detectsAPersonIn(asset: String) = runBlocking {
-        val engine = YoloObjectEngine(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
+        val engine = YoloObjectEngineImpl(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         // Cap the long edge so the emulator CPU inference stays quick.
         val frame = ItestHarness.loadBgrScaled(asset, maxDim = 1024)

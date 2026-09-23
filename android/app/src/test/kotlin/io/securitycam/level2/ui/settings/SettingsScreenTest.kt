@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,6 +100,19 @@ class SettingsScreenTest {
     private fun expandChannel(id: String) {
         compose.onNodeWithTag("channelHeader_$id").performScrollTo().performClick()
         compose.waitForIdle()
+    }
+
+    /**
+     * Face-recognition UI exists only in the full flavor (the fdroid flavor
+     * ships no embedding weights and hides the whole section). Full-only
+     * tests call this first so the fdroid variant skips them instead of
+     * failing on absent nodes.
+     */
+    private fun requireFaceRecognition() {
+        Assume.assumeTrue(
+            "face recognition UI is hidden in the fdroid flavor",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
     }
 
     /**
@@ -888,6 +903,7 @@ class SettingsScreenTest {
 
     @Test
     fun tappingFaceThumbnailOpensGallery() {
+        requireFaceRecognition()
         val (harness, face) = gallerySeed(photoCount = 2)
         openFaceRows(harness)
         compose.onNodeWithText("2 photos").performScrollTo().assertIsDisplayed()
@@ -899,6 +915,7 @@ class SettingsScreenTest {
 
     @Test
     fun galleryWithOnePhotoShowsNoDelete() {
+        requireFaceRecognition()
         val (harness, face) = gallerySeed(photoCount = 1)
         openFaceRows(harness)
 
@@ -910,6 +927,7 @@ class SettingsScreenTest {
 
     @Test
     fun galleryDeleteRemovesPhotoAndUnlearns() {
+        requireFaceRecognition()
         val (harness, face) = gallerySeed(photoCount = 2)
         openFaceRows(harness)
 
@@ -940,6 +958,7 @@ class SettingsScreenTest {
 
     @Test
     fun galleryPhotoTapOpensZoomAndCloses() {
+        requireFaceRecognition()
         val (harness, face) = gallerySeed(photoCount = 1)
         openFaceRows(harness)
 
@@ -957,6 +976,7 @@ class SettingsScreenTest {
 
     @Test
     fun faceEnrollNameSurvivesRotation() {
+        requireFaceRecognition()
         val harness = Harness()
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
@@ -986,6 +1006,7 @@ class SettingsScreenTest {
 
     @Test
     fun faceRecognitionLivesInsideFaceDetectorCard() {
+        requireFaceRecognition()
         val harness = Harness()
         setContent(harness)
 
@@ -1003,7 +1024,27 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun faceRecognitionHiddenWhenUnsupported() {
+        Assume.assumeFalse(
+            "full flavor shows the face recognition switch",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
+        val harness = Harness()
+        setContent(harness)
+
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        // No switch, no enrolled list, no Add face: plain face detection
+        // stays, recognition UI is gone entirely.
+        compose.onAllNodesWithTag("faceRecognitionSwitch").assertCountEquals(0)
+        compose.onAllNodesWithTag("addFaceButton").assertCountEquals(0)
+        compose.onAllNodesWithText("Face Recognition").assertCountEquals(0)
+    }
+
+    @Test
     fun disablingFaceDetectorForcesRecognitionOff() {
+        requireFaceRecognition()
         val harness = Harness()
         setContent(harness)
 

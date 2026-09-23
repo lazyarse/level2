@@ -1,0 +1,17 @@
+Assets: android/app/src/main/assets/yamnet.tflite
+        + android/app/src/main/assets/yamnet_labels.txt
+sha256 yamnet.tflite: 10c95ea3eb9a7bb4cb8bddf6feb023250381008177ac162ce169694d05c317de
+sha256 yamnet_labels.txt: 8e1267a120c1932b7273c0d0e0c5529edbb9a35512b437b1c8982baa59047051
+Bytes verified 2026-09-24 via `sha256sum`.
+
+Canonical sources (see also the .license sidecar):
+- Keras weights: curl -O https://storage.googleapis.com/audioset/yamnet.h5
+- TF-Hub SavedModel: https://tfhub.dev/google/yamnet/1
+- TFLite: https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1
+- Class map (labels source):
+  https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
+  (521 classes; 6 of the original 527 dropped per README fairness note)
+- Tutorial: https://www.tensorflow.org/hub/tutorials/yamnet
+Labels file: display_name column of the class map, one per line (521 lines).
+Consumed by: detection/audio/YamnetClassifier.kt (MODEL_ASSET).
+Shipped in: full AND fdroid flavors.

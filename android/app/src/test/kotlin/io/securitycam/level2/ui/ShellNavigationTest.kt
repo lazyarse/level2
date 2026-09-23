@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.SecurityCamApp
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.storage.RecordedEventRow
@@ -35,6 +36,7 @@ import androidx.lifecycle.viewmodel.initializer
 import org.junit.Assert.assertEquals
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -220,6 +222,10 @@ class ShellNavigationTest {
 
     @Test
     fun systemBackCancelsEnrollment() {
+        Assume.assumeTrue(
+            "enrollment is hidden in the fdroid flavor",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
         val app = androidx.test.core.app.ApplicationProvider
             .getApplicationContext<android.app.Application>()
         val instances = mutableListOf<SettingsViewModel>()
@@ -284,6 +290,10 @@ class ShellNavigationTest {
 
     @Test
     fun systemBackDuringReviewCancelsEnrollment() {
+        Assume.assumeTrue(
+            "enrollment is hidden in the fdroid flavor",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
         val app = androidx.test.core.app.ApplicationProvider
             .getApplicationContext<android.app.Application>()
         val instances = mutableListOf<SettingsViewModel>()
@@ -347,6 +357,10 @@ class ShellNavigationTest {
 
     @Test
     fun addPhotoKeepsFaceCardExpanded() {
+        Assume.assumeTrue(
+            "enrollment is hidden in the fdroid flavor",
+            BuildConfig.FACE_RECOGNITION_SUPPORTED,
+        )
         val app = androidx.test.core.app.ApplicationProvider
             .getApplicationContext<android.app.Application>()
         org.robolectric.Shadows.shadowOf(app).grantPermissions(

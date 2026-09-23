@@ -1,6 +1,7 @@
 package io.securitycam.level2.monitor
 
 import android.content.Context
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.camera_service.CameraEvents
 import io.securitycam.level2.camera_service.CameraFrameBus
 import io.securitycam.level2.camera_service.MonitoringServiceController
@@ -218,7 +219,12 @@ class MonitoringRuntime private constructor(
             // While recognition is enabled the face factory builds the
             // recognizing variant; registering unconditionally keeps repeated
             // create() calls consistent with the current settings.
-            val recognitionOn = AppSettings.faceRecognitionEnabled(settings)
+            // The fdroid flavor excludes the embedding weights entirely, so
+            // recognition is forced off there even for restored full-build
+            // settings: FaceRecognizer would fall back to plain-face anyway,
+            // but never registering it keeps rosters/stores out of memory.
+            val recognitionOn = AppSettings.faceRecognitionEnabled(settings) &&
+                BuildConfig.FACE_RECOGNITION_SUPPORTED
             val faceStore = if (recognitionOn) faceStoreFactory(appContext) else null
             // Native/model IO stays off the main thread.
             val embedder = if (recognitionOn) {

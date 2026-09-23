@@ -1,0 +1,31 @@
+Asset: android/app/src/main/assets/yolo26n_w8a32.tflite
+sha256: d9cef07ce652ccfa9ce58e4ac8a4df98ff037739a9dad20a8afcae21b545df73
+Exported-file bytes verified 2026-09-24 via `sha256sum` (see commit history).
+
+Base checkpoint: yolo26n.pt from
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+  (checkpoint sha256 was not recorded at the original export; re-verify by
+  re-running the reproduction below and comparing the exported bytes).
+
+Reproduction (Linux x86_64 or macOS only for export):
+  pip install 'ultralytics>=8.4.83'
+  curl -L -o yolo26n.pt \
+    https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+  yolo export model=yolo26n.pt format=litert quantize=w8a32 imgsz=640
+  mv yolo26n.tflite yolo26n_w8a32.tflite
+Record at export time: `pip show ultralytics`, torch/litert versions,
+  `sha256sum yolo26n.pt`, `sha256sum yolo26n_w8a32.tflite`.
+
+Notes:
+- `format=tflite` is deprecated since ultralytics 8.4.83; use `format=litert`.
+  Docs: https://docs.ultralytics.com/integrations/litert,
+  https://docs.ultralytics.com/modes/export,
+  https://docs.ultralytics.com/reference/engine/exporter
+- `quantize=w8a32` is dynamic INT8 (INT8 weights, FP32 activations) and needs
+  NO calibration dataset, so no COCO imagery enters the build. Do not switch
+  to `quantize=8`/`w8a16` without documenting the calibration set.
+- LiteRT INT8 export disables the end-to-end branch, yielding the legacy
+  [1,84,8400] COCO-80 head this app decodes (640x640 RGB NCHW float32 input).
+  An (N,300,6) end-to-end export would NOT be compatible.
+Consumed by: detection/person/YoloModelSingleton.kt (MODEL_ASSET).
+Shipped in: full AND fdroid flavors.

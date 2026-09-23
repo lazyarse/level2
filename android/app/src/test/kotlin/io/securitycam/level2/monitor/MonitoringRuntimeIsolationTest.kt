@@ -3,6 +3,7 @@ package io.securitycam.level2.monitor
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.core.AppSettings
 import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.TriggerType
@@ -14,6 +15,7 @@ import io.securitycam.level2.detection.MotionDetector
 import io.securitycam.level2.detection.audio.AudioEventClassifier
 import io.securitycam.level2.detection.audio.MockAudioEventClassifier
 import io.securitycam.level2.detection.face.FaceDetection
+import io.securitycam.level2.detection.face.FaceDetector
 import io.securitycam.level2.detection.face.FaceEmbedder
 import io.securitycam.level2.detection.face.FaceRecognizer
 import io.securitycam.level2.detection.face.MockFaceEngine
@@ -135,6 +137,22 @@ class MonitoringRuntimeIsolationTest {
         val a = create(recognitionSettings(alice), faceStore = storeA, faceEngine = engineA)
         val b = create(recognitionSettings(bob), faceStore = storeB, faceEngine = engineB)
         try {
+            // The fdroid flavor forces recognition off (no embedding
+            // weights): rosters stay empty and the face slot registers the
+            // plain detector instead of the recognizer.
+            if (!BuildConfig.FACE_RECOGNITION_SUPPORTED) {
+                assertTrue(a.faceRoster.isEmpty())
+                assertTrue(b.faceRoster.isEmpty())
+                val plain = a.detectorRegistry.factoryFor(TriggerType.face)!!(
+                    DetectorConfig(
+                        type = TriggerType.face,
+                        threshold = 0.0,
+                        persistenceFrames = 1,
+                    ),
+                )
+                assertTrue(plain is FaceDetector)
+                return@runBlocking
+            }
             assertEquals(listOf(alice), a.faceRoster)
             assertEquals(listOf(bob), b.faceRoster)
 

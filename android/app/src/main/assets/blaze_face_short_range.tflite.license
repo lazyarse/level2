@@ -1,0 +1,10 @@
+Asset: android/app/src/main/assets/blaze_face_short_range.tflite
+Upstream: Google MediaPipe BlazeFace short-range face detector
+Source repo: https://github.com/google-ai-edge/mediapipe
+Model index: https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/models.md
+License: Apache License, Version 2.0
+  (per the BlazeFace model card, page 1: "LICENSED UNDER Apache License,
+  Version 2.0"; repo LICENSE is Apache-2.0).
+  https://www.apache.org/licenses/LICENSE-2.0
+Runtime used by this app: com.google.mediapipe:tasks-vision:1.0.0
+  (Apache-2.0, Maven Central — no Play Services dependency).

@@ -7,7 +7,7 @@ import io.securitycam.level2.detection.audio.AudioEventScores
 import io.securitycam.level2.detection.audio.YamnetClassifier
 import io.securitycam.level2.detection.face.MediaPipeFaceEngine
 import io.securitycam.level2.detection.person.YoloClasses
-import io.securitycam.level2.detection.person.YoloObjectEngine
+import io.securitycam.level2.detection.person.YoloObjectEngineImpl
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -40,7 +40,7 @@ class Phase3EnginesSmokeTest {
 
     @Test
     fun yoloDetectsOnASyntheticFrame() = runBlocking {
-        val engine = YoloObjectEngine(context, listOf(YoloClasses.PERSON), maxDetections = 30)
+        val engine = YoloObjectEngineImpl(context, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         // 320x240 mid-gray frame.
         val w = 320

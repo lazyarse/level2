@@ -1,0 +1,17 @@
+Security Cam turns an unused Android phone into a security camera. It watches
+the camera and microphone for motion, people, faces, pets, vehicles, loud
+sounds and more — entirely on-device — and alerts you through channels you
+configure yourself (app log, email via your own SMTP server, Telegram bot,
+Pushover, or webhook presets including self-hostable ntfy).
+
+- No account, no cloud, no tracking: detection runs locally with on-device
+  ML models; network is used only for alerts you explicitly configure.
+- Video clips are recorded around every trigger (5 s pre-roll + 5 s
+  post-roll) and stored on the device.
+- Monitoring runs as a foreground service, so it survives screen-off.
+- Face recognition (known/unknown faces) is available in the full build;
+  the F-Droid build excludes the face-embedding model and its UI while
+  keeping plain face detection.
+
+Free software under AGPL-3.0-or-later. On-device model licenses are
+documented beside each binary under app/src/main/assets/*.license.
