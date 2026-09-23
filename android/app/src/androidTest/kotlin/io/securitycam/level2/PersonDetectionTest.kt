@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PersonDetectionTest {
 
-    private val personAssets = listOf("messi5.jpg", "astronaut.png", "camera.png")
+    private val personAssets = listOf("hathaway_portrait.jpg", "astronaut.png", "meir_portrait.jpg")
 
     @Test
     fun personEngineLoadsAndReportsFewBoxesOnABlankFrame() = runBlocking {
@@ -54,11 +54,11 @@ class PersonDetectionTest {
     }
 
     @Test
-    fun detectsAPersonInMessi() = detectsAPersonIn("messi5.jpg")
+    fun detectsAPersonInHathaway() = detectsAPersonIn("hathaway_portrait.jpg")
 
     @Test
     fun detectsAPersonInAstronaut() = detectsAPersonIn("astronaut.png")
 
     @Test
-    fun detectsAPersonInCamera() = detectsAPersonIn("camera.png")
+    fun detectsAPersonInMeir() = detectsAPersonIn("meir_portrait.jpg")
 }

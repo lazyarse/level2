@@ -14,13 +14,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
  *  - a blank frame yields zero detections (sanity + load check),
  *  - bundled real-world images each yield at least one plausible face box.
  *
- * Assets are license-safe: OpenCV sample data (BSD-3-Clause) and scikit-image
- * sample data (public domain / BSD).
+ * Assets are license-safe public-domain NASA portraits (see
+ * androidTest/assets/README.md for per-file source and attribution).
  */
 @RunWith(AndroidJUnit4::class)
 class FaceDetectionTest {
 
-    private val faceAssets = listOf("messi5.jpg", "astronaut.png", "camera.png")
+    private val faceAssets = listOf("hathaway_portrait.jpg", "astronaut.png", "meir_portrait.jpg")
 
     @Test
     fun faceEngineLoadsAndRunsOnABlankFrame() = runBlocking {
@@ -69,11 +69,11 @@ class FaceDetectionTest {
     }
 
     @Test
-    fun detectsAFaceInMessi() = detectsAFaceIn("messi5.jpg")
+    fun detectsAFaceInHathaway() = detectsAFaceIn("hathaway_portrait.jpg")
 
     @Test
     fun detectsAFaceInAstronaut() = detectsAFaceIn("astronaut.png")
 
     @Test
-    fun detectsAFaceInCamera() = detectsAFaceIn("camera.png")
+    fun detectsAFaceInMeir() = detectsAFaceIn("meir_portrait.jpg")
 }
