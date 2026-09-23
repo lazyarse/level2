@@ -54,7 +54,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
@@ -367,22 +369,30 @@ private fun EditorCanvas(
                     .background(Color(0xFF202124)),
             )
         }
+        // Canvas pixel size, tracked across layouts: the pointerInput blocks
+        // below run once and loop forever, so a box computed from the
+        // first-composition size goes stale (often Size.Zero on phones) and
+        // every touch mis-maps. Keying on the laid-out size recomputes it.
+        var canvasPx by remember { mutableStateOf(IntSize.Zero) }
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { canvasPx = it }
                 .testTag("zoneCanvas")
-                .pointerInput(Unit, frameWidth, frameHeight) {
+                .pointerInput(canvasPx, frameWidth, frameHeight) {
                     val box = fitCenterBox(
-                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                        canvasPx.width.toFloat(), canvasPx.height.toFloat(),
+                        frameWidth, frameHeight,
                     )
                     detectTapGestures { off ->
                         val (nx, ny) = screenToNorm(off.x, off.y, box)
                         vm.onTap(nx, ny)
                     }
                 }
-                .pointerInput(Unit, frameWidth, frameHeight) {
+                .pointerInput(canvasPx, frameWidth, frameHeight) {
                     val box = fitCenterBox(
-                        size.width.toFloat(), size.height.toFloat(), frameWidth, frameHeight,
+                        canvasPx.width.toFloat(), canvasPx.height.toFloat(),
+                        frameWidth, frameHeight,
                     )
                     // Pixel-space handle radius: a real touch target regardless
                     // of canvas size or frame aspect.
