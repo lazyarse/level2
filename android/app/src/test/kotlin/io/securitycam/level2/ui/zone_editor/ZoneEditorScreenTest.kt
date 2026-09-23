@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
@@ -72,7 +73,7 @@ class ZoneEditorScreenTest {
         compose.onNodeWithText("Detection zones").assertIsDisplayed()
         compose.onNodeWithText("Rectangle").assertIsDisplayed()
         compose.onNodeWithText("Polygon").assertIsDisplayed()
-        compose.onNodeWithText("doorway").assertIsDisplayed()
+        compose.onNodeWithText("doorway").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -90,7 +91,7 @@ class ZoneEditorScreenTest {
     @Test
     fun clearAllRemovesZonesWithConfirm() {
         setContent()
-        compose.onNodeWithTag("zoneClear").performClick()
+        compose.onNodeWithTag("zoneClear").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Clear all zones?").assertExists()
         compose.onNodeWithTag("zoneClearConfirm").performClick()
@@ -106,22 +107,22 @@ class ZoneEditorScreenTest {
     fun modeToggleSwitchesListedContentAndSavesBothLists() {
         setContent()
         // Inclusion list shows the doorway zone.
-        compose.onNodeWithText("doorway").assertIsDisplayed()
+        compose.onNodeWithText("doorway").performScrollTo().assertIsDisplayed()
 
         // Switch to exclusion mode: the inclusion row disappears, exclusion
         // tools are active on an empty list.
-        compose.onNodeWithTag("zoneMode_exclusion").performClick()
+        compose.onNodeWithTag("zoneMode_exclusion").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("doorway").assertDoesNotExist()
 
         // Add an exclusion zone via the Add button (default full-frame rect).
-        compose.onNodeWithTag("zoneAdd").performClick()
+        compose.onNodeWithTag("zoneAdd").performScrollTo().performClick()
         compose.waitForIdle()
 
         // Back to inclusion: doorway is listed again, exclusion zone is not.
-        compose.onNodeWithTag("zoneMode_inclusion").performClick()
+        compose.onNodeWithTag("zoneMode_inclusion").performScrollTo().performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("doorway").assertIsDisplayed()
+        compose.onNodeWithText("doorway").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithTag("zoneDone").performClick()
         compose.waitForIdle()
@@ -164,15 +165,10 @@ class ZoneEditorScreenTest {
     }
 
     @Test
-    fun resizeSurvivesCanvasRelayout() {
-        // Hit-testing must follow layout: the gesture box is captured when
-        // the pointerInput block starts, and phone layouts settle after
-        // first composition (often from Size.Zero). Grow the editor after
-        // layout, then drag — a stale box mis-maps the grab into empty
-        // space (draws a second zone) or onto the body (moves the zone).
-        // Start cramped (canvas near-zero) so the first-layout gesture
-        // box is wildly wrong, then grow: only a layout-following box
-        // maps the grab back onto the corner.
+    fun canvasIgnoresOuterRelayout() {
+        // The canvas is frame-aspect-fixed: showing/hiding the mode, list,
+        // and rename rows (or any outer relayout) must not move the preview
+        // under the finger — that jump was the reported bug.
         var editorHeight by mutableStateOf(200.dp)
         var saved: List<DetectionZone>? = null
         compose.setContent {
@@ -192,16 +188,18 @@ class ZoneEditorScreenTest {
             )
         }
         compose.waitForIdle()
+        // Unclipped layout size (boundsInRoot is viewport-clipped when the
+        // editor scrolls — that clipping is expected, not a failure).
         val h1 = compose.onNodeWithTag("zoneCanvas")
-            .fetchSemanticsNode().boundsInRoot.height
+            .fetchSemanticsNode().size.height
 
         compose.runOnIdle { editorHeight = 480.dp }
         compose.waitForIdle()
         val h2 = compose.onNodeWithTag("zoneCanvas")
-            .fetchSemanticsNode().boundsInRoot.height
-        assertTrue("canvas must actually relayout ($h1 -> $h2)", h2 > h1 + 50f)
+            .fetchSemanticsNode().size.height
+        assertEquals(h1, h2)
 
-        // Drag corner 2 outward in the NEW geometry.
+        // Drag corner 2 outward; the mapping is unchanged so this resizes.
         compose.onNodeWithTag("zoneCanvas").performTouchInput {
             val box = fitCenterBox(width.toFloat(), height.toFloat(), 320, 240)
             swipe(

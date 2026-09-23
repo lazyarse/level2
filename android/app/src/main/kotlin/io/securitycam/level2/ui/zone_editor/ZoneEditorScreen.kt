@@ -11,13 +11,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -131,7 +131,15 @@ fun ZoneEditorScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        // Whole screen scrolls: the canvas below keeps its exact frame
+        // aspect (measured unconstrained), so sibling rows appearing or
+        // disappearing can never resize the preview mid-draw.
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+        ) {
             SingleChoiceSegmentedButtonRow(
                 Modifier
                     .fillMaxWidth()
@@ -181,7 +189,19 @@ fun ZoneEditorScreen(
                     }
                 }
             }
-            EditorCanvas(vm, showPreview, frameWidth, frameHeight, Modifier.weight(1f).padding(8.dp))
+            EditorCanvas(
+                vm,
+                showPreview,
+                frameWidth,
+                frameHeight,
+                // Fixed frame aspect, never weight: showing/hiding the mode,
+                // list, and rename rows below must not resize the preview
+                // (and aspect-exact means no letterbox bars either).
+                Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(frameWidth.toFloat() / frameHeight.toFloat()),
+            )
             Column(Modifier.padding(12.dp)) {
                 FlowRow {
                     ToolButton(
@@ -231,8 +251,10 @@ fun ZoneEditorScreen(
                     }
                 }
                 if (vm.zones.isNotEmpty()) {
-                    LazyColumn(Modifier.heightIn(max = 140.dp)) {
-                        itemsIndexed(vm.zones) { i, zone ->
+                    // Plain column, not lazy: the screen itself scrolls, and a
+                    // nested scroller would trap performScrollTo/scroll gestures.
+                    Column {
+                        vm.zones.forEachIndexed { i, zone ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
