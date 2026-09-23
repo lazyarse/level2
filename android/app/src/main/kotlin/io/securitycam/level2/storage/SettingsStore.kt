@@ -198,35 +198,45 @@ class SettingsStore(
 
     private fun liveViewSecretKey(): String = "liveview.password"
 
-    private suspend fun injectLiveViewSecret(settings: AppSettings): Pair<AppSettings, Boolean> {
-        val lv = settings.liveView
-        val inline = lv.password
+    /**
+     * Moves one inline password into the secret store (or injects the stored
+     * one back). Returns the settings plus whether the blob must be re-saved.
+     */
+    private suspend fun injectSecret(
+        settings: AppSettings,
+        key: String,
+        get: (AppSettings) -> String,
+        set: (AppSettings, String) -> AppSettings,
+    ): Pair<AppSettings, Boolean> {
+        val inline = get(settings)
         if (inline.isNotEmpty()) {
-            secrets.write(liveViewSecretKey(), inline)
+            secrets.write(key, inline)
             return settings to true
         }
-        val stored = secrets.read(liveViewSecretKey())
+        val stored = secrets.read(key)
         if (!stored.isNullOrEmpty()) {
-            return settings.copyWith(liveView = lv.copy(password = stored)) to false
+            return set(settings, stored) to false
         }
         return settings to false
     }
+
+    private suspend fun injectLiveViewSecret(settings: AppSettings): Pair<AppSettings, Boolean> =
+        injectSecret(
+            settings,
+            liveViewSecretKey(),
+            get = { it.liveView.password },
+            set = { s, pw -> s.copyWith(liveView = s.liveView.copy(password = pw)) },
+        )
 
     private fun cloudBackupSecretKey(): String = "cloudbackup.password"
 
-    private suspend fun injectCloudBackupSecret(settings: AppSettings): Pair<AppSettings, Boolean> {
-        val cb = settings.cloudBackup
-        val inline = cb.password
-        if (inline.isNotEmpty()) {
-            secrets.write(cloudBackupSecretKey(), inline)
-            return settings to true
-        }
-        val stored = secrets.read(cloudBackupSecretKey())
-        if (!stored.isNullOrEmpty()) {
-            return settings.copyWith(cloudBackup = cb.copy(password = stored)) to false
-        }
-        return settings to false
-    }
+    private suspend fun injectCloudBackupSecret(settings: AppSettings): Pair<AppSettings, Boolean> =
+        injectSecret(
+            settings,
+            cloudBackupSecretKey(),
+            get = { it.cloudBackup.password },
+            set = { s, pw -> s.copyWith(cloudBackup = s.cloudBackup.copy(password = pw)) },
+        )
 
     /**
      * Writes a channel's non-empty secret fields into the secret store (the
