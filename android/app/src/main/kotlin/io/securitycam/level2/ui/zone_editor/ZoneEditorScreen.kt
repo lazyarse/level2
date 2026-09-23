@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
 import io.securitycam.level2.detection.ZoneFilter.pointInZone
+import io.securitycam.level2.ui.settings.ConfirmDialog
 import io.securitycam.level2.ui.monitor.PreviewSurface
 import io.securitycam.level2.ui.theme.AppButtonShape
 
@@ -318,39 +318,26 @@ fun ZoneEditorScreen(
     }
 
     if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Clear all zones?") },
-            text = {
-                Text(
-                    when (vm.mode) {
-                        ZoneEditorMode.exclusion ->
-                            "This removes every exclusion zone. Detection will no " +
-                                "longer ignore those areas."
-                        ZoneEditorMode.tripwire ->
-                            "This removes every tripwire zone. Person-crossing " +
-                                "detection will no longer be active."
-                        else ->
-                            "This removes every inclusion zone. Detection will apply " +
-                                "to the whole frame."
-                    },
-                )
+        ConfirmDialog(
+            title = "Clear all zones?",
+            onDismiss = { confirmClear = false },
+            onConfirm = {
+                confirmClear = false
+                vm.clearAll()
             },
-            dismissButton = {
-                TextButton(
-                    onClick = { confirmClear = false },
-                    shape = AppButtonShape,
-                ) { Text("Cancel") }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmClear = false
-                        vm.clearAll()
-                    },
-                    modifier = Modifier.testTag("zoneClearConfirm"),
-                    shape = AppButtonShape,
-                ) { Text("Clear") }
+            confirmLabel = "Clear",
+            confirmTestTag = "zoneClearConfirm",
+            confirmTextButton = true,
+            body = when (vm.mode) {
+                ZoneEditorMode.exclusion ->
+                    "This removes every exclusion zone. Detection will no " +
+                        "longer ignore those areas."
+                ZoneEditorMode.tripwire ->
+                    "This removes every tripwire zone. Person-crossing " +
+                        "detection will no longer be active."
+                else ->
+                    "This removes every inclusion zone. Detection will apply " +
+                        "to the whole frame."
             },
         )
     }

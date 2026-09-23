@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -26,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.securitycam.level2.ui.theme.AppButtonShape
 
 /**
  * Shared expand-chevron card container for DetectorCard/ChannelCard.
@@ -108,4 +112,69 @@ internal fun <T> ChipRow(
             )
         }
     }
+}
+
+/**
+ * Shared title + body + confirm/dismiss dialog. Covers every confirm in
+ * Settings and the zone editor: pass [body] for plain text or [bodyContent]
+ * for custom content (enrol field, gallery list); [dismissLabel] = null
+ * drops the dismiss button; [confirmTextButton] renders the confirm as a
+ * TextButton (zone/gallery style) instead of a Button.
+ */
+@Composable
+internal fun ConfirmDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    confirmLabel: String,
+    modifier: Modifier = Modifier,
+    body: String? = null,
+    bodyContent: (@Composable () -> Unit)? = null,
+    confirmTestTag: String? = null,
+    confirmEnabled: Boolean = true,
+    confirmTextButton: Boolean = false,
+    dismissLabel: String? = "Cancel",
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier,
+        title = { Text(title) },
+        text = {
+            when {
+                bodyContent != null -> bodyContent()
+                body != null -> Text(body)
+            }
+        },
+        confirmButton = {
+            val tagModifier = if (confirmTestTag != null) {
+                Modifier.testTag(confirmTestTag)
+            } else {
+                Modifier
+            }
+            if (confirmTextButton) {
+                TextButton(
+                    onClick = onConfirm,
+                    modifier = tagModifier,
+                    shape = AppButtonShape,
+                ) { Text(confirmLabel) }
+            } else {
+                Button(
+                    onClick = onConfirm,
+                    enabled = confirmEnabled,
+                    modifier = tagModifier,
+                    shape = AppButtonShape,
+                ) { Text(confirmLabel) }
+            }
+        },
+        dismissButton = if (dismissLabel != null) {
+            {
+                TextButton(
+                    onClick = onDismiss,
+                    shape = AppButtonShape,
+                ) { Text(dismissLabel) }
+            }
+        } else {
+            null
+        },
+    )
 }

@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.AddCircleOutline
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -1345,67 +1344,39 @@ fun SettingsScreen(
         }
         pendingClear?.let { request ->
             val all = request.all
-            AlertDialog(
-                onDismissRequest = { pendingClear = null },
-                title = { Text("Clear events") },
-                text = {
-                    Text(
-                        if (all) {
-                            "Delete ALL recorded events and their snapshots and videos?"
-                        } else {
-                            val label = if (request.hours >= 24 && request.hours % 24 == 0) {
-                                "${request.hours / 24}d"
-                            } else {
-                                "${request.hours}h"
-                            }
-                            "Delete events older than $label and their snapshots and videos?"
-                        },
-                    )
+            ConfirmDialog(
+                title = "Clear events",
+                onDismiss = { pendingClear = null },
+                onConfirm = {
+                    viewModel.clearEvents(if (all) null else Duration.ofHours(request.hours.toLong()))
+                    pendingClear = null
                 },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.clearEvents(if (all) null else Duration.ofHours(request.hours.toLong()))
-                            pendingClear = null
-                        },
-                        shape = AppButtonShape,
-                    ) { Text("Clear") }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { pendingClear = null },
-                        shape = AppButtonShape,
-                    ) { Text("Cancel") }
+                confirmLabel = "Clear",
+                body = if (all) {
+                    "Delete ALL recorded events and their snapshots and videos?"
+                } else {
+                    val label = if (request.hours >= 24 && request.hours % 24 == 0) {
+                        "${request.hours / 24}d"
+                    } else {
+                        "${request.hours}h"
+                    }
+                    "Delete events older than $label and their snapshots and videos?"
                 },
             )
         }
 
         pendingDeleteFace?.let { face ->
-            AlertDialog(
-                onDismissRequest = { pendingDeleteFace = null },
-                title = { Text("Remove ${face.label}?") },
-                text = {
-                    Text(
-                        "Their saved photo samples will be deleted and they " +
-                            "will no longer be recognised.",
-                    )
+            ConfirmDialog(
+                title = "Remove ${face.label}?",
+                onDismiss = { pendingDeleteFace = null },
+                onConfirm = {
+                    viewModel.deleteFace(face)
+                    pendingDeleteFace = null
                 },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.deleteFace(face)
-                            pendingDeleteFace = null
-                        },
-                        modifier = Modifier.testTag("confirmDeleteFace"),
-                        shape = AppButtonShape,
-                    ) { Text("Remove") }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { pendingDeleteFace = null },
-                        shape = AppButtonShape,
-                    ) { Text("Cancel") }
-                },
+                confirmLabel = "Remove",
+                confirmTestTag = "confirmDeleteFace",
+                body = "Their saved photo samples will be deleted and they " +
+                    "will no longer be recognised.",
             )
         }
 
@@ -1445,48 +1416,54 @@ fun SettingsScreen(
 
         val deletePhotoFace = pendingDeletePhotoFace
         if (deletePhotoFace != null && pendingDeletePhotoIndex >= 0) {
-            AlertDialog(
-                onDismissRequest = {
+            ConfirmDialog(
+                title = "Remove this photo?",
+                onDismiss = {
                     pendingDeletePhotoFace = null
                     pendingDeletePhotoIndex = -1
                 },
-                title = { Text("Remove this photo?") },
-                text = {
-                    Text(
-                        "It will be deleted and no longer used for recognition.",
+                onConfirm = {
+                    viewModel.deleteFacePhoto(
+                        deletePhotoFace,
+                        pendingDeletePhotoIndex,
                     )
+                    pendingDeletePhotoFace = null
+                    pendingDeletePhotoIndex = -1
                 },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.deleteFacePhoto(
-                                deletePhotoFace,
-                                pendingDeletePhotoIndex,
-                            )
-                            pendingDeletePhotoFace = null
-                            pendingDeletePhotoIndex = -1
-                        },
-                        modifier = Modifier.testTag("confirmDeletePhoto"),
-                        shape = AppButtonShape,
-                    ) { Text("Remove") }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            pendingDeletePhotoFace = null
-                            pendingDeletePhotoIndex = -1
-                        },
-                        shape = AppButtonShape,
-                    ) { Text("Cancel") }
-                },
+                confirmLabel = "Remove",
+                confirmTestTag = "confirmDeletePhoto",
+                body = "It will be deleted and no longer used for recognition.",
             )
         }
 
         if (showAddFaceDialog) {
-            AlertDialog(
-                onDismissRequest = { showAddFaceDialog = false; faceEnrollName = "" },
-                title = { Text("Enrol face") },
-                text = {
+            ConfirmDialog(
+                title = "Enrol face",
+                onDismiss = { showAddFaceDialog = false; faceEnrollName = "" },
+                onConfirm = {
+                    val name = faceEnrollName.trim()
+                    if (name.isEmpty()) return@ConfirmDialog
+                    showAddFaceDialog = false
+                    faceEnrollName = ""
+                    // Block duplicates up-front; the row's photos icon
+                    // extends an existing person instead.
+                    if (current?.knownFaces
+                            ?.any { it.label.equals(name, ignoreCase = true) } == true
+                    ) {
+                        viewModel.notifyDuplicateName(name)
+                        return@ConfirmDialog
+                    }
+                    val missing = viewModel.missingEnrollmentPermissions()
+                    if (missing.isEmpty()) {
+                        viewModel.startEnrollment(name)
+                    } else {
+                        pendingFaceName = name
+                        enrollPermissionLauncher.launch(missing.toTypedArray())
+                    }
+                },
+                confirmLabel = "Enrol",
+                confirmEnabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
+                bodyContent = {
                     Column {
                         OutlinedTextField(
                             value = faceEnrollName,
@@ -1501,41 +1478,6 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val name = faceEnrollName.trim()
-                            if (name.isEmpty()) return@Button
-                            showAddFaceDialog = false
-                            faceEnrollName = ""
-                            // Block duplicates up-front; the row's photos icon
-                            // extends an existing person instead.
-                            if (current?.knownFaces
-                                    ?.any { it.label.equals(name, ignoreCase = true) } == true
-                            ) {
-                                viewModel.notifyDuplicateName(name)
-                                return@Button
-                            }
-                            val missing = viewModel.missingEnrollmentPermissions()
-                            if (missing.isEmpty()) {
-                                viewModel.startEnrollment(name)
-                            } else {
-                                pendingFaceName = name
-                                enrollPermissionLauncher.launch(missing.toTypedArray())
-                            }
-                        },
-                        enabled = faceEnrollName.trim().isNotEmpty() && !isEnrolling,
-                        shape = AppButtonShape,
-                    ) { Text("Enrol") }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showAddFaceDialog = false; faceEnrollName = "" },
-                        shape = AppButtonShape,
-                    ) {
-                        Text("Cancel")
                     }
                 },
             )
@@ -2006,26 +1948,16 @@ private fun ChannelCard(
             },
     )
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete $name?") },
-            text = { Text("Remove this ${channelTitle(config.type)} account?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onDelete()
-                        confirmDelete = false
-                    },
-                    shape = AppButtonShape,
-                    modifier = Modifier.testTag("confirmDeleteChannel_${config.id}"),
-                ) { Text("Delete") }
+        ConfirmDialog(
+            title = "Delete $name?",
+            onDismiss = { confirmDelete = false },
+            onConfirm = {
+                onDelete()
+                confirmDelete = false
             },
-            dismissButton = {
-                TextButton(
-                    onClick = { confirmDelete = false },
-                    shape = AppButtonShape,
-                ) { Text("Cancel") }
-            },
+            confirmLabel = "Delete",
+            confirmTestTag = "confirmDeleteChannel_${config.id}",
+            body = "Remove this ${channelTitle(config.type)} account?",
         )
     }
 }
@@ -2605,11 +2537,16 @@ private fun FaceGalleryDialog(
     ) {
         value = runCatching { photoFiles() }.getOrDefault(emptyList())
     }
-    AlertDialog(
-        onDismissRequest = onClose,
+    ConfirmDialog(
+        title = "Photos of ${face.label}",
+        onDismiss = onClose,
+        onConfirm = onClose,
+        confirmLabel = "Close",
         modifier = Modifier.testTag("faceGalleryDialog"),
-        title = { Text("Photos of ${face.label}") },
-        text = {
+        confirmTestTag = "closeGallery",
+        confirmTextButton = true,
+        dismissLabel = null,
+        bodyContent = {
             if (photos.isEmpty()) {
                 Text(
                     "No photos yet.",
@@ -2654,13 +2591,6 @@ private fun FaceGalleryDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onClose,
-                modifier = Modifier.testTag("closeGallery"),
-                shape = AppButtonShape,
-            ) { Text("Close") }
         },
     )
 }
