@@ -537,6 +537,25 @@ class SettingsTest {
     }
 
     @Test
+    fun copyWithSetsMonitorPreview() {
+        assertEquals(false, AppSettings.defaults().monitorPreview)
+        val on = AppSettings.defaults().copyWith(monitorPreview = true)
+        assertEquals(true, on.monitorPreview)
+        // Omitted means preserved.
+        assertEquals(true, on.copyWith().monitorPreview)
+    }
+
+    @Test
+    fun liveViewPortDefaultsTo8554WhenMissing() {
+        val raw = AppSettings.defaults().toJson().toMutableMap()
+        @Suppress("UNCHECKED_CAST")
+        val liveView = (raw["liveView"] as Map<String, Any?>).toMutableMap()
+        liveView.remove("port")
+        raw["liveView"] = liveView
+        assertEquals(8554, AppSettings.fromJson(raw).liveView.port)
+    }
+
+    @Test
     fun previewJsonRoundTrip() {
         val s = AppSettings.defaults().copyWith(previewFps = 4, previewMaxWidthPx = 480)
         val back = AppSettings.fromJson(s.toJson())

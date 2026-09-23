@@ -106,7 +106,7 @@ data class LiveViewSettings(
         fun fromJson(json: Map<String, Any?>): LiveViewSettings = LiveViewSettings(
             enabled = json["enabled"] as? Boolean ?: false,
             mode = json["mode"] as? String ?: "server",
-            port = (json["port"] as? Number)?.toInt() ?: 554,
+            port = (json["port"] as? Number)?.toInt() ?: 8554,
             username = json["username"] as? String ?: "",
             password = json["password"] as? String ?: "",
             relayUrl = json["relayUrl"] as? String ?: "",
@@ -297,6 +297,7 @@ data class AppSettings(
         privacyMaskEffect: String? = null,
         analysisResolution: String? = null,
         detectionSpeed: String? = null,
+        monitorPreview: Boolean? = null,
         detectionZones: List<DetectionZone>? = null,
         exclusionZones: List<DetectionZone>? = null,
         scheduleExclusions: List<ScheduleWindow>? = null,
