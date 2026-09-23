@@ -62,4 +62,24 @@ class FaceThumbsTest {
         assertEquals(50 * 50, out.size)
         assertTrue(out.none { it == 0xFFFFFFFF.toInt() })
     }
+
+    @Test
+    fun mirrorReversesRows() {
+        // 2x2: [a b / c d] → [b a / d c].
+        val src = intArrayOf(1, 2, 3, 4)
+        assertTrue(FaceThumbs.mirror(src, 2).contentEquals(intArrayOf(2, 1, 4, 3)))
+    }
+
+    @Test
+    fun mirrorIsItsOwnInverse() {
+        val src = IntArray(16) { it }
+        assertTrue(FaceThumbs.mirror(FaceThumbs.mirror(src, 4), 4).contentEquals(src))
+    }
+
+    @Test
+    fun mirrorKeepsSymmetricContent() {
+        // Solid crop is mirror-invariant (front/back JPEGs match for blanks).
+        val out = FaceThumbs.crop(solidFrame(), doubleArrayOf(0.2, 0.2, 0.8, 0.8))
+        assertTrue(FaceThumbs.mirror(out, FaceThumbs.SIZE).contentEquals(out))
+    }
 }

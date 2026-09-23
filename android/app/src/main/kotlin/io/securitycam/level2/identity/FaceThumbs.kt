@@ -55,6 +55,24 @@ object FaceThumbs {
         return out
     }
 
+    /**
+     * Horizontal mirror of square [size]x[size] ARGB ints (row-major).
+     * Front-camera analysis frames are unmirrored sensor readouts while the
+     * preview the user poses against is a mirrored selfie — mirroring the
+     * *displayed* photo (only) keeps what they see consistent without
+     * touching the embedding, which must match the unmirrored live pipeline.
+     */
+    fun mirror(src: IntArray, size: Int): IntArray {
+        require(src.size == size * size) { "pixels must be size*size" }
+        val out = IntArray(src.size)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                out[y * size + x] = src[y * size + (size - 1 - x)]
+            }
+        }
+        return out
+    }
+
     /** Encodes the cropped photo as JPEG into `<dir>/<id>_<index>.jpg`. */
     fun writeJpg(
         dir: File,
@@ -63,8 +81,10 @@ object FaceThumbs {
         frame: ColorBitmap,
         box: DoubleArray,
         size: Int = PHOTO_SIZE,
+        mirror: Boolean = false,
     ) {
-        val pixels = crop(frame, box, size)
+        val cropped = crop(frame, box, size)
+        val pixels = if (mirror) mirror(cropped, size) else cropped
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         bmp.setPixels(pixels, 0, size, 0, 0, size, size)
         dir.mkdirs()

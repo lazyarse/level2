@@ -613,7 +613,8 @@ class SettingsViewModel(
      * Persists the stashed capture as the next `<id>_<index>.jpg` photo and
      * journals its embedding; best-effort, never fatal. A failed journal
      * entry rolls the photo back so no vectordess photo can masquerade as a
-     * legacy one at delete time.
+     * legacy one at delete time. Front-camera captures are mirrored to match
+     * the selfie preview (embedding stays unmirrored, like the live pipeline).
      */
     private fun persistThumbnail(faceId: String) {
         val app = application ?: return
@@ -629,6 +630,7 @@ class SettingsViewModel(
                 index,
                 frame,
                 doubleArrayOf(det.x1, det.y1, det.x2, det.y2),
+                mirror = isFrontId(sessionCameraId),
             )
             try {
                 store.appendSample(faceId, index, embedding)

@@ -69,6 +69,8 @@ fun FaceEnrollmentScreen(
     onShutter: () -> Unit = {},
     onUsePhoto: () -> Unit = {},
     onRetake: () -> Unit = {},
+    /** True when the capture came from the front camera (mirrored selfie). */
+    mirrorFront: Boolean = false,
 ) {
     Scaffold(
         modifier = modifier,
@@ -98,7 +100,7 @@ fun FaceEnrollmentScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (capturedFrame != null) {
-                ReviewContent(capturedFrame)
+                ReviewContent(capturedFrame, mirrorFront)
                 Spacer(Modifier.height(24.dp))
                 Text(
                     "Check the photo",
@@ -236,9 +238,14 @@ private fun LiveContent(
 
 /** REVIEW phase: static captured frame with the face box outlined. */
 @Composable
-private fun ReviewContent(captured: Pair<ColorBitmap, FaceDetection>) {
+private fun ReviewContent(
+    captured: Pair<ColorBitmap, FaceDetection>,
+    mirrorFront: Boolean,
+) {
     val (frame, box) = captured
-    val bitmap = remember(frame, box) { frame.toReviewBitmap(box).asImageBitmap() }
+    val bitmap = remember(frame, box, mirrorFront) {
+        frame.toReviewBitmap(box, mirrorFront).asImageBitmap()
+    }
     Image(
         bitmap = bitmap,
         contentDescription = "Captured face photo",
@@ -252,18 +259,22 @@ private fun ReviewContent(captured: Pair<ColorBitmap, FaceDetection>) {
 
 /**
  * BGR frame → ARGB bitmap with the detected face box stroked on top (baked
- * in so the review image needs no letterbox-aware overlay math).
+ * in so the review image needs no letterbox-aware overlay math). Front
+ * captures mirror pixels and box to match the selfie preview.
  */
-private fun ColorBitmap.toReviewBitmap(det: FaceDetection): Bitmap {
+private fun ColorBitmap.toReviewBitmap(det: FaceDetection, mirror: Boolean = false): Bitmap {
     val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val pixels = IntArray(width * height)
     var i = 0
-    for (p in 0 until pixels.size) {
-        val b = bgr[i].toInt() and 0xFF
-        val g = bgr[i + 1].toInt() and 0xFF
-        val r = bgr[i + 2].toInt() and 0xFF
-        pixels[p] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-        i += 3
+    for (y in 0 until height) {
+        for (x in 0 until width) {
+            val sx = if (mirror) width - 1 - x else x
+            val idx = (y * width + sx) * 3
+            val b = bgr[idx].toInt() and 0xFF
+            val g = bgr[idx + 1].toInt() and 0xFF
+            val r = bgr[idx + 2].toInt() and 0xFF
+            pixels[y * width + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
     }
     bmp.setPixels(pixels, 0, width, 0, 0, width, height)
     val paint = Paint().apply {
@@ -272,10 +283,15 @@ private fun ColorBitmap.toReviewBitmap(det: FaceDetection): Bitmap {
         color = android.graphics.Color.WHITE
         isAntiAlias = true
     }
+    val (bx1, bx2) = if (mirror) {
+        (1.0 - det.x2) to (1.0 - det.x1)
+    } else {
+        det.x1 to det.x2
+    }
     android.graphics.Canvas(bmp).drawRect(
-        (det.x1 * width).toFloat(),
+        (bx1 * width).toFloat(),
         (det.y1 * height).toFloat(),
-        (det.x2 * width).toFloat(),
+        (bx2 * width).toFloat(),
         (det.y2 * height).toFloat(),
         paint,
     )
