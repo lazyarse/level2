@@ -46,6 +46,11 @@ open class FaceEnrollmentCoordinator(
     private val confirm: (suspend (ColorBitmap, FaceDetection) -> Boolean)? = null,
     /** Interactive mode only: a shutter snap found no face — surface inline. */
     private val onNoFace: (() -> Unit)? = null,
+    /**
+     * Fires once per accepted sample, after [KnownFaceStore.enroll], with the
+     * merged embedding (photo-journal source; [onCapture] fires too early).
+     */
+    private val onEnrolled: ((String, FloatArray) -> Unit)? = null,
 ) {
 
     /** Enrolls a NEW person; fails when [label] already exists. */
@@ -103,6 +108,7 @@ open class FaceEnrollmentCoordinator(
             if (embedding.isEmpty()) return failure("Embedding failed")
 
             store.enroll(id, embedding)
+            onEnrolled?.invoke(id, embedding)
             val updated = faceFor()
             // Reload so concurrent edits between capture and save are preserved.
             val current = settingsLoader()

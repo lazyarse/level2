@@ -133,6 +133,41 @@ class FaceEnrollmentCoordinatorTest {
     }
 
     @Test
+    fun enrolledHookReceivesIdAndEmbeddingOnce() = runBlocking {
+        val enrolled = mutableListOf<Pair<String, FloatArray>>()
+        val c = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(tmp.newFolder("kf")),
+            embedder = FakeEmbedder(),
+            faceFinder = { frame to face },
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            onEnrolled = { id, embedding -> enrolled += id to embedding },
+        )
+        val person = c.enroll("Bob").getOrThrow()
+        assertEquals(1, enrolled.size)
+        assertEquals(person.id, enrolled[0].first)
+        assertTrue(enrolled[0].second.contentEquals(floatArrayOf(1f, 0f, 0f)))
+    }
+
+    @Test
+    fun enrolledHookFiresOnceDespiteRejectedConfirm() = runBlocking {
+        var snaps = 0
+        val fired = mutableListOf<String>()
+        val c = FaceEnrollmentCoordinator(
+            store = KnownFaceStore(tmp.newFolder("kf")),
+            embedder = FakeEmbedder(),
+            faceFinder = { frame to face },
+            settingsLoader = { AppSettings.defaults() },
+            settingsSaver = {},
+            confirm = { _, _ -> ++snaps > 1 },
+            onEnrolled = { id, _ -> fired += id },
+        )
+        val person = c.enroll("Bob").getOrThrow()
+        assertEquals(2, snaps) // first snap rejected, second accepted
+        assertEquals(listOf(person.id), fired)
+    }
+
+    @Test
     fun blankLabelAndMissingFaceFailWithoutSaving() = runBlocking {
         val (c, saves) = coordinator(KnownFaceStore(tmp.newFolder("kf")), finder = { null })
         assertTrue(c.enroll("  ").isFailure)
