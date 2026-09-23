@@ -9,3 +9,8 @@
 key.properties
 **/*.keystore
 **/*.jks
+**/*.p12
+**/*.pfx
+**/*.pem
+**/google-services.json
+**/.env

@@ -36,3 +36,12 @@ app.*.map.json
 
 # Design/plan docs (local only)
 docs/plans/
+
+# Secrets and signing material must never be committed.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+google-services.json
+.env

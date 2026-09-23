@@ -11,7 +11,7 @@ Each release includes an apk for installation on your device.
 ## Getting started
 
 Requires JDK 17 (`JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` here) and an Android SDK
-(`ANDROID_HOME=/home/tpa/code/android-env/android-sdk`):
+(`ANDROID_HOME=$HOME/android-sdk`):
 
 ```sh
 cd android
