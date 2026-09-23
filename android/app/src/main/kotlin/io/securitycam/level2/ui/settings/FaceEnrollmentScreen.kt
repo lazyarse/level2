@@ -251,7 +251,11 @@ private fun ReviewContent(
         contentDescription = "Captured face photo",
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(3f / 4f)
+            // Match the captured frame: a hardcoded portrait ratio
+            // letterboxes landscape analysis frames with black bars.
+            .aspectRatio(
+                bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f),
+            )
             .clip(RoundedCornerShape(16.dp))
             .testTag("enrollmentReview"),
     )

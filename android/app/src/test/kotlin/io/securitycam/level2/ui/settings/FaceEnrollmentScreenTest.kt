@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.ui.theme.SecurityCamTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -117,5 +118,25 @@ class FaceEnrollmentScreenTest {
         compose.onNodeWithTag("enrollmentOvalGuide").assertDoesNotExist()
         compose.onNodeWithTag("enrollmentPreview").assertDoesNotExist()
         compose.onNodeWithTag("cancelEnrollmentButton").assertIsDisplayed()
+    }
+
+    @Test
+    fun reviewPhase_matchesCapturedFrameAspect() {
+        // Landscape analysis frame: the review must take its ratio, not a
+        // hardcoded portrait box (which letterboxed with black bars).
+        val wide = ColorBitmap(16, 8, ByteArray(3 * 16 * 8) { 0x40 })
+        compose.setContent {
+            SecurityCamTheme {
+                FaceEnrollmentScreen(
+                    label = "Bob",
+                    onCancel = {},
+                    capturedFrame = wide to det(),
+                    shutterArmed = true,
+                )
+            }
+        }
+        val bounds = compose.onNodeWithTag("enrollmentReview")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(2.0f, bounds.width / bounds.height, 0.05f)
     }
 }
