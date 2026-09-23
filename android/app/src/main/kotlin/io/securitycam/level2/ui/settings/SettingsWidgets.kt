@@ -192,6 +192,28 @@ internal fun StepperRow(
     }
 }
 
+/** Label + slider with a test tag; value is clamped into [range]. */
+@Composable
+internal fun SettingSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    testTag: String,
+    enabled: Boolean = true,
+    onChange: (Float) -> Unit,
+) {
+    Text(label)
+    Slider(
+        value = value.coerceIn(range.start, range.endInclusive),
+        onValueChange = onChange,
+        valueRange = range,
+        steps = steps,
+        enabled = enabled,
+        modifier = Modifier.testTag(testTag),
+    )
+}
+
 @Composable
 internal fun BodyText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall)

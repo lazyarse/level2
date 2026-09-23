@@ -303,60 +303,54 @@ internal fun DetectorCard(
                     if (hybrid) {
                         val sightSensitivity =
                             SensitivityScale.thresholdToSensitivity(config.type, config.threshold)
-                        Text(
-                            "Sight sensitivity: $sightSensitivity/20 " +
+                        SettingSlider(
+                            label = "Sight sensitivity: $sightSensitivity/20 " +
                                 "(${SensitivityScale.label(sightSensitivity)})",
-                        )
-                        Slider(
                             value = sightSensitivity.toFloat(),
-                            onValueChange = { v -> onChanged(config.copy(
+                            range = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
+                            testTag = "threshold_${config.type}",
+                            onChange = { v -> onChanged(config.copy(
                                 threshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
                                     v.roundToInt(),
                                 ),
                                 audioThreshold = config.audioThreshold ?: config.threshold,
                             )) },
-                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
-                            steps = 18,
-                            modifier = Modifier.testTag("threshold_${config.type}"),
                         )
                         val audioThreshold = config.audioThreshold ?: config.threshold
                         val soundSensitivity =
                             SensitivityScale.thresholdToSensitivity(config.type, audioThreshold)
-                        Text(
-                            "Sound sensitivity: $soundSensitivity/20 " +
+                        SettingSlider(
+                            label = "Sound sensitivity: $soundSensitivity/20 " +
                                 "(${SensitivityScale.label(soundSensitivity)})",
-                        )
-                        Slider(
                             value = soundSensitivity.toFloat(),
-                            onValueChange = { v -> onChanged(config.copy(
+                            range = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
+                            testTag = "audioThreshold_${config.type}",
+                            onChange = { v -> onChanged(config.copy(
                                 audioThreshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
                                     v.roundToInt(),
                                 ),
                             )) },
-                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
-                            steps = 18,
-                            modifier = Modifier.testTag("audioThreshold_${config.type}"),
                         )
                     } else {
                         val sensitivity =
                             SensitivityScale.thresholdToSensitivity(config.type, config.threshold)
-                        Text(
-                            "Sensitivity: $sensitivity/20 " +
+                        SettingSlider(
+                            label = "Sensitivity: $sensitivity/20 " +
                                 "(${SensitivityScale.label(sensitivity)})",
-                        )
-                        Slider(
                             value = sensitivity.toFloat(),
-                            onValueChange = { v -> onChanged(config.copy(
+                            range = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
+                            steps = 18,
+                            testTag = "threshold_${config.type}",
+                            onChange = { v -> onChanged(config.copy(
                                 threshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
                                     v.roundToInt(),
                                 ),
                             )) },
-                            valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
-                            steps = 18,
-                            modifier = Modifier.testTag("threshold_${config.type}"),
                         )
                     }
                 }

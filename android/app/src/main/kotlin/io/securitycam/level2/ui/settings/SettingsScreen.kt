@@ -601,28 +601,28 @@ fun SettingsScreen(
                                 onSelect = { q -> viewModel.update { it.copy(videoQuality = q) } },
                             )
                             Spacer(Modifier.height(8.dp))
-                            Text("Pre-roll: ${current.preRollSeconds}s")
-                            Slider(
-                                value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v ->
+                            SettingSlider(
+                                label = "Pre-roll: ${current.preRollSeconds}s",
+                                value = current.preRollSeconds.toFloat(),
+                                range = 0f..30f,
+                                steps = 29,
+                                testTag = "preRollSlider",
+                                enabled = current.recordVideo,
+                                onChange = { v ->
                                     viewModel.update { it.copy(preRollSeconds = v.roundToInt()) }
                                 },
-                                valueRange = 0f..30f,
-                                steps = 29,
-                                enabled = current.recordVideo,
-                                modifier = Modifier.testTag("preRollSlider"),
                             )
                             Spacer(Modifier.height(8.dp))
-                            Text("Post-roll: ${current.postRollSeconds}s")
-                            Slider(
-                                value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v ->
+                            SettingSlider(
+                                label = "Post-roll: ${current.postRollSeconds}s",
+                                value = current.postRollSeconds.toFloat(),
+                                range = 0f..30f,
+                                steps = 29,
+                                testTag = "postRollSlider",
+                                enabled = current.recordVideo,
+                                onChange = { v ->
                                     viewModel.update { it.copy(postRollSeconds = v.roundToInt()) }
                                 },
-                                valueRange = 0f..30f,
-                                steps = 29,
-                                enabled = current.recordVideo,
-                                modifier = Modifier.testTag("postRollSlider"),
                             )
                             Spacer(Modifier.height(8.dp))
                             SwitchRow(
@@ -874,15 +874,15 @@ fun SettingsScreen(
                                         viewModel.update { it.copy(liveView = it.liveView.copy(resolution = q)) }
                                     },
                                 )
-                                Text("FPS: ${current.liveView.fps}")
-                                Slider(
-                                    value = current.liveView.fps.toFloat().coerceIn(5f, 30f),
-                                    onValueChange = { v ->
+                                SettingSlider(
+                                    label = "FPS: ${current.liveView.fps}",
+                                    value = current.liveView.fps.toFloat(),
+                                    range = 5f..30f,
+                                    steps = 24,
+                                    testTag = "liveViewFps",
+                                    onChange = { v ->
                                         viewModel.update { it.copy(liveView = it.liveView.copy(fps = v.roundToInt())) }
                                     },
-                                    valueRange = 5f..30f,
-                                    steps = 24,
-                                    modifier = Modifier.testTag("liveViewFps"),
                                 )
                                 SwitchRow(
                                     title = "Include audio",
@@ -1074,17 +1074,15 @@ fun SettingsScreen(
                             }
                         }
                         CollapsibleSection("Events", summary = retentionSummary(current.retentionDays)) {
-                            Text(
-                                "Automatic retention: " +
+                            SettingSlider(
+                                label = "Automatic retention: " +
                                     if (current.retentionDays == 0) "off"
                                     else "${current.retentionDays} day" + if (current.retentionDays == 1) "" else "s",
-                            )
-                            Slider(
-                                value = current.retentionDays.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v -> viewModel.update { it.copy(retentionDays = v.roundToInt()) } },
-                                valueRange = 0f..30f,
+                                value = current.retentionDays.toFloat(),
+                                range = 0f..30f,
                                 steps = 29,
-                                modifier = Modifier.testTag("retentionSlider"),
+                                testTag = "retentionSlider",
+                                onChange = { v -> viewModel.update { it.copy(retentionDays = v.roundToInt()) } },
                             )
                             val clearOptions = buildList {
                                 add(24 to "24 hours")
@@ -1169,17 +1167,17 @@ fun SettingsScreen(
                                 Icon(Icons.Filled.ChevronRight, contentDescription = null)
                             }
                             Spacer(Modifier.height(16.dp))
-                            Text("Merge window: ${mergeLabel(current.notificationMergeWindow)}")
-                            Slider(
-                                value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v ->
+                            SettingSlider(
+                                label = "Merge window: ${mergeLabel(current.notificationMergeWindow)}",
+                                value = current.notificationMergeWindow.toSeconds().toFloat(),
+                                range = 0f..30f,
+                                steps = 29,
+                                testTag = "mergeWindowSlider",
+                                onChange = { v ->
                                     viewModel.update {
                                         it.copy(notificationMergeWindow = Duration.ofSeconds(v.roundToInt().toLong()))
                                     }
                                 },
-                                valueRange = 0f..30f,
-                                steps = 29,
-                                modifier = Modifier.testTag("mergeWindowSlider"),
                             )
                             BodyText(
                                 "When multiple triggers fire within this window, they are " +
@@ -1225,30 +1223,30 @@ fun SettingsScreen(
                                 onSelect = { v -> viewModel.update { it.copy(previewMode = PreviewMode.valueOf(v)) } },
                             )
                             Spacer(Modifier.height(16.dp))
-                            Text("Preview frame rate: ${current.previewFps} fps")
-                            Slider(
+                            SettingSlider(
+                                label = "Preview frame rate: ${current.previewFps} fps",
                                 value = current.previewFps.toFloat(),
-                                onValueChange = { v ->
+                                range = VideoPreview.MIN_FPS.toFloat()..VideoPreview.MAX_FPS.toFloat(),
+                                steps = VideoPreview.MAX_FPS - VideoPreview.MIN_FPS - 1,
+                                testTag = "previewFpsSlider",
+                                onChange = { v ->
                                     viewModel.update {
                                         it.copy(previewFps = VideoPreview.clampFps(v.roundToInt()))
                                     }
                                 },
-                                valueRange = VideoPreview.MIN_FPS.toFloat()..VideoPreview.MAX_FPS.toFloat(),
-                                steps = VideoPreview.MAX_FPS - VideoPreview.MIN_FPS - 1,
-                                modifier = Modifier.testTag("previewFpsSlider"),
                             )
                             Spacer(Modifier.height(16.dp))
-                            Text("Preview width: ${current.previewMaxWidthPx} px")
-                            Slider(
+                            SettingSlider(
+                                label = "Preview width: ${current.previewMaxWidthPx} px",
                                 value = current.previewMaxWidthPx.toFloat(),
-                                onValueChange = { v ->
+                                range = VideoPreview.MIN_WIDTH.toFloat()..VideoPreview.MAX_WIDTH.toFloat(),
+                                steps = (VideoPreview.MAX_WIDTH - VideoPreview.MIN_WIDTH) / 16 - 1,
+                                testTag = "previewWidthSlider",
+                                onChange = { v ->
                                     viewModel.update {
                                         it.copy(previewMaxWidthPx = VideoPreview.clampWidth(v.roundToInt()))
                                     }
                                 },
-                                valueRange = VideoPreview.MIN_WIDTH.toFloat()..VideoPreview.MAX_WIDTH.toFloat(),
-                                steps = (VideoPreview.MAX_WIDTH - VideoPreview.MIN_WIDTH) / 16 - 1,
-                                modifier = Modifier.testTag("previewWidthSlider"),
                             )
                         }
                         HorizontalDivider()
