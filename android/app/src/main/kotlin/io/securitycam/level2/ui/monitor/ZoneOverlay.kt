@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
+import io.securitycam.level2.detection.ZoneGeometry
 import kotlin.math.min
 
 /**
@@ -37,12 +38,9 @@ object ZoneDisplayMapper {
         frameAspect: Float = 4f / 3f,
         fillCrop: Boolean = false,
     ): Offset {
-        val (dx, dy) = when (rotationDegrees) {
-            90 -> 1f - ny to nx
-            270 -> ny to 1f - nx
-            180 -> 1f - nx to 1f - ny
-            else -> nx to ny
-        }
+        val rotated = ZoneGeometry.rotateNorm(nx.toDouble(), ny.toDouble(), rotationDegrees)
+        val dx = rotated.first.toFloat()
+        val dy = rotated.second.toFloat()
         val rotAspect =
             if (rotationDegrees == 90 || rotationDegrees == 270) 1f / frameAspect
             else frameAspect

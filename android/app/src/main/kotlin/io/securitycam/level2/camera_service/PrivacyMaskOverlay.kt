@@ -9,6 +9,7 @@ import android.graphics.RectF
 import androidx.media3.effect.BitmapOverlay
 import io.securitycam.level2.detection.DetectionZone
 import io.securitycam.level2.detection.DetectionZoneShape
+import io.securitycam.level2.detection.ZoneGeometry
 
 /**
  * Full-frame overlay that obscures exclusion zones in exported clips.
@@ -148,14 +149,11 @@ class PrivacyMaskOverlay(
 
     /**
      * Rotate normalised (x, y) from upright/display space into pre-rotation
-     * pixel space using the clip's rotation metadata.
+     * pixel space using the clip's rotation metadata (the inverse of the
+     * display rotation in [ZoneGeometry]).
      */
-    private fun rotated(x: Double, y: Double): Pair<Double, Double> = when (clipRotation) {
-        90  -> y to 1.0 - x
-        180 -> 1.0 - x to 1.0 - y
-        270 -> 1.0 - y to x
-        else -> x to y
-    }
+    private fun rotated(x: Double, y: Double): Pair<Double, Double> =
+        ZoneGeometry.derotateNorm(x, y, clipRotation)
 
     /** Build a [Path] from a polygon zone's rotated normalised points. */
     private fun zonePath(zone: DetectionZone): Path {
