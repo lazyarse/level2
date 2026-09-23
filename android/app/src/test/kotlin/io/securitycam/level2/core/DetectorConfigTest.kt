@@ -2,8 +2,6 @@ package io.securitycam.level2.core
 
 import io.securitycam.level2.detection.DetectorConfig
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 
@@ -11,22 +9,12 @@ import java.time.Duration
 class DetectorConfigTest {
 
     @Test
-    fun motionGatedDefaultsToFalse() {
-        val c = DetectorConfig(type = "face")
-        assertFalse(c.motionGated)
-    }
-
-    @Test
-    fun motionGatedJsonRoundTrips() {
-        val c = DetectorConfig(type = "face", motionGated = true)
-        val back = DetectorConfig.fromJson(c.toJson())
-        assertTrue(back.motionGated)
-    }
-
-    @Test
-    fun missingMotionGatedFallsBackToFalse() {
-        val back = DetectorConfig.fromJson(mapOf("type" to "face"))
-        assertFalse(back.motionGated)
+    fun legacyMotionGatedKeyIsIgnored() {
+        // Blobs written before the flag was removed still carry the key;
+        // it must parse without affecting the config.
+        val back = DetectorConfig.fromJson(mapOf("type" to "face", "motionGated" to true))
+        assertEquals("face", back.type)
+        assertEquals(0.5, back.threshold, 0.0)
     }
 
     @Test
@@ -36,7 +24,6 @@ class DetectorConfigTest {
         assertEquals(0.5, c.threshold, 0.0)
         assertEquals(2, c.persistenceFrames)
         assertEquals(Duration.ofSeconds(5), c.cooldown)
-        assertFalse(c.motionGated)
     }
 
     @Test
@@ -47,7 +34,6 @@ class DetectorConfigTest {
             threshold = 0.3,
             persistenceFrames = 3,
             cooldown = Duration.ofSeconds(5),
-            motionGated = true,
         )
         val back = DetectorConfig.fromJson(c.toJson())
         assertEquals(c, back)

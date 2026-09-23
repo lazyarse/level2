@@ -168,12 +168,12 @@ class MonitoringInstrumentedTest {
     }
 
     @Test
-    fun faceDetectorIsWiredAndMotionGated() = runBlocking {
+    fun faceDetectorIsWired() = runBlocking {
         saveSettings { settings ->
             settings.copy(
                 detectorConfigs = settings.detectorConfigs.mapValues { (key, config) ->
                     if (key == TriggerType.face) {
-                        config.copy(enabled = true, motionGated = true)
+                        config.copy(enabled = true)
                     } else {
                         config
                     }
@@ -204,12 +204,12 @@ class MonitoringInstrumentedTest {
     }
 
     @Test
-    fun personDetectorIsWiredAndMotionGated() = runBlocking {
+    fun personDetectorIsWired() = runBlocking {
         saveSettings { settings ->
             settings.copy(
                 detectorConfigs = settings.detectorConfigs.mapValues { (key, config) ->
                     if (key == TriggerType.person) {
-                        config.copy(enabled = true, motionGated = true)
+                        config.copy(enabled = true)
                     } else {
                         config
                     }

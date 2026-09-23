@@ -224,10 +224,9 @@ class DetectorPipelineTest {
     @Test
     fun gatedDetectorsRunOnlyWhenMotionFires() = runBlocking {
         val scope = scope()
-        // Note: motionGated=false here is deliberate — gating is a fixed
-        // pipeline rule now, so the legacy flag must not exempt anyone.
+        // Gating is a fixed pipeline rule now; there is no per-detector flag.
         val stub = GatedStubDetector(
-            DetectorConfig(type = "gated", enabled = true, motionGated = false, persistenceFrames = 1),
+            DetectorConfig(type = "gated", enabled = true, persistenceFrames = 1),
         )
         val pipeline = DetectorPipeline(
             classifier = MockAudioEventClassifier(),
@@ -384,7 +383,7 @@ class DetectorPipelineTest {
             configs = listOf(
                 DetectorConfig(
                     type = TriggerType.babyCry, enabled = true, threshold = 0.5,
-                    persistenceFrames = 1, motionGated = true,
+                    persistenceFrames = 1,
                 ),
             ),
         )
@@ -392,8 +391,8 @@ class DetectorPipelineTest {
         val events = mutableListOf<TriggerEvent>()
         val collector = scope.launch { pipeline.triggers.collect { events.add(it) } }
         yield()
-        // No frames processed at all — sound alone must trigger even with
-        // the legacy motionGated flag set.
+        // No frames processed at all — sound alone must trigger, since
+        // audio paths are never motion-gated.
         pipeline.processAudio(babyCryWindow(base))
         assertEquals(1, events.size)
         assertEquals(TriggerType.babyCry, events.single().triggerType)

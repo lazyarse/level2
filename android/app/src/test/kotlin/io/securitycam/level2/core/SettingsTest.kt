@@ -104,10 +104,9 @@ class SettingsTest {
         // …stored routing extras survive the upgrade…
         assertTrue(parsed.detectorConfigs[TriggerType.faceKnown]!!.enabled)
 
-        // …new types carry their defaults (disabled + motion-gated for dog)…
+        // …new types carry their defaults (disabled for dog)…
         val dog = parsed.detectorConfigs[TriggerType.dog]!!
         assertFalse(dog.enabled)
-        assertTrue(dog.motionGated)
         assertEquals(10, parsed.detectorConfigs[TriggerType.loitering]!!.dwellSeconds)
 
         // …and stored tuning survives untouched.
@@ -428,22 +427,20 @@ class SettingsTest {
     }
 
     @Test
-    fun defaultsIncludeAFaceDetectorDisabledAndMotionGated() {
+    fun defaultsIncludeADisabledFaceDetector() {
         val s = AppSettings.defaults()
         val face = s.detectorConfigs[TriggerType.face]
         assertEquals(face != null, true)
         assertEquals(false, face!!.enabled)
-        assertEquals(true, face.motionGated)
         assertEquals(0.7, face.threshold, 0.0)
     }
 
     @Test
-    fun defaultsIncludeAPersonDetectorDisabledAndMotionGated() {
+    fun defaultsIncludeADisabledPersonDetector() {
         val s = AppSettings.defaults()
         val person = s.detectorConfigs[TriggerType.person]
         assertEquals(person != null, true)
         assertEquals(false, person!!.enabled)
-        assertEquals(true, person.motionGated)
         assertEquals(0.5, person.threshold, 0.0)
         assertTrue(s.detectorConfigs.containsKey(TriggerType.person))
     }
@@ -457,14 +454,12 @@ class SettingsTest {
                     threshold = 0.3,
                     persistenceFrames = 3,
                     enabled = true,
-                    motionGated = true,
                 )
             ),
         )
         val restored = AppSettings.fromJson(settings.toJson())
         val person = restored.detectorConfigs[TriggerType.person]!!
         assertEquals(true, person.enabled)
-        assertEquals(true, person.motionGated)
         assertEquals(0.3, person.threshold, 0.0)
         assertEquals(3, person.persistenceFrames)
     }

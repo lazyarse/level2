@@ -415,14 +415,12 @@ data class AppSettings(
                     threshold = 0.7,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.person to DetectorConfig(
                     type = TriggerType.person,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.tamper to DetectorConfig(
                     type = TriggerType.tamper,
@@ -441,42 +439,36 @@ data class AppSettings(
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.cat to DetectorConfig(
                     type = TriggerType.cat,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.vehicle to DetectorConfig(
                     type = TriggerType.vehicle,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.bird to DetectorConfig(
                     type = TriggerType.bird,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.livestock to DetectorConfig(
                     type = TriggerType.livestock,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
                 TriggerType.loitering to DetectorConfig(
                     type = TriggerType.loitering,
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                     dwellSeconds = 10,
                 ),
                 TriggerType.tripwire to DetectorConfig(
@@ -484,7 +476,6 @@ data class AppSettings(
                     threshold = 0.5,
                     persistenceFrames = 2,
                     enabled = false,
-                    motionGated = true,
                 ),
             ),
             channelConfigs = listOf(
@@ -552,7 +543,6 @@ data class AppSettings(
                 threshold = 0.7,
                 persistenceFrames = 2,
                 enabled = false,
-                motionGated = true,
             )
 
         fun fromJson(json: Map<String, Any?>): AppSettings {

@@ -160,8 +160,8 @@ class DetectorPipeline(
      * multi-frame baseline and its "moved"/"covered" paths specifically need
      * to run on still frames. Audio paths ([processAudio]) intentionally never
      * gate: sound is the complementary modality for what vision misses
-     * (off-camera or static-scene events). [DetectorConfig.motionGated] is
-     * legacy JSON ballast and is ignored here.
+     * (off-camera or static-scene events). Gating is a fixed pipeline rule
+     * ([isMotionGated]); no per-detector flag exists.
      */
     private fun isMotionGated(detector: FrameDetector): Boolean =
         detector.triggerType != TriggerType.motion &&
