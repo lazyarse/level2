@@ -16,14 +16,14 @@ import io.securitycam.level2.detection.ZoneFilter
  * counters. Fired results carry the modality in `detail`
  * ("seen"/"bark"/"growl") so events read "Dog detected in Hallway (bark)".
  *
- * Visual engine is the shared [YoloPersonEngine] model — zero extra model load.
+ * Visual engine is the shared YOLO model — zero extra model load.
  */
 class DogDetector(
     override val config: DetectorConfig,
-    visualEngine: DogEngine? = null,
+    visualEngine: YoloObjectEngine? = null,
 ) : HybridDetector() {
 
-    private val engine: DogEngine = visualEngine ?: YoloDogEngine(AppContextHolder.require())
+    private val engine: YoloObjectEngine = visualEngine ?: YoloObjectEngineImpl(AppContextHolder.require(), listOf(YoloClasses.DOG))
     private var audioStreak = 0
 
     override val id: String get() = config.type
@@ -49,7 +49,7 @@ class DogDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false, detail = null)
-        val dogs = keepPixelBoxes(engine.detectDogs(color), color.width, color.height)
+        val dogs = keepPixelBoxes(engine.detect(color), color.width, color.height)
         latestBoxes = dogs
         val outcome = if (dogs.isEmpty()) {
             gate(0.0, present = false)

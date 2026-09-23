@@ -15,10 +15,10 @@ import io.securitycam.level2.detection.ZoneFilteredDetector
  */
 class PersonDetector(
     override val config: DetectorConfig,
-    engine: PersonEngine? = null,
+    engine: YoloObjectEngine? = null,
 ) : ZoneFilteredDetector() {
 
-    private val engine: PersonEngine = engine ?: YoloPersonEngine(AppContextHolder.require())
+    private val engine: YoloObjectEngine = engine ?: YoloObjectEngineImpl(AppContextHolder.require(), listOf(YoloClasses.PERSON), maxDetections = 30)
 
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.person
@@ -36,7 +36,7 @@ class PersonDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        val people = keepPixelBoxes(engine.detectPersons(color), color.width, color.height)
+        val people = keepPixelBoxes(engine.detect(color), color.width, color.height)
         latestBoxes = people
         // Keep when the box overlaps an inclusion zone (or none exist) and
         // no exclusion zone: exclusion wins (see [keepBox]).

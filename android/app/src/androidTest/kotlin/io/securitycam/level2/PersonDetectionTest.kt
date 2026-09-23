@@ -2,7 +2,8 @@ package io.securitycam.level2
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.securitycam.level2.detection.ColorBitmap
-import io.securitycam.level2.detection.person.YoloPersonEngine
+import io.securitycam.level2.detection.person.YoloClasses
+import io.securitycam.level2.detection.person.YoloObjectEngine
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,12 +23,12 @@ class PersonDetectionTest {
 
     @Test
     fun personEngineLoadsAndReportsFewBoxesOnABlankFrame() = runBlocking {
-        val engine = YoloPersonEngine(ItestHarness.appContext)
+        val engine = YoloObjectEngine(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         val w = 320
         val h = 240
         val frame = ColorBitmap(w, h, ByteArray(w * h * 3) { 120.toByte() })
-        val people = engine.detectPersons(frame)
+        val people = engine.detect(frame)
         assertTrue(
             "expected near-zero detections on a blank frame, got ${people.size}",
             people.size <= 5,
@@ -36,11 +37,11 @@ class PersonDetectionTest {
     }
 
     private fun detectsAPersonIn(asset: String) = runBlocking {
-        val engine = YoloPersonEngine(ItestHarness.appContext)
+        val engine = YoloObjectEngine(ItestHarness.appContext, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         // Cap the long edge so the emulator CPU inference stays quick.
         val frame = ItestHarness.loadBgrScaled(asset, maxDim = 1024)
-        val people = engine.detectPersons(frame)
+        val people = engine.detect(frame)
         assertTrue("no person detected in $asset", people.isNotEmpty())
         val box = people.first()
         assertTrue(box.x1 >= 0.0)

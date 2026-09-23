@@ -55,8 +55,9 @@ class YoloPostprocessTest {
 
     @Test
     fun decodesOneAnchoredPersonIntoFrameCoordinates() {
-        val boxes = decodeYolo26(
+        val boxes = decodeYoloClasses(
             personAt(0),
+            classIndices = listOf(YoloClasses.PERSON),
             conf = 0.25,
             iou = 0.7,
             maxDetections = 30,
@@ -80,8 +81,9 @@ class YoloPostprocessTest {
         out[2 * ANCHORS] = 0.3f // w
         out[3 * ANCHORS] = 0.3f // h
         out[4 * ANCHORS] = 0.9f
-        val boxes = decodeYolo26(
+        val boxes = decodeYoloClasses(
             out,
+            classIndices = listOf(YoloClasses.PERSON),
             conf = 0.25,
             iou = 0.7,
             maxDetections = 30,
@@ -98,8 +100,9 @@ class YoloPostprocessTest {
 
     @Test
     fun dropsAnchorsBelowTheConfidenceGate() {
-        val boxes = decodeYolo26(
+        val boxes = decodeYoloClasses(
             personAt(0, score = 0.2),
+            classIndices = listOf(YoloClasses.PERSON),
             conf = 0.25,
             iou = 0.7,
             maxDetections = 30,
@@ -117,8 +120,9 @@ class YoloPostprocessTest {
         out[2 * ANCHORS] = 0.4f // w
         out[3 * ANCHORS] = 0.4f // h
         out[4 * ANCHORS] = 0.9f
-        val boxes = decodeYolo26(
+        val boxes = decodeYoloClasses(
             out,
+            classIndices = listOf(YoloClasses.PERSON),
             conf = 0.25,
             iou = 0.7,
             maxDetections = 30,

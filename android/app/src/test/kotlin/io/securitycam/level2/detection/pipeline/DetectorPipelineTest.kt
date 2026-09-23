@@ -19,7 +19,7 @@ import io.securitycam.level2.detection.audio.MockAudioEventClassifier
 import io.securitycam.level2.detection.buildFrame
 import io.securitycam.level2.detection.buildFrameWithRect
 import io.securitycam.level2.detection.person.DogDetector
-import io.securitycam.level2.detection.person.DogEngine
+import io.securitycam.level2.detection.person.FakeYoloEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -467,7 +467,7 @@ class DetectorPipelineTest {
     fun hybridDetectorCountsAsAudioAnalyzer() = runBlocking {
         val classifier = CountingClassifier()
         val registry = DetectorRegistry.withDefaults()
-        registry.register(TriggerType.dog) { c -> DogDetector(c, NoopDogEngine()) }
+        registry.register(TriggerType.dog) { c -> DogDetector(c, FakeYoloEngine()) }
         val pipeline = DetectorPipeline(
             classifier = classifier,
             registry = registry,
@@ -530,11 +530,3 @@ class CountingClassifier : AudioEventClassifier {
     }
 }
 
-/** Visual engine stub: never sees a dog. */
-class NoopDogEngine : DogEngine {
-    override suspend fun init() {}
-
-    override suspend fun dispose() {}
-
-    override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = emptyList()
-}

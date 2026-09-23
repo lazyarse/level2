@@ -5,8 +5,7 @@ import io.securitycam.level2.detection.ColorBitmap
 /**
  * Runs the shared YOLO26n model at most once per frame.
  *
- * All six YOLO-backed engines ([YoloPersonEngine], [YoloVehicleEngine],
- * [YoloDogEngine], [YoloCatEngine], [YoloBirdEngine], [YoloLivestockEngine])
+ * All six YOLO-backed detectors share one [YoloObjectEngine] model call
  * share one [YoloModelSingleton] model. Each used to preprocess its own
  * 640×640 input tensor (~4.9 MB) *and* call `run` itself — N enabled
  * detectors meant N serial ~600 ms CPU inferences plus N large transient

@@ -6,8 +6,8 @@ import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.LiteRtException
 
 /**
- * Process-wide singleton for the YOLO26n model. Both [YoloPersonEngine] and
- * [YoloDogEngine] share this single [CompiledModel] to avoid loading the
+ * Process-wide singleton for the YOLO26n model. All [YoloObjectEngine]
+ * instances share this single [CompiledModel] to avoid loading the
  * ~15 MB model twice and running inference twice per frame.
  *
  * Reference-counted: the model is loaded on first [acquire] and closed when

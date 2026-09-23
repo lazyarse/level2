@@ -35,8 +35,8 @@ class PersonDetectorTest {
 
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -49,8 +49,8 @@ class PersonDetectorTest {
 
     @Test
     fun personAboveThresholdTriggersAfterPersistence() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -65,8 +65,8 @@ class PersonDetectorTest {
 
     @Test
     fun personBelowThresholdDoesNotTrigger() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -81,7 +81,7 @@ class PersonDetectorTest {
     fun noPersonDetectionsDoesNotTrigger() = runBlocking {
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
-            engine = MockPersonEngine(),
+            engine = FakeYoloEngine(),
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -92,9 +92,9 @@ class PersonDetectorTest {
 
     @Test
     fun resultCarriesMaxPersonScore() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.persons.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.boxes.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -108,8 +108,8 @@ class PersonDetectorTest {
 
     @Test
     fun resetClearsPersistence() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 2),
             engine = engine,
@@ -124,9 +124,9 @@ class PersonDetectorTest {
 
     @Test
     fun personInsideExclusionZoneIsDropped() = runBlocking {
-        val engine = MockPersonEngine()
+        val engine = FakeYoloEngine()
         // Engine boxes are pixel coords on a 100x100 frame: (10..40)^2 -> 0.1..0.4 normalized.
-        engine.persons.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        engine.boxes.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -142,9 +142,9 @@ class PersonDetectorTest {
 
     @Test
     fun personOutsideExclusionTriggers() = runBlocking {
-        val engine = MockPersonEngine()
+        val engine = FakeYoloEngine()
         // Pixels (60..90)^2 -> 0.6..0.9 normalized, clear of the 0..0.5 exclusion.
-        engine.persons.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        engine.boxes.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,
@@ -160,8 +160,8 @@ class PersonDetectorTest {
 
     @Test
     fun personOutsideInclusionsIsDropped() = runBlocking {
-        val engine = MockPersonEngine()
-        engine.persons.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = PersonDetector(
             DetectorConfig(type = TriggerType.person, persistenceFrames = 1),
             engine = engine,

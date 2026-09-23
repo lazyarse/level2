@@ -23,12 +23,6 @@ class PetHybridDetectorTest {
 
     private val start: Instant = Instant.parse("2026-01-01T12:00:00Z")
 
-    private class FixedEngine(private val boxes: List<DetectedBox>) : DogEngine, CatEngine {
-        override suspend fun init() {}
-        override suspend fun dispose() {}
-        override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = boxes
-        override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> = boxes
-    }
 
     private fun scores(vararg pairs: Pair<String, Double>): AudioEventScores =
         AudioEventScores(
@@ -48,7 +42,7 @@ class PetHybridDetectorTest {
     fun dogFiresOnSightWithSeenDetail() = runBlocking {
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.5, persistenceFrames = 2),
-            FixedEngine(visibleBox),
+            FakeYoloEngine().also { it.boxes.addAll(visibleBox) },
         )
         assertFalse(d.analyzeFrameAsync(frame()).triggered)
         val fire = d.analyzeFrameAsync(frame())
@@ -61,7 +55,7 @@ class PetHybridDetectorTest {
         // No audioThreshold set → falls back to the visual threshold (0.5).
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.5, persistenceFrames = 1),
-            FixedEngine(emptyList()),
+            FakeYoloEngine(),
         )
         assertFalse(d.analyzeScores(scores("dog_bark" to 0.4)).triggered)
         val fire = d.analyzeScores(scores("dog_bark" to 0.6))
@@ -73,7 +67,7 @@ class PetHybridDetectorTest {
     fun dogGrowlDetailWinsWhenLouderThanBark() {
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.5, persistenceFrames = 1),
-            FixedEngine(emptyList()),
+            FakeYoloEngine(),
         )
         val fire = d.analyzeScores(scores("dog_bark" to 0.55, "growl" to 0.8))
         assertTrue(fire.triggered)
@@ -89,7 +83,7 @@ class PetHybridDetectorTest {
                 audioThreshold = 0.8,
                 persistenceFrames = 1,
             ),
-            FixedEngine(emptyList()),
+            FakeYoloEngine(),
         )
         // Below the dedicated audio threshold → no trigger even though it
         // would pass the visual one.
@@ -99,12 +93,7 @@ class PetHybridDetectorTest {
 
     @Test
     fun modalitiesPersistIndependently() = runBlocking {
-        var dogs: List<DetectedBox> = emptyList()
-        val engine = object : DogEngine {
-            override suspend fun init() {}
-            override suspend fun dispose() {}
-            override suspend fun detectDogs(frame: ColorBitmap): List<DetectedBox> = dogs
-        }
+        val engine = FakeYoloEngine()
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.5, persistenceFrames = 2),
             engine,
@@ -114,7 +103,7 @@ class PetHybridDetectorTest {
         assertFalse(d.analyzeFrameAsync(frame()).triggered) // sight miss, streak 1/2
         assertTrue(d.analyzeScores(scores("dog_bark" to 0.9)).triggered)
         // …and vice versa: a SOUND miss doesn't erase sight progress.
-        dogs = visibleBox
+        engine.boxes.addAll(visibleBox)
         assertFalse(d.analyzeFrameAsync(frame()).triggered) // sight 1/2
         d.analyzeScores(scores("dog_bark" to 0.1))          // sound miss
         assertTrue(d.analyzeFrameAsync(frame()).triggered)  // sight still fires at 2/2
@@ -124,7 +113,7 @@ class PetHybridDetectorTest {
     fun catFiresOnMeowWithMeowDetail() {
         val d = CatDetector(
             DetectorConfig(type = TriggerType.cat, threshold = 0.5, persistenceFrames = 1),
-            MockCatEngine(),
+            FakeYoloEngine(),
         )
         val fire = d.analyzeScores(scores("cat" to 0.7))
         assertTrue(fire.triggered)
@@ -133,18 +122,13 @@ class PetHybridDetectorTest {
 
     @Test
     fun catSightAndSoundAreSeparateCounters() = runBlocking {
-        var cats: List<DetectedBox> = emptyList()
-        val engine = object : CatEngine {
-            override suspend fun init() {}
-            override suspend fun dispose() {}
-            override suspend fun detectCats(frame: ColorBitmap): List<DetectedBox> = cats
-        }
+        val engine = FakeYoloEngine()
         val d = CatDetector(
             DetectorConfig(type = TriggerType.cat, threshold = 0.5, persistenceFrames = 2),
             engine,
         )
         d.analyzeScores(scores("cat" to 0.9))          // sound streak 1/2
-        cats = visibleBox
+        engine.boxes.addAll(visibleBox)
         assertFalse(d.analyzeFrameAsync(frame()).triggered) // sight streak 1/2
         assertTrue(d.analyzeFrameAsync(frame()).triggered)  // sight fires at 2/2
     }

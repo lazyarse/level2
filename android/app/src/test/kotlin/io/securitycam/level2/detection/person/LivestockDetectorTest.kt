@@ -33,8 +33,8 @@ class LivestockDetectorTest {
 
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -47,8 +47,8 @@ class LivestockDetectorTest {
 
     @Test
     fun livestockAboveThresholdTriggersAfterPersistence() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, threshold = 0.7, persistenceFrames = 2),
             engine = engine,
@@ -63,8 +63,8 @@ class LivestockDetectorTest {
 
     @Test
     fun livestockBelowThresholdDoesNotTrigger() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, threshold = 0.7, persistenceFrames = 1),
             engine = engine,
@@ -79,7 +79,7 @@ class LivestockDetectorTest {
     fun noLivestockDetectionsDoesNotTrigger() = runBlocking {
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
-            engine = MockLivestockEngine(),
+            engine = FakeYoloEngine(),
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -90,9 +90,9 @@ class LivestockDetectorTest {
 
     @Test
     fun resultCarriesMaxLivestockScore() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.animals.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.boxes.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -106,8 +106,8 @@ class LivestockDetectorTest {
 
     @Test
     fun resetClearsPersistence() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 2),
             engine = engine,
@@ -122,8 +122,8 @@ class LivestockDetectorTest {
 
     @Test
     fun livestockInsideExclusionZoneIsDropped() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -139,8 +139,8 @@ class LivestockDetectorTest {
 
     @Test
     fun livestockOutsideExclusionTriggers() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,
@@ -156,8 +156,8 @@ class LivestockDetectorTest {
 
     @Test
     fun livestockOutsideInclusionsIsDropped() = runBlocking {
-        val engine = MockLivestockEngine()
-        engine.animals.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = LivestockDetector(
             DetectorConfig(type = TriggerType.livestock, persistenceFrames = 1),
             engine = engine,

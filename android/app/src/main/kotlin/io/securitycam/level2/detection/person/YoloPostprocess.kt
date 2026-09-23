@@ -36,10 +36,10 @@ object YoloClasses {
     const val SHEEP = 18
     const val COW = 19
 
-    /** All road-vehicle classes, fused by [io.securitycam.level2.detection.person.YoloVehicleEngine]. */
+    /** All road-vehicle classes, fused by the vehicle detector. */
     val VEHICLES = listOf(CAR, MOTORCYCLE, BUS, TRUCK)
 
-    /** Grazing livestock, fused by [io.securitycam.level2.detection.person.YoloLivestockEngine]. */
+    /** Grazing livestock, fused by the livestock detector. */
     val LIVESTOCK = listOf(HORSE, SHEEP, COW)
 }
 
@@ -89,27 +89,6 @@ fun decodeYoloClasses(
     candidates.sortByDescending { it.score }
     return nms(candidates, iou = iou, maxDetections = maxDetections)
 }
-
-/**
- * Decodes YOLO26n output for the person class only (class index 4).
- * Kept for backward compatibility with existing callers.
- */
-fun decodeYolo26(
-    output: FloatArray,
-    conf: Double,
-    iou: Double,
-    maxDetections: Int,
-    frameWidth: Int,
-    frameHeight: Int,
-): List<DetectedBox> = decodeYoloClasses(
-    output,
-    classIndices = listOf(YoloClasses.PERSON),
-    conf = conf,
-    iou = iou,
-    maxDetections = maxDetections,
-    frameWidth = frameWidth,
-    frameHeight = frameHeight,
-)
 
 /**
  * Non-max suppression over score-descending [boxes]; keeps at most

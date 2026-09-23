@@ -6,7 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.securitycam.level2.detection.audio.AudioEventScores
 import io.securitycam.level2.detection.audio.YamnetClassifier
 import io.securitycam.level2.detection.face.MediaPipeFaceEngine
-import io.securitycam.level2.detection.person.YoloPersonEngine
+import io.securitycam.level2.detection.person.YoloClasses
+import io.securitycam.level2.detection.person.YoloObjectEngine
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -39,13 +40,13 @@ class Phase3EnginesSmokeTest {
 
     @Test
     fun yoloDetectsOnASyntheticFrame() = runBlocking {
-        val engine = YoloPersonEngine(context)
+        val engine = YoloObjectEngine(context, listOf(YoloClasses.PERSON), maxDetections = 30)
         engine.init()
         // 320x240 mid-gray frame.
         val w = 320
         val h = 240
         val bgr = ByteArray(w * h * 3) { 120.toByte() }
-        val boxes = engine.detectPersons(ColorBitmap(w, h, bgr))
+        val boxes = engine.detect(ColorBitmap(w, h, bgr))
         assertNotNull(boxes)
         assertTrue("expected few detections on a blank frame", boxes.size <= 30)
         engine.dispose()

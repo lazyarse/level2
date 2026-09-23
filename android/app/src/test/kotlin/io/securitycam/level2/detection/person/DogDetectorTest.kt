@@ -34,8 +34,8 @@ class DogDetectorTest {
 
     @Test
     fun noColorFrameNeverTriggers() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
             visualEngine = engine,
@@ -48,8 +48,8 @@ class DogDetectorTest {
 
     @Test
     fun dogAboveThresholdTriggersAfterPersistence() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.7, persistenceFrames = 2),
             visualEngine = engine,
@@ -64,8 +64,8 @@ class DogDetectorTest {
 
     @Test
     fun dogBelowThresholdDoesNotTrigger() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.5))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, threshold = 0.7, persistenceFrames = 1),
             visualEngine = engine,
@@ -80,7 +80,7 @@ class DogDetectorTest {
     fun noDogDetectionsDoesNotTrigger() = runBlocking {
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
-            visualEngine = MockDogEngine(),
+            visualEngine = FakeYoloEngine(),
         )
         d.init()
         val r = d.analyzeFrameAsync(frame(base, c = color(140)))
@@ -91,9 +91,9 @@ class DogDetectorTest {
 
     @Test
     fun resultCarriesMaxDogScore() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
-        engine.dogs.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.6))
+        engine.boxes.add(DetectedBox(1.0, 1.0, 2.0, 2.0, 0.95))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
             visualEngine = engine,
@@ -107,8 +107,8 @@ class DogDetectorTest {
 
     @Test
     fun resetClearsPersistence() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(0.0, 0.0, 1.0, 1.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 2),
             visualEngine = engine,
@@ -123,8 +123,8 @@ class DogDetectorTest {
 
     @Test
     fun dogInsideExclusionZoneIsDropped() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(10.0, 10.0, 40.0, 40.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
             visualEngine = engine,
@@ -140,8 +140,8 @@ class DogDetectorTest {
 
     @Test
     fun dogOutsideExclusionTriggers() = runBlocking {
-        val engine = MockDogEngine()
-        engine.dogs.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
+        val engine = FakeYoloEngine()
+        engine.boxes.add(DetectedBox(60.0, 60.0, 90.0, 90.0, 0.9))
         val d = DogDetector(
             DetectorConfig(type = TriggerType.dog, persistenceFrames = 1),
             visualEngine = engine,

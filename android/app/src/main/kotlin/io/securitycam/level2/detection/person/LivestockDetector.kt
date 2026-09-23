@@ -11,15 +11,15 @@ import io.securitycam.level2.detection.ZoneFilteredDetector
  * (motion-gated by the pipeline, like
  * [io.securitycam.level2.detection.person.PersonDetector]).
  *
- * Uses the shared YOLO26n model via [YoloLivestockEngine] — zero extra model
+ * Uses the shared YOLO26n model via [YoloYoloObjectEngine] — zero extra model
  * load when the person detector is also enabled.
  */
 class LivestockDetector(
     override val config: DetectorConfig,
-    engine: LivestockEngine? = null,
+    engine: YoloObjectEngine? = null,
 ) : ZoneFilteredDetector() {
 
-    private val engine: LivestockEngine = engine ?: YoloLivestockEngine(AppContextHolder.require())
+    private val engine: YoloObjectEngine = engine ?: YoloObjectEngineImpl(AppContextHolder.require(), YoloClasses.LIVESTOCK)
     override val id: String get() = config.type
     override val triggerType: String get() = TriggerType.livestock
 
@@ -36,7 +36,7 @@ class LivestockDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false)
-        val animals = keepPixelBoxes(engine.detectLivestock(color), color.width, color.height)
+        val animals = keepPixelBoxes(engine.detect(color), color.width, color.height)
         latestBoxes = animals
         val outcome = if (animals.isEmpty()) {
             gate(0.0, present = false)

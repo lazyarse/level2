@@ -15,10 +15,10 @@ import io.securitycam.level2.detection.ZoneFilteredDetector
  */
 class LoiteringDetector(
     override val config: DetectorConfig,
-    engine: PersonEngine? = null,
+    engine: YoloObjectEngine? = null,
 ) : ZoneFilteredDetector() {
 
-    private val engine: PersonEngine = engine ?: YoloPersonEngine(AppContextHolder.require())
+    private val engine: YoloObjectEngine = engine ?: YoloObjectEngineImpl(AppContextHolder.require(), listOf(YoloClasses.PERSON), maxDetections = 30)
 
     /** Cumulative qualified-presence time in ms. */
     private var presentMs = 0L
@@ -55,7 +55,7 @@ class LoiteringDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false, detail = null)
-        val people = keepPixelBoxes(engine.detectPersons(color), color.width, color.height)
+        val people = keepPixelBoxes(engine.detect(color), color.width, color.height)
         val nowMs = frame.timestamp.toEpochMilli()
 
         if (people.isEmpty()) {

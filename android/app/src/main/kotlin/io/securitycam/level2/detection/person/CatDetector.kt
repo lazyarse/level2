@@ -15,15 +15,15 @@ import io.securitycam.level2.detection.ZoneFilter
  * ([DetectorConfig.audioThreshold]) thresholds with independent persistence
  * counters; fired results carry the modality in `detail` ("seen"/"meow").
  *
- * Visual engine is the shared [YoloPersonEngine] model — zero extra model load
+ * Visual engine is the shared YOLO model — zero extra model load
  * when the person detector is also enabled.
  */
 class CatDetector(
     override val config: DetectorConfig,
-    visualEngine: CatEngine? = null,
+    visualEngine: YoloObjectEngine? = null,
 ) : HybridDetector() {
 
-    private val engine: CatEngine = visualEngine ?: YoloCatEngine(AppContextHolder.require())
+    private val engine: YoloObjectEngine = visualEngine ?: YoloObjectEngineImpl(AppContextHolder.require(), listOf(YoloClasses.CAT))
     private var audioStreak = 0
 
     override val id: String get() = config.type
@@ -49,7 +49,7 @@ class CatDetector(
 
     override suspend fun analyzeFrameAsync(frame: AnalysisFrame): DetectionResult {
         val color = frame.color ?: return result(frame.timestamp, 0.0, false, detail = null)
-        val cats = keepPixelBoxes(engine.detectCats(color), color.width, color.height)
+        val cats = keepPixelBoxes(engine.detect(color), color.width, color.height)
         latestBoxes = cats
         val outcome = if (cats.isEmpty()) {
             gate(0.0, present = false)

@@ -4,27 +4,38 @@ import android.content.Context
 import io.securitycam.level2.detection.ColorBitmap
 import io.securitycam.level2.detection.DetectedBox
 
-/** Abstraction over an on-device livestock detector (mirrors [DogEngine]). */
-interface LivestockEngine {
+/** Abstraction over the on-device YOLO object detector. */
+interface YoloObjectEngine {
     suspend fun init()
 
-    /** Returns detected livestock in [frame]'s color bitmap. Empty list = none. */
-    suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox>
+    /** Returns detected boxes of the configured classes in [frame]. */
+    suspend fun detect(frame: ColorBitmap): List<DetectedBox>
 
     suspend fun dispose()
 }
 
+/** Holds the application context so detector factories can build engines lazily. */
+object AppContextHolder {
+    @Volatile
+    var context: Context? = null
+
+    fun require(): Context = checkNotNull(context) { "AppContextHolder not initialized" }
+}
+
 /**
- * YOLO26n livestock detector via the shared [YoloModelSingleton]. Fuses COCO
- * horse/sheep/cow from the same model the person detector uses — zero extra
- * model load, zero extra inference.
+ * YOLO26n (`yolo26n_w8a32.tflite`) via the shared [YoloModelSingleton].
+ * The `format=litert` export targets the Next runtime. Preprocesses the BGR
+ * [ColorBitmap] to a 640x640 RGB NCHW float32 tensor, runs inference, and
+ * decodes + NMSes boxes for [classIndices]. One class serves every detector
+ * (person, dog, cat, vehicle, bird, livestock differ only in classes).
  */
-class YoloLivestockEngine(
+class YoloObjectEngineImpl(
     private val context: Context,
+    private val classIndices: List<Int>,
     private val confThreshold: Double = 0.25,
     private val iouThreshold: Double = 0.7,
     private val maxDetections: Int = 10,
-) : LivestockEngine {
+) : YoloObjectEngine {
 
     private var model: com.google.ai.edge.litert.CompiledModel? = null
 
@@ -33,7 +44,7 @@ class YoloLivestockEngine(
         model = YoloModelSingleton.acquire(context)
     }
 
-    override suspend fun detectLivestock(frame: ColorBitmap): List<DetectedBox> {
+    override suspend fun detect(frame: ColorBitmap): List<DetectedBox> {
         val compiled = model ?: return emptyList()
         // Shared with the other YOLO engines: the first engine to see this
         // frame builds the input tensor and runs the model, the rest reuse
@@ -57,7 +68,7 @@ class YoloLivestockEngine(
         }
         return decodeYoloClasses(
             output,
-            classIndices = YoloClasses.LIVESTOCK,
+            classIndices = classIndices,
             conf = confThreshold,
             iou = iouThreshold,
             maxDetections = maxDetections,

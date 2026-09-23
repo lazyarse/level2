@@ -20,12 +20,12 @@ class LoiteringDetectorTest {
 
     private val start: Instant = Instant.parse("2026-01-01T12:00:00Z")
 
-    private class OnePersonEngine : PersonEngine {
+    private class OnePersonEngine : YoloObjectEngine {
         var present = true
         var score = 0.9
         override suspend fun init() {}
         override suspend fun dispose() {}
-        override suspend fun detectPersons(frame: ColorBitmap): List<DetectedBox> =
+        override suspend fun detect(frame: ColorBitmap): List<DetectedBox> =
             if (present) listOf(DetectedBox(0.0, 0.0, 50.0, 50.0, score)) else emptyList()
     }
 
