@@ -71,7 +71,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -136,6 +135,7 @@ import io.securitycam.level2.detection.SensitivityScale
 import io.securitycam.level2.ui.events.ZoomableSnapshotDialog
 import io.securitycam.level2.ui.events.decodeUpright
 import java.time.Duration
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -155,14 +155,7 @@ fun SettingsScreen(
 ) {
     val draft by viewModel.draft.collectAsState()
     val message by viewModel.message.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    message?.let { text ->
-        LaunchedEffect(text) {
-            snackbarHostState.showSnackbar(text)
-            viewModel.consumeMessage()
-        }
-    }
+    val snackbarHostState = MessageSnackbar(message) { viewModel.consumeMessage() }
 
     // Per-channel text field state, seeded once from the loaded settings
     // (mirror of the Flutter `_fieldControllers` map).
@@ -612,7 +605,7 @@ fun SettingsScreen(
                             Slider(
                                 value = current.preRollSeconds.toFloat().coerceIn(0f, 30f),
                                 onValueChange = { v ->
-                                    viewModel.update { it.copy(preRollSeconds = v.round()) }
+                                    viewModel.update { it.copy(preRollSeconds = v.roundToInt()) }
                                 },
                                 valueRange = 0f..30f,
                                 steps = 29,
@@ -624,7 +617,7 @@ fun SettingsScreen(
                             Slider(
                                 value = current.postRollSeconds.toFloat().coerceIn(0f, 30f),
                                 onValueChange = { v ->
-                                    viewModel.update { it.copy(postRollSeconds = v.round()) }
+                                    viewModel.update { it.copy(postRollSeconds = v.roundToInt()) }
                                 },
                                 valueRange = 0f..30f,
                                 steps = 29,
@@ -885,7 +878,7 @@ fun SettingsScreen(
                                 Slider(
                                     value = current.liveView.fps.toFloat().coerceIn(5f, 30f),
                                     onValueChange = { v ->
-                                        viewModel.update { it.copy(liveView = it.liveView.copy(fps = v.round())) }
+                                        viewModel.update { it.copy(liveView = it.liveView.copy(fps = v.roundToInt())) }
                                     },
                                     valueRange = 5f..30f,
                                     steps = 24,
@@ -1088,7 +1081,7 @@ fun SettingsScreen(
                             )
                             Slider(
                                 value = current.retentionDays.toFloat().coerceIn(0f, 30f),
-                                onValueChange = { v -> viewModel.update { it.copy(retentionDays = v.round()) } },
+                                onValueChange = { v -> viewModel.update { it.copy(retentionDays = v.roundToInt()) } },
                                 valueRange = 0f..30f,
                                 steps = 29,
                                 modifier = Modifier.testTag("retentionSlider"),
@@ -1181,7 +1174,7 @@ fun SettingsScreen(
                                 value = current.notificationMergeWindow.toSeconds().toFloat().coerceIn(0f, 30f),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(notificationMergeWindow = Duration.ofSeconds(v.round().toLong()))
+                                        it.copy(notificationMergeWindow = Duration.ofSeconds(v.roundToInt().toLong()))
                                     }
                                 },
                                 valueRange = 0f..30f,
@@ -1237,7 +1230,7 @@ fun SettingsScreen(
                                 value = current.previewFps.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(previewFps = VideoPreview.clampFps(v.round()))
+                                        it.copy(previewFps = VideoPreview.clampFps(v.roundToInt()))
                                     }
                                 },
                                 valueRange = VideoPreview.MIN_FPS.toFloat()..VideoPreview.MAX_FPS.toFloat(),
@@ -1250,7 +1243,7 @@ fun SettingsScreen(
                                 value = current.previewMaxWidthPx.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(previewMaxWidthPx = VideoPreview.clampWidth(v.round()))
+                                        it.copy(previewMaxWidthPx = VideoPreview.clampWidth(v.roundToInt()))
                                     }
                                 },
                                 valueRange = VideoPreview.MIN_WIDTH.toFloat()..VideoPreview.MAX_WIDTH.toFloat(),

@@ -19,10 +19,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -121,6 +121,32 @@ fun decodeUpright(bytes: ByteArray, maxDim: Int? = null): android.graphics.Bitma
 }
 
 /**
+ * Cached thumbnail image: synchronous peek for first-frame hits, async
+ * load+decode on miss, [fallback] while loading or when missing.
+ */
+@Composable
+internal fun ThumbImage(
+    key: String,
+    maxDim: Int?,
+    load: suspend () -> ByteArray?,
+    fallback: @Composable () -> Unit,
+    content: @Composable (android.graphics.Bitmap) -> Unit,
+) {
+    var bitmap by remember(key) { mutableStateOf(ThumbCache.peek(key)) }
+    if (bitmap == null) {
+        LaunchedEffect(key) {
+            bitmap = ThumbCache.getOrLoad(key, maxDim, load)
+        }
+    }
+    val ready = bitmap
+    if (ready == null) {
+        fallback()
+    } else {
+        content(ready)
+    }
+}
+
+/**
  * Snapshot thumbnail with a fallback icon while loading / when missing; tap
  * opens the zoomable full view. Shared by Events rows and the History gallery.
  */
@@ -135,35 +161,27 @@ internal fun SnapshotThumb(
 ) {
     // Synchronous first-frame render for previously-seen thumbs; only true
     // misses fall back to the icon and fill asynchronously.
-    var thumb by remember(name) {
-        mutableStateOf(ThumbCache.peek("snap:$name"))
-    }
-    if (thumb == null) {
-        androidx.compose.runtime.LaunchedEffect(name) {
-            thumb = ThumbCache.getOrLoad(
-                "snap:$name",
-                ThumbCache.THUMB_MAX_DIM,
-            ) { loader(name)?.bytes }
-        }
-    }
     var showFull by remember { mutableStateOf(false) }
     var full by remember(name) { mutableStateOf<android.graphics.Bitmap?>(null) }
     if (showFull && full == null) {
-        androidx.compose.runtime.LaunchedEffect(name) {
+        LaunchedEffect(name) {
             full = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 loader(name)?.bytes?.let { decodeUpright(it) }
             }
         }
     }
-
-    val decoded = thumb
-    if (decoded == null) {
-        Icon(
-            fallbackIcon,
-            contentDescription = null,
-            modifier = Modifier.size(size).testTag("${tag}Fallback"),
-        )
-    } else {
+    ThumbImage(
+        key = "snap:$name",
+        maxDim = ThumbCache.THUMB_MAX_DIM,
+        load = { loader(name)?.bytes },
+        fallback = {
+            Icon(
+                fallbackIcon,
+                contentDescription = null,
+                modifier = Modifier.size(size).testTag("${tag}Fallback"),
+            )
+        },
+    ) { decoded ->
         Image(
             bitmap = decoded.asImageBitmap(),
             contentDescription = title,
@@ -185,7 +203,7 @@ internal fun SnapshotThumb(
     }
 }
 
-/** Zoomable (pinch 1x–8x + pan) full-size snapshot dialog. */
+/** Zoomable (centered pinch 1x–8x) full-size snapshot dialog. */
 @Composable
 internal fun ZoomableSnapshotDialog(
     bitmap: android.graphics.Bitmap?,

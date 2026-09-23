@@ -200,8 +200,6 @@ internal fun BodyText(text: String) {
 internal fun mergeLabel(window: Duration): String =
     if (window.isZero) "Off" else "${window.toSeconds()}s"
 
-internal fun Float.round(): Int = Math.round(this)
-
 /**
  * Collapsible settings group: tapping the header toggles a body that is only
  * composed while expanded (keeps the semantics tree and scroll height small).

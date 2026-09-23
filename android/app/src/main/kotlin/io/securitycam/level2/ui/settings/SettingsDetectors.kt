@@ -135,6 +135,7 @@ import io.securitycam.level2.detection.SensitivityScale
 import io.securitycam.level2.ui.events.ZoomableSnapshotDialog
 import io.securitycam.level2.ui.events.decodeUpright
 import java.time.Duration
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -311,7 +312,7 @@ internal fun DetectorCard(
                             onValueChange = { v -> onChanged(config.copy(
                                 threshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
-                                    v.round(),
+                                    v.roundToInt(),
                                 ),
                                 audioThreshold = config.audioThreshold ?: config.threshold,
                             )) },
@@ -331,7 +332,7 @@ internal fun DetectorCard(
                             onValueChange = { v -> onChanged(config.copy(
                                 audioThreshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
-                                    v.round(),
+                                    v.roundToInt(),
                                 ),
                             )) },
                             valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),
@@ -350,7 +351,7 @@ internal fun DetectorCard(
                             onValueChange = { v -> onChanged(config.copy(
                                 threshold = SensitivityScale.sensitivityToThreshold(
                                     config.type,
-                                    v.round(),
+                                    v.roundToInt(),
                                 ),
                             )) },
                             valueRange = SensitivityScale.MIN.toFloat()..SensitivityScale.MAX.toFloat(),

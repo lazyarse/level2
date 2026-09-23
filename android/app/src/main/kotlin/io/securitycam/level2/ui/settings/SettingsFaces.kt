@@ -132,6 +132,7 @@ import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.SensitivityScale
+import io.securitycam.level2.ui.events.ThumbImage
 import io.securitycam.level2.ui.events.ZoomableSnapshotDialog
 import io.securitycam.level2.ui.events.decodeUpright
 import java.time.Duration
@@ -159,35 +160,25 @@ internal fun FaceThumbnail(file: java.io.File?, label: String, size: Dp = 48.dp)
         Icon(Icons.Filled.Face, contentDescription = label)
         return
     }
-    // Cached decode keyed by absolute path; synchronous peek renders
-    // previously-seen faces in first frame while scrolling.
-    val bitmap by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
-        initialValue = io.securitycam.level2.ui.events.ThumbCache.peek("face:${file.absolutePath}"),
-        key1 = file.absolutePath,
-    ) {
-        val f = file
-        if (value == null) {
-            value = io.securitycam.level2.ui.events.ThumbCache.getOrLoad(
-                "face:${f.absolutePath}",
-            ) {
-                runCatching { f.readBytes() }.getOrNull()
-            }
-        }
-    }
-    if (bitmap != null) {
+    ThumbImage(
+        key = "face:${file.absolutePath}",
+        maxDim = null,
+        load = { runCatching { file.readBytes() }.getOrNull() },
+        fallback = {
+            Icon(
+                Icons.Filled.Face,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    ) { bitmap ->
         Image(
-            bitmap = bitmap!!.asImageBitmap(),
+            bitmap = bitmap.asImageBitmap(),
             contentDescription = label,
             modifier = Modifier
                 .size(size)
                 .clip(RoundedCornerShape(8.dp)),
             contentScale = ContentScale.Crop,
-        )
-    } else {
-        Icon(
-            Icons.Filled.Face,
-            contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

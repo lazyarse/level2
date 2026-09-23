@@ -39,7 +39,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
@@ -67,6 +66,7 @@ import io.securitycam.level2.core.Snapshot
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.event.triggerLabel
 import io.securitycam.level2.storage.RecordedEventRow
+import io.securitycam.level2.ui.settings.MessageSnackbar
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -142,14 +142,7 @@ fun EventsScreen(
     val hasMore by viewModel.hasMore.collectAsState()
     val message by viewModel.message.collectAsState()
     val hasVideoOpener = viewModel.hasVideoOpener
-    val snackbar = remember { SnackbarHostState() }
-
-    LaunchedEffect(message) {
-        message?.let {
-            snackbar.showSnackbar(it)
-            viewModel.consumeMessage()
-        }
-    }
+    val snackbar = MessageSnackbar(message) { viewModel.consumeMessage() }
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {

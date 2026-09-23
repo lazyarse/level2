@@ -19,10 +19,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -177,4 +180,23 @@ internal fun ConfirmDialog(
             null
         },
     )
+}
+
+/**
+ * One-shot message snackbar: shows [message] once, then reports consumption.
+ * Returns the host for the caller's `SnackbarHost` placement.
+ */
+@Composable
+internal fun MessageSnackbar(
+    message: String?,
+    onConsumed: () -> Unit,
+): SnackbarHostState {
+    val host = remember { SnackbarHostState() }
+    message?.let { text ->
+        LaunchedEffect(text) {
+            host.showSnackbar(text)
+            onConsumed()
+        }
+    }
+    return host
 }
