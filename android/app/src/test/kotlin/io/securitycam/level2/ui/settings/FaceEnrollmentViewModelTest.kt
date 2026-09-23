@@ -682,6 +682,39 @@ class FaceEnrollmentViewModelTest {
     }
 
     @Test
+    fun frontFlagFollowsBaseCamera() {
+        fun vmFor(cameraId: String): SettingsViewModel {
+            var settings = AppSettings.defaults().copyWith(cameraId = cameraId)
+            return SettingsViewModel(
+                settingsLoader = { settings },
+                settingsSaver = { s -> settings = s },
+                eventsClearer = {},
+                enrollmentFactory = { _ ->
+                    FakeCoordinator(Result.success(KnownFace(id = "face_x", label = "X")))
+                },
+                cameraActive = { true },
+                framesWaitTimeoutMs = 200,
+                framesSettleMs = 10,
+            ).also { vm ->
+                val looper = shadowOf(Looper.getMainLooper())
+                var tries = 0
+                while (vm.draft.value == null && tries++ < 100) looper.runToEndOfTasks()
+            }
+        }
+        // Session starting on front (active monitoring, front base camera):
+        // the review mirror must be on even with no flip press.
+        val front = vmFor("1")
+        front.startEnrollment("Cam")
+        assertTrue(front.enrollmentFrontCamera.value)
+        pumpUntilIdle(front)
+
+        val back = vmFor("0")
+        back.startEnrollment("Cam")
+        assertTrue(!back.enrollmentFrontCamera.value)
+        pumpUntilIdle(back)
+    }
+
+    @Test
     fun successfulEnrollWritesThumbnailFromCaptureHook() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         org.robolectric.Shadows.shadowOf(app).grantPermissions(

@@ -406,9 +406,12 @@ class SettingsViewModel(
             return
         }
         if (_enrollingLabel.value != null) return
-        // Session camera choice resets every capture (session-only).
-        _enrollmentFrontCamera.value = false
+        // Session camera choice resets every capture (session-only). The
+        // front flag follows actual facing — not just flip presses — so the
+        // review mirror matches the persisted photo when the session starts
+        // on the front camera (active monitoring, front base camera).
         sessionCameraId = baseEnrollmentCameraId()
+        _enrollmentFrontCamera.value = isFrontId(sessionCameraId)
         pendingCapture = null
         pendingEmbedding = null
         _capturedFrame.value = null
