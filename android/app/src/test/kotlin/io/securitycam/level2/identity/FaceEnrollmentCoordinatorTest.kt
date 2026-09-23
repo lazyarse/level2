@@ -244,7 +244,7 @@ class FaceEnrollmentCoordinatorTest {
             faces.add(face)
         }
         val shutter = CompletableDeferred<Unit>()
-        val finder = FaceEnrollmentCoordinator.captureOnDemandFinder(
+        val finder = FaceCaptureFinder.captureOnDemandFinder(
             engineFactory = { engine },
             awaitShutter = { shutter.await() },
             timeoutMs = 5_000,
@@ -272,7 +272,7 @@ class FaceEnrollmentCoordinatorTest {
     fun captureOnDemandFinderReturnsNullWhenEngineFindsNoFace() = runBlocking {
         val engine = io.securitycam.level2.detection.face.MockFaceEngine() // no faces
         val shutter = CompletableDeferred<Unit>()
-        val finder = FaceEnrollmentCoordinator.captureOnDemandFinder(
+        val finder = FaceCaptureFinder.captureOnDemandFinder(
             engineFactory = { engine },
             awaitShutter = { shutter.await() },
             timeoutMs = 5_000,

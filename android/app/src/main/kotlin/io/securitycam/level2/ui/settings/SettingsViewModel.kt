@@ -24,6 +24,7 @@ import io.securitycam.level2.detection.face.FaceDetection
 import io.securitycam.level2.detection.face.FaceEmbeddingEngine
 import io.securitycam.level2.detection.face.MediaPipeFaceEngine
 import io.securitycam.level2.event.ChannelFactory
+import io.securitycam.level2.identity.FaceCaptureFinder
 import io.securitycam.level2.identity.FaceEnrollmentCoordinator
 import io.securitycam.level2.identity.FaceThumbs
 import io.securitycam.level2.identity.KnownFaceStore
@@ -796,7 +797,7 @@ class SettingsViewModel(
                         FaceEnrollmentCoordinator(
                             store = sharedFaceStore,
                             embedder = enrollmentEmbedder,
-                            faceFinder = FaceEnrollmentCoordinator.captureOnDemandFinder(
+                            faceFinder = FaceCaptureFinder.captureOnDemandFinder(
                                 engineFactory = { MediaPipeFaceEngine(app) },
                                 awaitShutter = hooks.awaitShutter,
                             ),
