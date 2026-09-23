@@ -6,7 +6,7 @@ import io.securitycam.level2.detection.DetectedBox
 
 /**
  * YOLO26n (`yolo26n_w8a32.tflite`) via the shared [YoloModelSingleton]
- * (port of `yolo_person_engine.dart`). The `format=litert` export targets
+ * The `format=litert` export targets
  * the Next runtime. Preprocesses the BGR [ColorBitmap] to a 640x640 RGB
  * NCHW float32 tensor, runs inference, and decodes + NMSes person boxes.
  */

@@ -9,8 +9,7 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
 
 /**
- * BlazeFace via MediaPipe Tasks (port of `tflite_face_engine.dart`; the plan's
- * preferred engine). The bundled short-range model is the MediaPipe-published
+ * BlazeFace via MediaPipe Tasks (the plan's preferred engine). The bundled short-range model is the MediaPipe-published
  * float16 checkpoint; on-device output parity vs the reference back-camera
  * model is decided in Phase 7 integration tests.
  */

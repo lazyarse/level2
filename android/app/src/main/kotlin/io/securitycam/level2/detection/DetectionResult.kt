@@ -2,7 +2,7 @@ package io.securitycam.level2.detection
 
 import java.time.Instant
 
-/** A labeled detection (port of `lib/core/models.dart` `Detection`). */
+/** A labeled detection. */
 data class Detection(
     val label: String,
     val score: Double,

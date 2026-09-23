@@ -24,7 +24,6 @@ import org.json.JSONObject
 /**
  * Persists [AppSettings] as a JSON blob under `app_settings_v1` in DataStore,
  * keeping channel secrets out of the blob (they live in [SecretStore]).
- * Port of `lib/storage/settings_store.dart`.
  */
 class SettingsStore(
     context: Context,

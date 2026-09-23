@@ -6,8 +6,7 @@ import java.time.Instant
 private const val PIXEL_DIFF_TOLERANCE = 30
 
 /**
- * Grayscale pixel-diff motion detector (port of
- * `lib/detection/motion_detector.dart`). First frame primes; consecutive
+ * Grayscale pixel-diff motion detector. First frame primes; consecutive
  * above-threshold ratio frames for [DetectorConfig.persistenceFrames] trigger.
  */
 class MotionDetector(
@@ -101,27 +100,4 @@ class MotionDetector(
             score = score,
             triggered = triggered,
         )
-}
-
-/** Test helper: uniform gray frame. */
-fun buildFrame(width: Int, height: Int, fill: Int): ByteArray {
-    val buf = ByteArray(width * height)
-    buf.fill(fill.toByte())
-    return buf
-}
-
-/** Test helper: frame with a filled rectangle. */
-fun buildFrameWithRect(
-    width: Int, height: Int, fill: Int,
-    rectX: Int, rectY: Int, rectW: Int, rectH: Int, rectFill: Int,
-): ByteArray {
-    val buf = buildFrame(width, height, fill)
-    for (y in rectY until rectY + rectH) {
-        if (y >= height) break
-        for (x in rectX until rectX + rectW) {
-            if (x >= width) break
-            buf[y * width + x] = rectFill.toByte()
-        }
-    }
-    return buf
 }

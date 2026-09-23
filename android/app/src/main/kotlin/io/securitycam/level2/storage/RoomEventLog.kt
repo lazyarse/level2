@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * Room-backed [EventRecorder] (port of `lib/storage/event_log.dart`,
+ * Room-backed [EventRecorder].
  * schema version 5; the shared DB is at v6 via the outbox preview column).
  */
 class RoomEventLog(private val dao: EventDao) : EventRecorder {
@@ -96,7 +96,7 @@ class RoomEventLog(private val dao: EventDao) : EventRecorder {
         dao.oldestTimestamp()?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
     /**
-     * Events with [start] <= timestamp < [end], newest first (port of the
+     * Events with [start] <= timestamp < [end], newest first.
      * planned `SqliteEventLog.between`); [withSnapshots] keeps only rows that
      * carry a snapshot for the gallery grid.
      */

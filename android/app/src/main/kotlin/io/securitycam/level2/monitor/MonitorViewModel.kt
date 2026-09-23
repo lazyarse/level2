@@ -709,7 +709,7 @@ class MonitorViewModel(
 
     /**
      * Retention purge: deletes event rows older than [AppSettings.retentionDays]
-     * along with their snapshots and clips (port of the Dart purge logic).
+     * along with their snapshots and clips.
      * Files referenced by pending cloud-backup outbox rows are pinned — they
      * survive this purge until their upload resolves.
      */

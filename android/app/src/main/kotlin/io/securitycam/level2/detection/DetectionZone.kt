@@ -10,7 +10,7 @@ object DetectionZoneShape {
 /**
  * Inclusion zone in normalized analysis-frame space (0..1, flattened
  * [x0,y0,x1,y1] for rects, [x0,y0,x1,y1,...] vertex pairs for polys).
- * Empty zones = detect everywhere. Port of `lib/core/models.dart`.
+ * Empty zones = detect everywhere.
  */
 data class DetectionZone(
     val id: String,

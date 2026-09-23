@@ -3,7 +3,7 @@ package io.securitycam.level2.detection.audio
 import android.content.Context
 
 /**
- * Audio classifier factory (port of `lib/sensors/audio_classifier_factory.dart`).
+ * Audio classifier factory.
  * Uses the real YAMNet model when it loads; degrades to the mock classifier so
  * monitoring keeps working without the model.
  */

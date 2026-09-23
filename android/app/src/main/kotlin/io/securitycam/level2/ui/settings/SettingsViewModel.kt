@@ -60,7 +60,7 @@ data class EnrollmentHooks(
 )
 
 /**
- * Draft-commit settings state (port of the Flutter `SettingsScreen._draft` +
+ * Draft-commit settings state (`SettingsScreen._draft` +
  * `MonitorController.updateSettings` pattern). Loads once, mutates a draft,
  * and persists on save. Event clearing mirrors the Dart controller's
  * `_deleteOlderThan`: rows first, then snapshot files and gallery clips.

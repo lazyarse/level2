@@ -11,8 +11,7 @@ import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.InterpreterFactory
 
 /**
- * YAMNet audio event classifier via LiteRT (port of
- * `lib/detection/audio/yamnet_audio_event_classifier.dart`).
+ * YAMNet audio event classifier via LiteRT.
  *
  * The bundled checkpoint has the audio front-end fused in-graph: its input is
  * the raw 16 kHz waveform ([inputSamples] samples = 0.975 s). Tensor

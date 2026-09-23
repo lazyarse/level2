@@ -3,7 +3,7 @@ package io.securitycam.level2.detection.person
 import android.content.Context
 import io.securitycam.level2.detection.DetectedBox
 
-/** Abstraction over an on-device person detector (port of `person_engine.dart`). */
+/** Abstraction over an on-device person detector. */
 interface PersonEngine {
     suspend fun init()
 

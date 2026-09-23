@@ -1087,11 +1087,11 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun advancedSectionShowsGifPreviewSliders() {
+    fun advancedSectionShowsPreviewSliders() {
         setContent(Harness())
         expandSection("Advanced")
-        compose.onNodeWithTag("gifFpsSlider").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("gifWidthSlider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("previewFpsSlider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("previewWidthSlider").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Preview frame rate:", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Preview width:", substring = true).performScrollTo().assertIsDisplayed()
     }

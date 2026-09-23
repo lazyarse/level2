@@ -5,8 +5,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * Serializes [process] invocations behind a single latest-wins pending slot
- * (port of `lib/detection/analysis_dispatcher.dart`). At most one [process]
+ * Serializes [process] invocations behind a single latest-wins pending slot.
+ * At most one [process]
  * call is in flight at a time; adding an input while busy replaces the pending
  * slot. Errors are routed to [onError] and the loop always continues.
  */

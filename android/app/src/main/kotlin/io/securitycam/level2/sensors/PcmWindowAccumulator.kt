@@ -6,7 +6,7 @@ import java.time.Instant
 /**
  * Accumulates raw 16 kHz s16le PCM byte chunks into [AudioWindow]s, converting
  * to Float32 samples (`sample / 32768`) and carrying any partial window across
- * chunk boundaries (port of `lib/sensors/pcm_window_accumulator.dart`).
+ * chunk boundaries.
  */
 class PcmWindowAccumulator(
     val sampleRate: Int = 16000,

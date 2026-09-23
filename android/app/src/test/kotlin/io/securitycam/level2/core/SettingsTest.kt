@@ -530,38 +530,41 @@ class SettingsTest {
     }
 
     @Test
-    fun gifPreviewDefaultsMatchSpec() {
+    fun previewDefaultsMatchSpec() {
         val s = AppSettings.defaults()
-        assertEquals(GifPreview.DEFAULT_FPS, s.gifPreviewFps)
-        assertEquals(GifPreview.DEFAULT_WIDTH, s.gifPreviewMaxWidthPx)
+        assertEquals(VideoPreview.DEFAULT_FPS, s.previewFps)
+        assertEquals(VideoPreview.DEFAULT_WIDTH, s.previewMaxWidthPx)
     }
 
     @Test
-    fun gifPreviewJsonRoundTrip() {
-        val s = AppSettings.defaults().copyWith(gifPreviewFps = 4, gifPreviewMaxWidthPx = 480)
+    fun previewJsonRoundTrip() {
+        val s = AppSettings.defaults().copyWith(previewFps = 4, previewMaxWidthPx = 480)
         val back = AppSettings.fromJson(s.toJson())
-        assertEquals(4, back.gifPreviewFps)
-        assertEquals(480, back.gifPreviewMaxWidthPx)
+        assertEquals(4, back.previewFps)
+        assertEquals(480, back.previewMaxWidthPx)
     }
 
     @Test
-    fun gifPreviewOutOfRangeJsonClampsOnParse() {
+    fun legacyGifPreviewKeysStillParse() {
         val raw = AppSettings.defaults().toJson().toMutableMap()
+        // Simulate a pre-rename blob: only the legacy keys present.
+        raw.remove("previewFps")
+        raw.remove("previewMaxWidthPx")
         raw["gifPreviewFps"] = 99
         raw["gifPreviewMaxWidthPx"] = 45
         val back = AppSettings.fromJson(raw)
-        assertEquals(GifPreview.MAX_FPS, back.gifPreviewFps)
-        assertEquals(GifPreview.MIN_WIDTH, back.gifPreviewMaxWidthPx)
+        assertEquals(VideoPreview.MAX_FPS, back.previewFps)
+        assertEquals(VideoPreview.MIN_WIDTH, back.previewMaxWidthPx)
     }
 
     @Test
-    fun gifPreviewClampBounds() {
-        assertEquals(1, GifPreview.clampFps(0))
-        assertEquals(5, GifPreview.clampFps(99))
-        assertEquals(3, GifPreview.clampFps(3))
-        assertEquals(160, GifPreview.clampWidth(1))
-        assertEquals(640, GifPreview.clampWidth(9999))
-        assertEquals(320, GifPreview.clampWidth(320))
+    fun previewClampBounds() {
+        assertEquals(1, VideoPreview.clampFps(0))
+        assertEquals(5, VideoPreview.clampFps(99))
+        assertEquals(3, VideoPreview.clampFps(3))
+        assertEquals(160, VideoPreview.clampWidth(1))
+        assertEquals(640, VideoPreview.clampWidth(9999))
+        assertEquals(320, VideoPreview.clampWidth(320))
     }
 
     @Test

@@ -12,7 +12,7 @@ data class AudioEventScores(
     fun scoreOf(label: String): Double = classScores[label] ?: 0.0
 }
 
-/** Audio event classifier contract (port of `lib/detection/audio/audio_classifier.dart`). */
+/** Audio event classifier contract. */
 interface AudioEventClassifier {
     val id: String
 
@@ -24,8 +24,7 @@ interface AudioEventClassifier {
 }
 
 /**
- * RMS/ZCR-based mock classifier used off-device and as a fallback (port of
- * `MockAudioEventClassifier`). No model required.
+ * RMS/ZCR-based mock classifier used off-device and as a fallback. No model required.
  */
 class MockAudioEventClassifier : AudioEventClassifier {
     override val id: String get() = "mock"

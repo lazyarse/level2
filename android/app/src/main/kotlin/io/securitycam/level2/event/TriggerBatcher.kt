@@ -27,8 +27,7 @@ data class TriggerBatch(
 )
 
 /**
- * Merges triggers within a sliding window into one batch (port of
- * `lib/event/trigger_batcher.dart`). Each new trigger while a batch is open
+ * Merges triggers within a sliding window into one batch. Each new trigger while a batch is open
  * slides the window forward — a continuous wave stays ONE batch — until the
  * last trigger is older than [window] (or the batch exceeds
  * [maxBatchDuration], so perpetual motion can't produce a single endless

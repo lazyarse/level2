@@ -151,11 +151,8 @@ object PrivacyMaskEffect {
 }
 
 /** Notification video-preview constraints (Advanced settings). */
-@Deprecated("Use VideoPreview")
-typealias GifPreview = VideoPreview
-
 object VideoPreview {
-    /** Frame-rate bounds; the GIF decimates the clip to [DEFAULT_FPS] fps. */
+    /** Frame-rate bounds; the preview decimates the clip to [DEFAULT_FPS] fps. */
     const val MIN_FPS = 1
     const val MAX_FPS = 5
     const val DEFAULT_FPS = 2
@@ -228,7 +225,7 @@ data class CloudBackupSettings(
 }
 
 /**
- * App settings (port of `lib/core/settings.dart`). Keeps the same JSON keys so
+ * App settings. Keeps the same JSON keys so
  * the stored blob shape matches the Dart reference.
  */
 data class AppSettings(
@@ -266,9 +263,9 @@ data class AppSettings(
     val cloudBackup: CloudBackupSettings = CloudBackupSettings(),
     val previewMode: PreviewMode = PreviewMode.VIDEO,
     /** Frame rate for notification video-previews (clamped to [VideoPreview]). */
-    val gifPreviewFps: Int = VideoPreview.DEFAULT_FPS,
+    val previewFps: Int = VideoPreview.DEFAULT_FPS,
     /** Max frame width in px for notification video-previews. */
-    val gifPreviewMaxWidthPx: Int = VideoPreview.DEFAULT_WIDTH,
+    val previewMaxWidthPx: Int = VideoPreview.DEFAULT_WIDTH,
     /**
      * One-way flag: the pre-2026-08-23 legacy cooldown normalization has run.
      * Guards [SettingsStore.migrateLegacyCooldowns] so an intentional 60s /
@@ -308,8 +305,8 @@ data class AppSettings(
         liveView: LiveViewSettings? = null,
         cloudBackup: CloudBackupSettings? = null,
         previewMode: PreviewMode? = null,
-        gifPreviewFps: Int? = null,
-        gifPreviewMaxWidthPx: Int? = null,
+        previewFps: Int? = null,
+        previewMaxWidthPx: Int? = null,
         cooldownsMigrated: Boolean? = null,
         mergeWindowUpgraded: Boolean? = null,
     ): AppSettings = AppSettings(
@@ -339,8 +336,8 @@ data class AppSettings(
         liveView = liveView ?: this.liveView,
         cloudBackup = cloudBackup ?: this.cloudBackup,
         previewMode = previewMode ?: this.previewMode,
-        gifPreviewFps = gifPreviewFps ?: this.gifPreviewFps,
-        gifPreviewMaxWidthPx = gifPreviewMaxWidthPx ?: this.gifPreviewMaxWidthPx,
+        previewFps = previewFps ?: this.previewFps,
+        previewMaxWidthPx = previewMaxWidthPx ?: this.previewMaxWidthPx,
         cooldownsMigrated = cooldownsMigrated ?: this.cooldownsMigrated,
         mergeWindowUpgraded = mergeWindowUpgraded ?: this.mergeWindowUpgraded,
     )
@@ -373,8 +370,8 @@ data class AppSettings(
         json["liveView"] = liveView.toJson()
         json["cloudBackup"] = cloudBackup.toJson()
         json["previewMode"] = previewMode.name
-        json["gifPreviewFps"] = gifPreviewFps
-        json["gifPreviewMaxWidthPx"] = gifPreviewMaxWidthPx
+        json["previewFps"] = previewFps
+        json["previewMaxWidthPx"] = previewMaxWidthPx
         json["cooldownsMigrated"] = cooldownsMigrated
         json["mergeWindowUpgraded"] = mergeWindowUpgraded
         return json
@@ -639,12 +636,15 @@ data class AppSettings(
                     ?.let { CloudBackupSettings.fromJson(it as Map<String, Any?>) }
                     ?: CloudBackupSettings(),
                 previewMode = (json["previewMode"] as? String)?.let { runCatching { PreviewMode.valueOf(it) }.getOrNull() } ?: defaults.previewMode,
-                gifPreviewFps = VideoPreview.clampFps(
-                    (json["gifPreviewFps"] as? Number)?.toInt() ?: defaults.gifPreviewFps,
+                previewFps = VideoPreview.clampFps(
+                    (json["previewFps"] as? Number)?.toInt()
+                        ?: (json["gifPreviewFps"] as? Number)?.toInt()
+                        ?: defaults.previewFps,
                 ),
-                gifPreviewMaxWidthPx = VideoPreview.clampWidth(
-                    (json["gifPreviewMaxWidthPx"] as? Number)?.toInt()
-                        ?: defaults.gifPreviewMaxWidthPx,
+                previewMaxWidthPx = VideoPreview.clampWidth(
+                    (json["previewMaxWidthPx"] as? Number)?.toInt()
+                        ?: (json["gifPreviewMaxWidthPx"] as? Number)?.toInt()
+                        ?: defaults.previewMaxWidthPx,
                 ),
                 cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
                 mergeWindowUpgraded = json["mergeWindowUpgraded"] as? Boolean ?: false,

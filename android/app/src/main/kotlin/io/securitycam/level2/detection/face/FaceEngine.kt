@@ -15,7 +15,7 @@ data class FaceDetection(
     val score: Double,
 )
 
-/** Abstraction over an on-device face detector (port of `face_engine.dart`). */
+/** Abstraction over an on-device face detector. */
 interface FaceEngine {
     suspend fun init()
 

@@ -23,12 +23,11 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** Factory building a channel from its config (port of `lib/core/registries.dart`). */
+/** Factory building a channel from its config. */
 typealias ChannelFactory = (ChannelConfig) -> Channel
 
 /**
- * Turns a [TriggerBatch] into stored events and channel alerts (port of
- * `lib/event/event_pipeline.dart`). Routing = all enabled channels plus the
+ * Turns a [TriggerBatch] into stored events and channel alerts. Routing = all enabled channels plus the
  * log feed, for every trigger batch. Per-channel retry with
  * backoff; merged events carry the trigger-types list.
  */
@@ -315,7 +314,7 @@ class EventPipeline(
     }
 }
 
-/** Human label for a trigger type (port of `lib/event/event_pipeline.dart`). */
+/** Human label for a trigger type. */
 fun triggerLabel(triggerType: String): String =
     DetectorType.fromKey(triggerType)?.label ?: "Activity"
 

@@ -15,7 +15,7 @@ interface SnapshotStore {
     suspend fun delete(name: String)
 }
 
-/** File-backed snapshot store under [directoryPath] (port of the Dart store). */
+/** File-backed snapshot store under [directoryPath]. */
 class FileSnapshotStore(private val directoryPath: String) : SnapshotStore {
 
     /**

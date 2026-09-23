@@ -3,7 +3,7 @@ package io.securitycam.level2.detection
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.core.TriggerType
 
-/** Factory for a detector from its config (port of `lib/core/registries.dart`). */
+/** Factory for a detector from its config. */
 typealias DetectorFactory = (DetectorConfig) -> Detector
 
 /**

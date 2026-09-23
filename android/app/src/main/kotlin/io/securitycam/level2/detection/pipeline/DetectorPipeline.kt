@@ -23,8 +23,7 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Runs all configured detectors over frames and audio windows (port of
- * `lib/detection/pipeline.dart`). Sync frame detectors run every frame;
+ * Runs all configured detectors over frames and audio windows. Sync frame detectors run every frame;
  * motion-gated detectors run only when motion fires. Per-detector cooldown
  * suppresses repeat triggers; zone fans out to every frame detector.
  */

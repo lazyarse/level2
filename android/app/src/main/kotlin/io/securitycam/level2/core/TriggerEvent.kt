@@ -24,7 +24,7 @@ object TriggerType {
     const val tripwire = "tripwire"
 }
 
-/** A single detector firing, before batching (port of `lib/core/models.dart`). */
+/** A single detector firing, before batching. */
 data class TriggerEvent(
     val timestamp: Instant,
     val triggerType: String,

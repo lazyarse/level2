@@ -77,8 +77,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Owns the full native detection→event path while monitoring runs (port of the
- * Dart `MonitorController.start()` runtime wiring):
+ * Owns the full native detection→event path while monitoring runs:
  *
  * CameraFrameBus BGR frames ─┐
  * MicCapture PCM windows ────┴─→ AnalysisDispatcher(s) → DetectorPipeline →
@@ -1004,8 +1003,8 @@ class MonitoringRuntime private constructor(
             val snapshots = FileSnapshotStore(File(context.filesDir, "snapshots").absolutePath)
             val preview = Mp4PreviewGenerator(context).generate(
                 clipName = videoName,
-                fps = settings.gifPreviewFps,
-                maxWidthPx = settings.gifPreviewMaxWidthPx,
+                fps = settings.previewFps,
+                maxWidthPx = settings.previewMaxWidthPx,
             ) ?: run {
                 android.util.Log.w(TAG, "video preview generation failed video=$videoName")
                 return

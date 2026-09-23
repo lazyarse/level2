@@ -27,8 +27,7 @@ sealed interface ZoneGrab {
 private const val MIN_ZONE = 0.02
 
 /**
- * Interaction logic for the zone editor. Port of the state machine in
- * `lib/ui/zone_editor_screen.dart`: tap-to-select / poly-vertex placement,
+ * Interaction logic for the zone editor: tap-to-select / poly-vertex placement,
  * drag-to-draw new rects, corner-resize and move of existing rects, label
  * editing, delete, clear — extended per the privacy-zones design to edit BOTH
  * the inclusion and exclusion lists through an active-mode toggle. All

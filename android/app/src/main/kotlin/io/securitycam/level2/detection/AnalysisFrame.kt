@@ -2,7 +2,7 @@ package io.securitycam.level2.detection
 
 import java.time.Instant
 
-/** Grayscale bitmap (port of `lib/core/models.dart`). */
+/** Grayscale bitmap. */
 class GrayscaleBitmap(
     val width: Int,
     val height: Int,

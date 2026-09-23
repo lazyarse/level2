@@ -5,8 +5,8 @@ import io.securitycam.level2.detection.DetectedBox
 import java.time.Duration
 
 /**
- * Detector configuration (port of `lib/core/detector.dart` `DetectorConfig`).
- * JSON keys match the Dart blob.
+ * Detector configuration.
+ * JSON keys are stable so stored blobs keep parsing.
  */
 data class DetectorConfig(
     val type: String,
@@ -52,7 +52,7 @@ data class DetectorConfig(
     }
 }
 
-/** Base detector contract (port of `lib/core/detector.dart`). */
+/** Base detector contract. */
 interface Detector {
     val id: String
     val config: DetectorConfig

@@ -11,14 +11,12 @@ data class RotatedBgr(val bgr: ByteArray, val width: Int, val height: Int)
 object FrameRotation {
 
     fun rotate(bgr: ByteArray, width: Int, height: Int, degrees: Int): RotatedBgr =
-        when (normalize(degrees)) {
+        when (CameraRotations.normalize(degrees)) {
             90 -> rot90(bgr, width, height)
             180 -> rot180(bgr, width, height)
             270 -> rot270(bgr, width, height)
             else -> RotatedBgr(bgr, width, height)
         }
-
-    fun normalize(degrees: Int): Int = ((degrees % 360) + 360) % 360
 
     /** 90° clockwise: src(w x h) -> dst(h x w); dst[x'=h-1-y][y'=x]. */
     private fun rot90(bgr: ByteArray, w: Int, h: Int): RotatedBgr {

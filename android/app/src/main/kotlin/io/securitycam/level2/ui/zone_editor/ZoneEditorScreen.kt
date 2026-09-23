@@ -87,8 +87,7 @@ private fun zoneColor(mode: ZoneEditorMode, index: Int): Color =
     }
 
 /**
- * Full-screen zone editor over the live preview. Port of
- * `lib/ui/zone_editor_screen.dart`, extended per the privacy-zones design
+ * Full-screen zone editor over the live preview, extended per the privacy-zones design
  * with an Inclusion/Exclusion mode toggle: both lists are edited in place
  * (exclusions rendered in red) and reported together via [onSave].
  *

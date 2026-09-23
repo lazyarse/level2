@@ -1,7 +1,7 @@
 package io.securitycam.level2.detection
 
 /**
- * Zone geometry helpers (port of `lib/detection/zones/zone_filter.dart`).
+ * Zone geometry helpers.
  * Coordinates are normalized 0..1 on the analysis frame.
  */
 object ZoneFilter {

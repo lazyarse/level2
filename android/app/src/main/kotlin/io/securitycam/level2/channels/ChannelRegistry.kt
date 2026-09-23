@@ -3,7 +3,7 @@ package io.securitycam.level2.channels
 import io.securitycam.level2.core.ChannelConfig
 import io.securitycam.level2.core.ChannelSettings
 
-/** Factory for a channel from its config (port of `lib/core/registries.dart`). */
+/** Factory for a channel from its config. */
 typealias ChannelFactory = (ChannelConfig) -> io.securitycam.level2.core.Channel
 
 /** Registry of channel factories keyed by channel type. */

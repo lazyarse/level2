@@ -26,7 +26,7 @@ object AlertMode {
     const val DEFAULT_EVERY_SECONDS = 60
 }
 
-/** Serializable channel configuration (port of `lib/core/channel.dart`). */
+/** Serializable channel configuration. */
 data class ChannelConfig(
     val id: String,
     val type: String,
@@ -113,7 +113,7 @@ data class AlertMessage(
     val videoPreview: Snapshot? = null,
 )
 
-/** Delivery contract (port of `lib/core/channel.dart` `Channel`). */
+/** Delivery contract for alert channels. */
 interface Channel {
     val id: String
     val type: String

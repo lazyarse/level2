@@ -2,7 +2,7 @@ package io.securitycam.level2.event
 
 import java.time.Instant
 
-/** A recorded trigger event row (port of `lib/storage/event_recorder.dart`). */
+/** A recorded trigger event row. */
 data class RecordedEvent(
     val timestamp: Instant,
     val cameraName: String,

@@ -143,7 +143,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * Settings screen (port of `lib/ui/settings_screen.dart`). Draft-commit model:
+ * Settings screen. Draft-commit model:
  * every control edits a local draft; "Save settings" persists the whole thing.
  * The desktop dev-source section is intentionally dropped (mobile always uses
  * the on-device camera/mic).
@@ -1233,30 +1233,30 @@ fun SettingsScreen(
                                 onSelect = { v -> viewModel.update { it.copy(previewMode = PreviewMode.valueOf(v)) } },
                             )
                             Spacer(Modifier.height(16.dp))
-                            Text("Preview frame rate: ${current.gifPreviewFps} fps")
+                            Text("Preview frame rate: ${current.previewFps} fps")
                             Slider(
-                                value = current.gifPreviewFps.toFloat(),
+                                value = current.previewFps.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(gifPreviewFps = VideoPreview.clampFps(v.round()))
+                                        it.copy(previewFps = VideoPreview.clampFps(v.round()))
                                     }
                                 },
                                 valueRange = VideoPreview.MIN_FPS.toFloat()..VideoPreview.MAX_FPS.toFloat(),
                                 steps = VideoPreview.MAX_FPS - VideoPreview.MIN_FPS - 1,
-                                modifier = Modifier.testTag("gifFpsSlider"),
+                                modifier = Modifier.testTag("previewFpsSlider"),
                             )
                             Spacer(Modifier.height(16.dp))
-                            Text("Preview width: ${current.gifPreviewMaxWidthPx} px")
+                            Text("Preview width: ${current.previewMaxWidthPx} px")
                             Slider(
-                                value = current.gifPreviewMaxWidthPx.toFloat(),
+                                value = current.previewMaxWidthPx.toFloat(),
                                 onValueChange = { v ->
                                     viewModel.update {
-                                        it.copy(gifPreviewMaxWidthPx = VideoPreview.clampWidth(v.round()))
+                                        it.copy(previewMaxWidthPx = VideoPreview.clampWidth(v.round()))
                                     }
                                 },
                                 valueRange = VideoPreview.MIN_WIDTH.toFloat()..VideoPreview.MAX_WIDTH.toFloat(),
                                 steps = (VideoPreview.MAX_WIDTH - VideoPreview.MIN_WIDTH) / 16 - 1,
-                                modifier = Modifier.testTag("gifWidthSlider"),
+                                modifier = Modifier.testTag("previewWidthSlider"),
                             )
                         }
                         HorizontalDivider()
