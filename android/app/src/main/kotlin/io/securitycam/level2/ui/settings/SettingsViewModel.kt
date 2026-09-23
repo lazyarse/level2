@@ -193,6 +193,10 @@ class SettingsViewModel(
     fun listFacePhotos(faceId: String): List<File> =
         faceStore?.listPhotos(faceId).orEmpty()
 
+    /** Gallery index parsed from a photo file name (null when foreign). */
+    fun photoIndexOf(faceId: String, file: File): Int? =
+        faceStore?.photoIndexOf(faceId, file)
+
     /**
      * Removes gallery photo [index] and unlearns its sample from the
      * centroid. Refuses the last photo — the row trash removes whole faces.

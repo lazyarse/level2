@@ -17,13 +17,18 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.test.core.app.ApplicationProvider
 import io.securitycam.level2.channels.EmailChannelSettings
 import io.securitycam.level2.channels.PushoverChannelSettings
 import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ChannelConfig
+import io.securitycam.level2.core.KnownFace
 import io.securitycam.level2.core.TriggerType
 import io.securitycam.level2.detection.DetectorConfig
+import io.securitycam.level2.identity.KnownFaceStore
+import java.io.File
 import java.time.Duration
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
@@ -45,10 +50,14 @@ class SettingsScreenTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private class Harness(initial: AppSettings = AppSettings.defaults()) {
+    private class Harness(
+        initial: AppSettings = AppSettings.defaults(),
+        application: android.app.Application? = null,
+    ) {
         val saved = mutableListOf<AppSettings>()
         val cleared = mutableListOf<Duration?>()
         val viewModel = SettingsViewModel(
+            application = application,
             settingsLoader = { initial },
             settingsSaver = { saved.add(it) },
             eventsClearer = { cleared.add(it) },
@@ -822,6 +831,128 @@ class SettingsScreenTest {
             compose.onAllNodesWithText(dialogText).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText(dialogText).assertIsDisplayed()
+    }
+
+    // ---- Face photo gallery ----
+
+    /** Writes a real 8x8 JPEG so Robolectric decodes gallery thumbs. */
+    private fun writeJpeg(file: File) {
+        file.parentFile?.mkdirs()
+        val bmp = android.graphics.Bitmap.createBitmap(
+            8, 8, android.graphics.Bitmap.Config.ARGB_8888,
+        )
+        file.outputStream().use {
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it)
+        }
+        bmp.recycle()
+    }
+
+    private data class GallerySeed(val harness: Harness, val face: KnownFace)
+
+    /**
+     * Harness with recognition enabled, one enrolled face, and [photoCount]
+     * real JPEGs on disk (plus journaled embeddings so deletes unlearn).
+     */
+    private fun gallerySeed(photoCount: Int): GallerySeed {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val face = KnownFace(id = "face_gallery1", label = "Gally")
+        val initial = AppSettings.defaults()
+            .copyWith(knownFaces = listOf(face))
+            .withFaceRecognition(true)
+        val harness = Harness(initial = initial, application = app)
+        val store = KnownFaceStore(app)
+        val vectors = listOf(floatArrayOf(1f, 0f), floatArrayOf(0f, 1f))
+        repeat(photoCount) { k ->
+            store.enroll(face.id, vectors[k % vectors.size])
+            store.appendSample(face.id, k, vectors[k % vectors.size])
+            writeJpeg(store.photoFileFor(face.id, k))
+        }
+        return GallerySeed(harness, face)
+    }
+
+    private fun openFaceRows(harness: Harness) {
+        setContent(harness)
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
+    private fun openGallery(face: KnownFace) {
+        compose.onNodeWithTag("faceThumbnail_${face.id}").performScrollTo().performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText("Photos of ${face.label}")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Photos of ${face.label}").assertIsDisplayed()
+    }
+
+    @Test
+    fun tappingFaceThumbnailOpensGallery() {
+        val (harness, face) = gallerySeed(photoCount = 2)
+        openFaceRows(harness)
+        compose.onNodeWithText("2 photos").performScrollTo().assertIsDisplayed()
+
+        openGallery(face)
+
+        compose.onNodeWithTag("faceGalleryDialog").assertIsDisplayed()
+    }
+
+    @Test
+    fun galleryWithOnePhotoShowsNoDelete() {
+        val (harness, face) = gallerySeed(photoCount = 1)
+        openFaceRows(harness)
+
+        openGallery(face)
+
+        compose.onNodeWithTag("galleryPhoto_${face.id}_0").assertIsDisplayed()
+        compose.onAllNodesWithTag("deletePhoto_${face.id}_0").assertCountEquals(0)
+    }
+
+    @Test
+    fun galleryDeleteRemovesPhotoAndUnlearns() {
+        val (harness, face) = gallerySeed(photoCount = 2)
+        openFaceRows(harness)
+
+        openGallery(face)
+        compose.onNodeWithTag("deletePhoto_${face.id}_1").performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText(
+                "It will be deleted and no longer used for recognition.",
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(
+            "It will be deleted and no longer used for recognition.",
+        ).assertIsDisplayed()
+        compose.onNodeWithText("Remove").performClick()
+
+        compose.waitForIdle()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithText("1 photo").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("1 photo").assertIsDisplayed()
+        compose.onAllNodesWithTag("deletePhoto_${face.id}_1").assertCountEquals(0)
+
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val store = KnownFaceStore(app)
+        assertFalse(store.photoFileFor(face.id, 1).exists())
+        assertEquals(1, store.sampleCount(face.id))
+    }
+
+    @Test
+    fun galleryPhotoTapOpensZoomAndCloses() {
+        val (harness, face) = gallerySeed(photoCount = 1)
+        openFaceRows(harness)
+
+        openGallery(face)
+        compose.onNodeWithTag("galleryPhoto_${face.id}_0").performClick()
+        compose.waitUntil(5000) {
+            compose.onAllNodesWithTag("galleryPhotoClose")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("galleryPhotoClose").assertIsDisplayed()
+        compose.onNodeWithTag("galleryPhotoClose").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("galleryPhotoClose").assertCountEquals(0)
     }
 
     @Test

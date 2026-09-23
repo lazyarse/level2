@@ -21,9 +21,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -105,6 +108,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.securitycam.level2.BuildConfig
 import io.securitycam.level2.channels.EmailChannelSettings
@@ -131,9 +135,13 @@ import io.securitycam.level2.core.supportsVideoPreview
 import io.securitycam.level2.ui.theme.AppButtonShape
 import io.securitycam.level2.detection.DetectorConfig
 import io.securitycam.level2.detection.SensitivityScale
+import io.securitycam.level2.ui.events.ZoomableSnapshotDialog
+import io.securitycam.level2.ui.events.decodeUpright
 import java.time.Duration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 /**
  * Settings screen (port of `lib/ui/settings_screen.dart`). Draft-commit model:
@@ -236,6 +244,18 @@ fun SettingsScreen(
     var pendingDeleteFace by rememberSaveable(stateSaver = KnownFaceSaver) {
         mutableStateOf<KnownFace?>(null)
     }
+
+    // Face whose photo gallery is open (tap the row thumbnail).
+    var galleryFace by rememberSaveable(stateSaver = KnownFaceSaver) {
+        mutableStateOf<KnownFace?>(null)
+    }
+    // Absolute path of the gallery photo shown zoomed, if any.
+    var zoomPhotoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    // Gallery photo awaiting delete confirmation (index into the face's photos).
+    var pendingDeletePhotoFace by rememberSaveable(stateSaver = KnownFaceSaver) {
+        mutableStateOf<KnownFace?>(null)
+    }
+    var pendingDeletePhotoIndex by rememberSaveable { mutableStateOf(-1) }
 
     // Raw LiveView port text: the typed Int in the draft can't represent a
     // cleared/in-progress field, so keep the raw string here and parse on
@@ -380,20 +400,34 @@ fun SettingsScreen(
                                                         ),
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
-                                                    FaceThumbnail(
-                                                        file = viewModel.thumbFile(face.id),
-                                                        label = face.label,
-                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clickable {
+                                                                galleryFace = face
+                                                            }
+                                                            .testTag(
+                                                                "faceThumbnail_${face.id}",
+                                                            ),
+                                                    ) {
+                                                        FaceThumbnail(
+                                                            file = viewModel.thumbFile(face.id),
+                                                            label = face.label,
+                                                        )
+                                                    }
                                                     Spacer(Modifier.width(12.dp))
                                                     Column(Modifier.weight(1f)) {
                                                         Text(face.label)
-                                                        val samples = produceState(0, face.id) {
-                                                            value = viewModel.sampleCount(face.id)
+                                                        val photoCount = produceState(
+                                                            0,
+                                                            face.id,
+                                                            message,
+                                                        ) {
+                                                            value = viewModel.facePhotoCount(face.id)
                                                         }
-                                                        if (samples.value > 0) {
+                                                        if (photoCount.value > 0) {
                                                             Text(
-                                                                "${samples.value} photo" +
-                                                                    if (samples.value == 1) "" else "s",
+                                                                "${photoCount.value} photo" +
+                                                                    if (photoCount.value == 1) "" else "s",
                                                                 style = MaterialTheme.typography.bodySmall,
                                                                 color = MaterialTheme
                                                                     .colorScheme.onSurfaceVariant,
@@ -1370,6 +1404,79 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(
                         onClick = { pendingDeleteFace = null },
+                        shape = AppButtonShape,
+                    ) { Text("Cancel") }
+                },
+            )
+        }
+
+        galleryFace?.let { face ->
+            FaceGalleryDialog(
+                face = face,
+                messageKey = message,
+                photoFiles = { viewModel.listFacePhotos(face.id) },
+                photoIndex = { file -> viewModel.photoIndexOf(face.id, file) },
+                onClose = { galleryFace = null },
+                onZoom = { file -> zoomPhotoPath = file.absolutePath },
+                onDelete = { index ->
+                    pendingDeletePhotoFace = face
+                    pendingDeletePhotoIndex = index
+                },
+            )
+        }
+
+        zoomPhotoPath?.let { path ->
+            val zoomBitmap by produceState<android.graphics.Bitmap?>(
+                initialValue = null,
+                key1 = path,
+            ) {
+                value = withContext(Dispatchers.IO) {
+                    runCatching { java.io.File(path).readBytes() }
+                        .getOrNull()?.let { decodeUpright(it) }
+                }
+            }
+            ZoomableSnapshotDialog(
+                bitmap = zoomBitmap,
+                loading = zoomBitmap == null,
+                title = galleryFace?.label ?: "Photo",
+                onClose = { zoomPhotoPath = null },
+                closeTag = "galleryPhotoClose",
+            )
+        }
+
+        val deletePhotoFace = pendingDeletePhotoFace
+        if (deletePhotoFace != null && pendingDeletePhotoIndex >= 0) {
+            AlertDialog(
+                onDismissRequest = {
+                    pendingDeletePhotoFace = null
+                    pendingDeletePhotoIndex = -1
+                },
+                title = { Text("Remove this photo?") },
+                text = {
+                    Text(
+                        "It will be deleted and no longer used for recognition.",
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteFacePhoto(
+                                deletePhotoFace,
+                                pendingDeletePhotoIndex,
+                            )
+                            pendingDeletePhotoFace = null
+                            pendingDeletePhotoIndex = -1
+                        },
+                        modifier = Modifier.testTag("confirmDeletePhoto"),
+                        shape = AppButtonShape,
+                    ) { Text("Remove") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            pendingDeletePhotoFace = null
+                            pendingDeletePhotoIndex = -1
+                        },
                         shape = AppButtonShape,
                     ) { Text("Cancel") }
                 },
@@ -2449,7 +2556,7 @@ private fun liveViewSummary(lv: LiveViewSettings): String {
 
 /** Enrolled-face thumbnail decoded from disk; falls back to a face icon. */
 @Composable
-private fun FaceThumbnail(file: java.io.File?, label: String) {
+private fun FaceThumbnail(file: java.io.File?, label: String, size: Dp = 48.dp) {
     if (file == null) {
         Icon(Icons.Filled.Face, contentDescription = label)
         return
@@ -2474,7 +2581,7 @@ private fun FaceThumbnail(file: java.io.File?, label: String) {
             bitmap = bitmap!!.asImageBitmap(),
             contentDescription = label,
             modifier = Modifier
-                .size(48.dp)
+                .size(size)
                 .clip(RoundedCornerShape(8.dp)),
             contentScale = ContentScale.Crop,
         )
@@ -2485,4 +2592,86 @@ private fun FaceThumbnail(file: java.io.File?, label: String) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * Scrollable per-face photo list. Tap a photo to zoom; the delete action is
+ * hidden for a lone photo (the row trash removes whole faces instead). The
+ * photo list re-reads on [messageKey] so a delete confirm refreshes the rows.
+ */
+@Composable
+private fun FaceGalleryDialog(
+    face: KnownFace,
+    messageKey: String?,
+    photoFiles: () -> List<java.io.File>,
+    photoIndex: (java.io.File) -> Int?,
+    onClose: () -> Unit,
+    onZoom: (java.io.File) -> Unit,
+    onDelete: (Int) -> Unit,
+) {
+    val photos by produceState(
+        initialValue = emptyList<java.io.File>(),
+        key1 = face.id,
+        key2 = messageKey,
+    ) {
+        value = runCatching { photoFiles() }.getOrDefault(emptyList())
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        modifier = Modifier.testTag("faceGalleryDialog"),
+        title = { Text("Photos of ${face.label}") },
+        text = {
+            if (photos.isEmpty()) {
+                Text(
+                    "No photos yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    items(photos, key = { it.absolutePath }) { photo ->
+                        val index = photoIndex(photo)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clickable { onZoom(photo) }
+                                    .testTag("galleryPhoto_${face.id}_$index"),
+                            ) {
+                                FaceThumbnail(
+                                    file = photo,
+                                    label = face.label,
+                                    size = 64.dp,
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (photos.size > 1 && index != null) {
+                                IconButton(
+                                    onClick = { onDelete(index) },
+                                    modifier = Modifier.testTag(
+                                        "deletePhoto_${face.id}_$index",
+                                    ),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Delete this photo",
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onClose,
+                modifier = Modifier.testTag("closeGallery"),
+                shape = AppButtonShape,
+            ) { Text("Close") }
+        },
+    )
 }

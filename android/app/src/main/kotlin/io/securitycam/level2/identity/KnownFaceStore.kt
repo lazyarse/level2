@@ -88,7 +88,8 @@ class KnownFaceStore(private val facesDir: File) {
     fun nextPhotoIndex(id: String): Int =
         listPhotos(id).mapNotNull { photoIndexOf(id, it) }.maxOrNull()?.plus(1) ?: 0
 
-    private fun photoIndexOf(id: String, file: File): Int? =
+    /** Gallery index parsed from a photo file name (null when foreign). */
+    fun photoIndexOf(id: String, file: File): Int? =
         Regex("^" + Regex.escape(id) + "_(\\d+)\\.jpg$")
             .matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()
 
