@@ -423,7 +423,6 @@ SECTIONS=(
   "Notification Channels|channels"
   "Video clips|video_clips"
   "Zones|regions"
-  "Face Recognition|face_recognition"
   "Live View|live_view"
   "Schedule|schedule"
   "Cloud backup|cloud_backup"
@@ -479,6 +478,61 @@ for entry in "${SECTIONS[@]}"; do
     sleep 0.3
   fi
 done
+
+# Face recognition now lives inside the Face detector card (no top-level
+# section): expand Detectors, then the face card, then shoot.
+if want face_recognition; then
+  echo "== capturing face recognition (Detectors → Face) =="
+  found=""
+  for _ in $(seq 1 25); do
+    dump_ui || { scroll_down; sleep 0.5; continue; }
+    if bounds_of content-desc "expand_Detectors" >/dev/null ||
+       bounds_of content-desc "collapse_Detectors" >/dev/null; then
+      found=1; break
+    fi
+    scroll_down; sleep 0.5
+  done
+  [ -n "$found" ] || die "Detectors section never became visible"
+  if bounds_of content-desc "expand_Detectors" >/dev/null; then
+    exp_b="$(bounds_of content-desc "expand_Detectors")" || die "cannot find expand_Detectors"
+    tap_bounds "$exp_b" || die "cannot expand Detectors"
+    sleep 0.5
+  fi
+  found=""
+  for _ in $(seq 1 25); do
+    dump_ui || { scroll_down; sleep 0.5; continue; }
+    if bounds_of content-desc "expand_face" >/dev/null ||
+       bounds_of content-desc "collapse_face" >/dev/null; then
+      found=1; break
+    fi
+    scroll_down; sleep 0.5
+  done
+  [ -n "$found" ] || die "face detector card never became visible"
+  if bounds_of content-desc "expand_face" >/dev/null; then
+    exp_b="$(bounds_of content-desc "expand_face")" || die "cannot find expand_face"
+    tap_bounds "$exp_b" || die "cannot expand face detector"
+    sleep 0.5
+    dump_ui || die "dump failed after expanding face detector"
+    bounds_of content-desc "collapse_face" >/dev/null ||
+      die "face detector did not report expanded state"
+  fi
+  scroll_to_top content-desc "collapse_face" || true
+  sleep 0.3
+  shot "$WORK/full.png"
+  crop_png "$WORK/full.png" "$IMG_DIR/settings_face_recognition.png" 0 0 "$W" "$NAV_TOP" ||
+    die "crop failed for face recognition"
+  resize_half "$IMG_DIR/settings_face_recognition.png"
+  echo "captured settings_face_recognition.png"
+  dump_ui
+  if bounds_of content-desc "collapse_face" >/dev/null; then
+    tap_node content-desc "collapse_face" || true
+    sleep 0.3
+  fi
+  if bounds_of content-desc "collapse_Detectors" >/dev/null; then
+    tap_node content-desc "collapse_Detectors" || true
+    sleep 0.3
+  fi
+fi
 
 if want alert_log; then
   echo "== capturing alert log viewer =="

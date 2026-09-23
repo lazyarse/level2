@@ -530,6 +530,22 @@ data class AppSettings(
             return copy(detectorConfigs = configs)
         }
 
+        /**
+         * Single write path for per-detector config edits: non-face types are
+         * a plain map replace; disabling the face detector also forces
+         * recognition off, because recognition runs through the face detector
+         * at runtime (registered under the `face` key) — recognition-on /
+         * detection-off would be silently dead.
+         */
+        fun AppSettings.withDetectorConfig(next: DetectorConfig): AppSettings {
+            val updated = copy(detectorConfigs = detectorConfigs + (next.type to next))
+            return if (next.type == TriggerType.face && !next.enabled) {
+                updated.withFaceRecognition(false)
+            } else {
+                updated
+            }
+        }
+
         private fun defaultFaceConfig(): DetectorConfig =
             DetectorConfig(
                 type = TriggerType.face,
@@ -579,7 +595,7 @@ data class AppSettings(
             val channels = (stored + defaults.channelConfigs.filter { d ->
                 stored.none { it.id == d.id }
             }).filterNot { it.isPristinePlaceholder() }
-            return AppSettings(
+            val settings = AppSettings(
                 cameraName = json["cameraName"] as? String ?: defaults.cameraName,
                 cameraId = json["cameraId"] as? String ?: defaults.cameraId,
                 detectorConfigs = mergedDetectors,
@@ -643,6 +659,14 @@ data class AppSettings(
                 cooldownsMigrated = json["cooldownsMigrated"] as? Boolean ?: false,
                 mergeWindowUpgraded = json["mergeWindowUpgraded"] as? Boolean ?: false,
             )
+            // Legacy heal: recognition without a live face detector is a
+            // silently-dead state (recognition runs under the face key).
+            val faceEnabled = settings.detectorConfigs[TriggerType.face]?.enabled == true
+            return if (!faceEnabled && faceRecognitionEnabled(settings)) {
+                settings.withFaceRecognition(false)
+            } else {
+                settings
+            }
         }
     }
 }

@@ -659,7 +659,7 @@ class SettingsScreenTest {
 
         val version = compose.onNodeWithText("Version ", substring = true).performScrollTo()
         version.assertIsDisplayed()
-        val mission = compose.onNodeWithText("right to feel secure", substring = true)
+        val mission = compose.onNodeWithText("feel safe and secure", substring = true)
             .performScrollTo()
         mission.assertIsDisplayed()
         val versionY = version.fetchSemanticsNode().positionInRoot.y
@@ -834,7 +834,9 @@ class SettingsScreenTest {
         compose.waitUntil(5000) { harness.viewModel.draft.value != null }
         compose.waitForIdle()
 
-        expandSection("Face Recognition")
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag("faceRecognitionSwitch").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("addFaceButton").performScrollTo().performClick()
@@ -849,6 +851,47 @@ class SettingsScreenTest {
             compose.onAllNodesWithTag("faceNameField").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("faceNameField").assertTextContains("Ada")
+    }
+
+    @Test
+    fun faceRecognitionLivesInsideFaceDetectorCard() {
+        val harness = Harness()
+        setContent(harness)
+
+        // The old top-level section is gone; the sub-heading lives inside
+        // the face detector card body.
+        compose.onNodeWithTag(sectionTag("Face Recognition")).assertDoesNotExist()
+        expandSection("Detectors")
+        compose.onAllNodesWithTag("faceRecognitionSwitch").fetchSemanticsNodes().let {
+            assertEquals(0, it.size)
+        }
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Face Recognition").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("faceRecognitionSwitch").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun disablingFaceDetectorForcesRecognitionOff() {
+        val harness = Harness()
+        setContent(harness)
+
+        expandSection("Detectors")
+        compose.onNodeWithTag("detectorHeader_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        // Enable face detection + recognition.
+        compose.onNodeWithTag("detectorEnabled_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("faceRecognitionSwitch").performScrollTo().performClick()
+        compose.waitForIdle()
+        assertTrue(AppSettings.faceRecognitionEnabled(harness.viewModel.draft.value!!))
+
+        // Switch the face detector off: recognition must follow.
+        compose.onNodeWithTag("detectorEnabled_face").performScrollTo().performClick()
+        compose.waitForIdle()
+        val draft = harness.viewModel.draft.value!!
+        assertFalse(AppSettings.faceRecognitionEnabled(draft))
+        assertFalse(draft.detectorConfigs.getValue(TriggerType.face).enabled)
     }
 
     @Test

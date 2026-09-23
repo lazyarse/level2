@@ -1,6 +1,7 @@
 package io.securitycam.level2.core
 
 import io.securitycam.level2.detection.DetectorConfig
+import io.securitycam.level2.core.AppSettings.Companion.withDetectorConfig
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.event.triggerLabel
 import org.junit.Assert.assertEquals
@@ -78,5 +79,45 @@ class FaceRecognitionSettingsTest {
             on.detectorConfigs[TriggerType.faceKnown],
             back.detectorConfigs[TriggerType.faceKnown],
         )
+    }
+
+    @Test
+    fun disablingFaceDetectorForcesRecognitionOff() {
+        val on = AppSettings.defaults().withFaceRecognition(true)
+        assertTrue(AppSettings.faceRecognitionEnabled(on))
+        val off = on.withDetectorConfig(
+            on.detectorConfigs.getValue(TriggerType.face).copy(enabled = false),
+        )
+        assertFalse(AppSettings.faceRecognitionEnabled(off))
+        assertFalse(off.detectorConfigs.getValue(TriggerType.face).enabled)
+        // Enrolled faces are untouched — only the routing configs go.
+        assertEquals(on.knownFaces, off.knownFaces)
+    }
+
+    @Test
+    fun disablingNonFaceDetectorLeavesRecognitionAlone() {
+        val on = AppSettings.defaults().withFaceRecognition(true)
+        val person = on.detectorConfigs.getValue(TriggerType.person)
+        val next = on.withDetectorConfig(person.copy(enabled = !person.enabled))
+        assertEquals(
+            AppSettings.faceRecognitionEnabled(on),
+            AppSettings.faceRecognitionEnabled(next),
+        )
+    }
+
+    @Test
+    fun fromJsonHealsRecognitionWhenFaceDetectorDisabled() {
+        // Legacy divergent state: recognition on, face detector off. Built by
+        // direct map edit — withDetectorConfig would already force it off.
+        val on = AppSettings.defaults().withFaceRecognition(true)
+        val divergent = on.copy(
+            detectorConfigs = on.detectorConfigs +
+                (TriggerType.face to on.detectorConfigs.getValue(TriggerType.face)
+                    .copy(enabled = false)),
+        )
+        assertTrue(AppSettings.faceRecognitionEnabled(divergent))
+        val healed = AppSettings.fromJson(divergent.toJson())
+        assertFalse(AppSettings.faceRecognitionEnabled(healed))
+        assertFalse(healed.detectorConfigs.getValue(TriggerType.face).enabled)
     }
 }

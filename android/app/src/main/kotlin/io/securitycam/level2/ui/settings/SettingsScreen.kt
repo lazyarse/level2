@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -114,6 +115,7 @@ import io.securitycam.level2.channels.WebhookChannelSettings
 import io.securitycam.level2.channels.webhookPresets
 import io.securitycam.level2.core.AnalysisResolution
 import io.securitycam.level2.core.AppSettings
+import io.securitycam.level2.core.AppSettings.Companion.withDetectorConfig
 import io.securitycam.level2.core.AppSettings.Companion.withFaceRecognition
 import io.securitycam.level2.core.ClipStampPosition
 import io.securitycam.level2.core.DetectionSpeed
@@ -321,8 +323,128 @@ fun SettingsScreen(
                                         "Detection speed in Advanced settings.",
                                 )
                             }
-                            detectorGroup("Camera", current, cameraDetectorOrder) { type, next ->
-                                viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
+                            detectorGroup(
+                                "Camera",
+                                current,
+                                cameraDetectorOrder,
+                                faceExtraContent = {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "Face Recognition",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(
+                                            top = 4.dp,
+                                            bottom = 4.dp,
+                                        ),
+                                    )
+                                    Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(Icons.Filled.Face, contentDescription = null)
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text("Recognise known faces")
+                                                BodyText(
+                                                    if (current.knownFaces.isEmpty()) {
+                                                        "No faces enrolled yet"
+                                                    } else {
+                                                        "${current.knownFaces.size} enrolled"
+                                                    },
+                                                )
+                                            }
+                                            Spacer(Modifier.weight(1f))
+                                            Spacer(Modifier.width(8.dp))
+                                            Switch(
+                                                checked = AppSettings.faceRecognitionEnabled(current),
+                                                onCheckedChange = { on ->
+                                                    viewModel.update { it.withFaceRecognition(on) }
+                                                },
+                                                modifier = Modifier.testTag("faceRecognitionSwitch"),
+                                            )
+                                        }
+                                    }
+                                    if (AppSettings.faceRecognitionEnabled(current)) {
+                                        for (face in current.knownFaces) {
+                                            Card(modifier = Modifier.padding(vertical = 2.dp)) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(
+                                                            horizontal = 12.dp,
+                                                            vertical = 8.dp,
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    FaceThumbnail(
+                                                        file = viewModel.thumbFile(face.id),
+                                                        label = face.label,
+                                                    )
+                                                    Spacer(Modifier.width(12.dp))
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(face.label)
+                                                        val samples = produceState(0, face.id) {
+                                                            value = viewModel.sampleCount(face.id)
+                                                        }
+                                                        if (samples.value > 0) {
+                                                            Text(
+                                                                "${samples.value} photo" +
+                                                                    if (samples.value == 1) "" else "s",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme
+                                                                    .colorScheme.onSurfaceVariant,
+                                                            )
+                                                        }
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            viewModel.startSampleCapture(face)
+                                                        },
+                                                        enabled = !isEnrolling,
+                                                        modifier = Modifier.testTag(
+                                                            "addSample_${face.id}",
+                                                        ),
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Filled.AddPhotoAlternate,
+                                                            contentDescription =
+                                                                "Add photos of ${face.label}",
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = { pendingDeleteFace = face },
+                                                        modifier = Modifier.testTag(
+                                                            "deleteFace_${face.id}",
+                                                        ),
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Filled.Delete,
+                                                            contentDescription =
+                                                                "Delete ${face.label}",
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        OutlinedButton(
+                                            onClick = { showAddFaceDialog = true },
+                                            enabled = !isEnrolling,
+                                            modifier = Modifier.testTag("addFaceButton"),
+                                            shape = AppButtonShape,
+                                        ) {
+                                            Icon(Icons.Filled.Add, contentDescription = null)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Add face")
+                                        }
+                                    }
+                                },
+                            ) { _, next ->
+                                viewModel.update { it.withDetectorConfig(next) }
                             }
                             detectorGroup("Audio", current, audioGeneralOrder) { type, next ->
                                 viewModel.update { it.copy(detectorConfigs = it.detectorConfigs + (type to next)) }
@@ -567,107 +689,6 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f),
                                     )
                                     Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                                }
-                            }
-                        }
-                        CollapsibleSection(
-                            "Face Recognition",
-                            summary = faceRecognitionSummary(current),
-                        ) {
-                            Card(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(Icons.Filled.Face, contentDescription = null)
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Recognise known faces")
-                                        BodyText(
-                                            if (current.knownFaces.isEmpty()) {
-                                                "No faces enrolled yet"
-                                            } else {
-                                                "${current.knownFaces.size} enrolled"
-                                            },
-                                        )
-                                    }
-                                    Spacer(Modifier.weight(1f))
-                                    Spacer(Modifier.width(8.dp))
-                                    Switch(
-                                        checked = AppSettings.faceRecognitionEnabled(current),
-                                        onCheckedChange = { on ->
-                                            viewModel.update { it.withFaceRecognition(on) }
-                                        },
-                                        modifier = Modifier.testTag("faceRecognitionSwitch"),
-                                    )
-                                }
-                            }
-                            if (AppSettings.faceRecognitionEnabled(current)) {
-                                for (face in current.knownFaces) {
-                                    Card(modifier = Modifier.padding(vertical = 2.dp)) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            FaceThumbnail(
-                                                file = viewModel.thumbFile(face.id),
-                                                label = face.label,
-                                            )
-                                            Spacer(Modifier.width(12.dp))
-                                            Column(Modifier.weight(1f)) {
-                                                Text(face.label)
-                                                val samples = produceState(0, face.id) {
-                                                    value = viewModel.sampleCount(face.id)
-                                                }
-                                                if (samples.value > 0) {
-                                                    Text(
-                                                        "${samples.value} photo" +
-                                                            if (samples.value == 1) "" else "s",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color =
-                                                            MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    )
-                                                }
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.startSampleCapture(face) },
-                                                enabled = !isEnrolling,
-                                                modifier =
-                                                    Modifier.testTag("addSample_${face.id}"),
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.AddPhotoAlternate,
-                                                    contentDescription =
-                                                        "Add photos of ${face.label}",
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { pendingDeleteFace = face },
-                                                modifier =
-                                                    Modifier.testTag("deleteFace_${face.id}"),
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Delete,
-                                                    contentDescription = "Delete ${face.label}",
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = { showAddFaceDialog = true },
-                                    enabled = !isEnrolling,
-                                    modifier = Modifier.testTag("addFaceButton"),
-                                    shape = AppButtonShape,
-                                ) {
-                                    Icon(Icons.Filled.Add, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Add face")
                                 }
                             }
                         }
@@ -1222,11 +1243,14 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         BodyText(
-                            "Everyone has the right to feel secure regardless of income, so " +
-                                "\"Level 2\" was born. A free, privacy-first security cam application " +
-                                "with advanced features such as person detection, face recognition, " +
-                                "dog/cat detection (including their noises) and much more. If anything " +
-                                "is missing, feel free to create an issue on github.",
+                            "Everyone has the right to feel safe and secure. Level 2, " +
+                                "a free, privacy-first security camera application was created " +
+                                "to provide advanced security camera use. It has advanced " +
+                                "features beyond motion detection such as person detection, " +
+                                "face recognition, dog/cat detection (including their noises), " +
+                                "schedules, private uploading of your videos and much more. If " +
+                                "anything is broken or you'd like to suggest a feature, feel " +
+                                "free to create an issue on github.",
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(
@@ -1545,6 +1569,7 @@ private fun scheduleSummary(window: ScheduleWindow): String {
 private fun DetectorCard(
     config: DetectorConfig,
     onChanged: (DetectorConfig) -> Unit,
+    extraContent: @Composable ColumnScope.() -> Unit = {},
 ) {
     var expanded by rememberSaveable("detector_${config.type}") { mutableStateOf(false) }
     ExpandableCard(
@@ -1727,6 +1752,7 @@ private fun DetectorCard(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+                extraContent()
             },
     )
 }
@@ -2336,6 +2362,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
     label: String?,
     settings: AppSettings,
     types: List<String>,
+    faceExtraContent: (@Composable ColumnScope.() -> Unit)? = null,
     onChanged: (String, DetectorConfig) -> Unit,
 ) {
     if (label != null) {
@@ -2352,6 +2379,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.detectorGroup(
         DetectorCard(
             config = config,
             onChanged = { next -> onChanged(type, next) },
+            extraContent = if (type == TriggerType.face) {
+                faceExtraContent ?: {}
+            } else {
+                {}
+            },
         )
     }
 }
@@ -2388,12 +2420,6 @@ private fun detectorSummary(settings: AppSettings): String {
         type in shownTypes && config.enabled
     }
     return "$active/$total active"
-}
-
-private fun faceRecognitionSummary(settings: AppSettings): String {
-    val enabled = AppSettings.faceRecognitionEnabled(settings)
-    val count = settings.knownFaces.size
-    return if (!enabled) "off" else "On: $count enrolled"
 }
 
 private fun cloudBackupSummary(cb: io.securitycam.level2.core.CloudBackupSettings): String {
