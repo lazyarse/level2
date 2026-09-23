@@ -62,7 +62,6 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
     val state by viewModel.state.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val healthStalled by viewModel.healthStalled.collectAsStateWithLifecycle()
-    val previewActive by viewModel.previewActive.collectAsStateWithLifecycle()
     val cameraName by viewModel.cameraName.collectAsStateWithLifecycle()
     val cameraLabel by viewModel.cameraLabel.collectAsStateWithLifecycle()
     val monitorPreview by viewModel.monitorPreview.collectAsStateWithLifecycle()
@@ -219,7 +218,6 @@ fun MonitorScreen(viewModel: MonitorViewModel = viewModel(factory = MonitorViewM
         MonitorStatusBar(
             cameraName = displayLabel,
             state = state,
-            previewActive = previewActive,
             error = error,
             healthStalled = healthStalled,
             activeTriggers = activeTriggers,
@@ -260,7 +258,6 @@ private val MonitorState.label: String
 private fun MonitorStatusBar(
     cameraName: String,
     state: MonitorState,
-    previewActive: Boolean,
     error: String?,
     healthStalled: Boolean,
     activeTriggers: Set<String>,

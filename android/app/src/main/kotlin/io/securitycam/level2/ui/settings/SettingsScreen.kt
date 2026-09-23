@@ -58,7 +58,6 @@ import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -1940,11 +1939,6 @@ private fun ChannelCard(
                     config = config,
                     fields = fields,
                     onLabelChange = onLabelChange,
-                    onSendTest = onSendTest,
-                    inFlight = inFlight,
-                    sendingDisabled = sendingDisabled,
-                    factories = factories,
-                    testPreviewUrl = testPreviewUrl,
                 )
                 SwitchRow(
                     title = "Push video preview",
@@ -2042,11 +2036,6 @@ private fun ChannelBody(
     config: io.securitycam.level2.core.ChannelConfig,
     fields: MutableMap<String, String>,
     onLabelChange: (String) -> Unit,
-    onSendTest: (io.securitycam.level2.core.ChannelConfig) -> Unit,
-    inFlight: Boolean,
-    sendingDisabled: Boolean,
-    factories: Map<String, io.securitycam.level2.event.ChannelFactory>,
-    testPreviewUrl: String? = null,
 ) {
     // Keys are already fully qualified as "<channelId>.<field>".
     val setField: SetField = { key, value -> fields[key] = value }
