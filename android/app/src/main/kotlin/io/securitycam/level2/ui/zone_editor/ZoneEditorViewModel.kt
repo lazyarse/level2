@@ -12,6 +12,21 @@ import io.securitycam.level2.detection.ZoneFilter.pointInZone
 enum class ZoneEditorMode { inclusion, exclusion, tripwire }
 
 /**
+ * What a drag grabbed, hit-tested by the composable in screen pixels (it
+ * owns the canvas size and letterbox). Rect corners are 0=TL, 1=TR, 2=BR,
+ * 3=BL; poly vertices are positional indices into the flattened points.
+ */
+sealed interface ZoneGrab {
+    data class RectCorner(val zone: Int, val corner: Int) : ZoneGrab
+    data class PolyVertex(val zone: Int, val vertex: Int) : ZoneGrab
+    data class Body(val zone: Int) : ZoneGrab
+    data object Empty : ZoneGrab
+}
+
+/** Smallest allowed rect edge, matching the new-rect draw threshold. */
+private const val MIN_ZONE = 0.02
+
+/**
  * Interaction logic for the zone editor. Port of the state machine in
  * `lib/ui/zone_editor_screen.dart`: tap-to-select / poly-vertex placement,
  * drag-to-draw new rects, corner-resize and move of existing rects, label
@@ -57,7 +72,7 @@ class ZoneEditorViewModel(
     private var nextId = 1
     private var dragStart: Pair<Double, Double>? = null
     private var dragLast: Pair<Double, Double>? = null
-    private var dragResizing = false
+    private var dragHandle: ZoneGrab? = null
     private var dragMoving = false
 
     fun chooseMode(value: ZoneEditorMode) {
@@ -66,6 +81,10 @@ class ZoneEditorViewModel(
         selected = -1
         pendingPoly = null
         dragRect = null
+        dragStart = null
+        dragLast = null
+        dragHandle = null
+        dragMoving = false
     }
 
     fun chooseTripwireDirection(direction: String) {
@@ -109,40 +128,70 @@ class ZoneEditorViewModel(
         select(hitZone(nx, ny))
     }
 
+    fun onPanStart(nx: Double, ny: Double, grab: ZoneGrab) {
+        when (grab) {
+            is ZoneGrab.RectCorner -> {
+                val r = zones.getOrNull(grab.zone)
+                if (r == null || r.shape != DetectionZoneShape.rect || r.points.size < 4) {
+                    startMove(grab.zone, nx, ny)
+                } else {
+                    select(grab.zone)
+                    dragHandle = grab
+                    dragLast = nx to ny
+                }
+            }
+            is ZoneGrab.PolyVertex -> {
+                val r = zones.getOrNull(grab.zone)
+                if (r == null || r.shape != DetectionZoneShape.poly ||
+                    grab.vertex * 2 + 1 >= r.points.size
+                ) {
+                    startMove(grab.zone, nx, ny)
+                } else {
+                    select(grab.zone)
+                    dragHandle = grab
+                    dragLast = nx to ny
+                }
+            }
+            is ZoneGrab.Body -> startMove(grab.zone, nx, ny)
+            ZoneGrab.Empty -> {
+                if (shape == DetectionZoneShape.rect) {
+                    // Start a new rectangle at the drag origin.
+                    selected = -1
+                    pendingPoly = null
+                    dragStart = nx to ny
+                    dragLast = nx to ny
+                    dragRect = listOf(nx, ny, nx, ny)
+                }
+            }
+        }
+    }
+
+    /**
+     * Programmatic path (tests, non-canvas callers): a hit grabs the body,
+     * a miss grabs empty space. Handle grabs always go through the
+     * three-arg overload with a pixel-tested [ZoneGrab].
+     */
     fun onPanStart(nx: Double, ny: Double) {
         val hit = hitZone(nx, ny)
-        if (hit >= 0) {
-            select(hit)
-            val r = zones[hit]
-            if (r.shape == DetectionZoneShape.rect && nearCorner(r, nx, ny)) {
-                dragResizing = true
-            } else {
-                dragMoving = true
-            }
-            // Anchor the first move delta at the grab point.
-            dragLast = nx to ny
-        } else if (shape == DetectionZoneShape.rect) {
-            // Start a new rectangle at the drag origin.
-            selected = -1
-            pendingPoly = null
-            dragStart = nx to ny
-            dragLast = nx to ny
-            dragRect = listOf(nx, ny, nx, ny)
-        }
+        onPanStart(nx, ny, if (hit >= 0) ZoneGrab.Body(hit) else ZoneGrab.Empty)
+    }
+
+    private fun startMove(zone: Int, nx: Double, ny: Double) {
+        if (zone !in zones.indices) return
+        select(zone)
+        dragMoving = true
+        // Anchor the first move delta at the grab point.
+        dragLast = nx to ny
     }
 
     fun onPanUpdate(nx: Double, ny: Double) {
         val n = nx to ny
+        when (val handle = dragHandle) {
+            is ZoneGrab.RectCorner -> return resizeRect(handle, nx, ny)
+            is ZoneGrab.PolyVertex -> return moveVertex(handle, nx, ny)
+            else -> Unit
+        }
         when {
-            dragResizing -> {
-                val i = selected
-                if (i in zones.indices) {
-                    val r = zones[i]
-                    setActive(zones.toMutableList().also {
-                        it[i] = r.copy(points = listOf(r.points[0], r.points[1], nx.toDouble(), ny.toDouble()))
-                    })
-                }
-            }
             dragMoving -> {
                 val i = selected
                 val last = dragLast
@@ -169,17 +218,85 @@ class ZoneEditorViewModel(
         }
     }
 
+    /** Dragged rect corner follows the pointer; the opposite corner anchors. */
+    private fun resizeRect(grab: ZoneGrab.RectCorner, nx: Double, ny: Double) {
+        if (grab.zone !in zones.indices) return
+        val r = zones[grab.zone]
+        if (r.shape != DetectionZoneShape.rect || r.points.size < 4) return
+        val p = r.points
+        val (ax, ay) = cornerCoord(p, (grab.corner + 2) % 4)
+        val gx = resizeAxis(nx, ax)
+        val gy = resizeAxis(ny, ay)
+        val np = p.toMutableList()
+        when (grab.corner) {
+            0 -> { np[0] = gx; np[1] = gy }
+            1 -> { np[2] = gx; np[1] = gy }
+            2 -> { np[2] = gx; np[3] = gy }
+            else -> { np[0] = gx; np[3] = gy }
+        }
+        setActive(zones.toMutableList().also { it[grab.zone] = r.copy(points = np) })
+    }
+
+    /** Dragged poly vertex follows the pointer, clamped to the unit square. */
+    private fun moveVertex(grab: ZoneGrab.PolyVertex, nx: Double, ny: Double) {
+        if (grab.zone !in zones.indices) return
+        val r = zones[grab.zone]
+        if (r.shape != DetectionZoneShape.poly || grab.vertex * 2 + 1 >= r.points.size) return
+        val np = r.points.toMutableList()
+        np[grab.vertex * 2] = nx.coerceIn(0.0, 1.0)
+        np[grab.vertex * 2 + 1] = ny.coerceIn(0.0, 1.0)
+        setActive(zones.toMutableList().also { it[grab.zone] = r.copy(points = np) })
+    }
+
+    private fun cornerCoord(pts: List<Double>, corner: Int): Pair<Double, Double> = when (corner) {
+        0 -> pts[0] to pts[1]
+        1 -> pts[2] to pts[1]
+        2 -> pts[2] to pts[3]
+        else -> pts[0] to pts[3]
+    }
+
+    /** Clamps to the unit square and keeps a MIN_ZONE edge against [anchor]. */
+    private fun resizeAxis(pos: Double, anchor: Double): Double {
+        val c = pos.coerceIn(0.0, 1.0)
+        return if (c < anchor) {
+            minOf(c, anchor - MIN_ZONE).coerceIn(0.0, 1.0)
+        } else {
+            maxOf(c, anchor + MIN_ZONE).coerceIn(0.0, 1.0)
+        }
+    }
+
     fun onPanEnd() {
         val rect = dragRect
+        val handle = dragHandle
         dragStart = null
         dragLast = null
-        dragResizing = false
+        dragHandle = null
         dragMoving = false
         dragRect = null
+        // Heal ordering (e.g. legacy inverted rects): the detector hit-test
+        // and the display both assume x0<=x1 and y0<=y1.
+        (handle as? ZoneGrab.RectCorner)?.let { grab ->
+            if (grab.zone in zones.indices) {
+                val r = zones[grab.zone]
+                if (r.shape == DetectionZoneShape.rect && r.points.size >= 4) {
+                    val p = r.points
+                    setActive(zones.toMutableList().also {
+                        it[grab.zone] = r.copy(
+                            points = listOf(
+                                minOf(p[0], p[2]),
+                                minOf(p[1], p[3]),
+                                maxOf(p[0], p[2]),
+                                maxOf(p[1], p[3]),
+                            ),
+                        )
+                    })
+                }
+            }
+        }
         // Commit the newly drawn rectangle (skipped for tiny drags).
         if (rect != null &&
-            kotlin.math.abs(rect[2] - rect[0]) >= 0.02 &&
-            kotlin.math.abs(rect[3] - rect[1]) >= 0.02
+            kotlin.math.abs(rect[2] - rect[0]) >= MIN_ZONE &&
+            kotlin.math.abs(rect[3] - rect[1]) >= MIN_ZONE
         ) {
             addZone(DetectionZoneShape.rect, rect)
         }
@@ -253,15 +370,5 @@ class ZoneEditorViewModel(
             i += 2
         }
         return out
-    }
-
-    private fun nearCorner(r: DetectionZone, x: Double, y: Double): Boolean {
-        val tol = 0.06
-        val x0 = r.points[0]
-        val y0 = r.points[1]
-        val x1 = r.points[2]
-        val y1 = r.points[3]
-        return ((x - x0 <= tol && x0 - x <= tol) && (y - y0 <= tol && y0 - y <= tol)) ||
-            ((x - x1 <= tol && x1 - x <= tol) && (y - y1 <= tol && y1 - y <= tol))
     }
 }

@@ -80,14 +80,105 @@ class ZoneEditorViewModelTest {
     }
 
     @Test
-    fun cornerDragResizes() {
+    fun cornerDragResizesBottomRight() {
         val vm = vmWithDoorway()
-        // (0.1, 0.2) is the rect's first corner; tolerance is 0.06.
-        vm.onPanStart(0.12, 0.22)
+        vm.onPanStart(0.5, 0.8, ZoneGrab.RectCorner(zone = 0, corner = 2))
+        vm.onPanUpdate(0.7, 0.9)
+        vm.onPanEnd()
+        assertEquals(0, vm.selected)
+        assertPoints(listOf(0.1, 0.2, 0.7, 0.9), vm.zones[0].points)
+    }
+
+    @Test
+    fun cornerDragResizesTopLeftAnchoringBottomRight() {
+        val vm = vmWithDoorway()
+        vm.onPanStart(0.1, 0.2, ZoneGrab.RectCorner(zone = 0, corner = 0))
         vm.onPanUpdate(0.02, 0.05)
         vm.onPanEnd()
-        // Dart parity: the dragged position always lands in slots 2/3.
-        assertPoints(listOf(0.1, 0.2, 0.02, 0.05), vm.zones[0].points)
+        // The dragged corner lands in slots 0/1 this time; the anchor holds.
+        assertPoints(listOf(0.02, 0.05, 0.5, 0.8), vm.zones[0].points)
+    }
+
+    @Test
+    fun offDiagonalCornersResizeInsteadOfMoving() {
+        val vm = vmWithDoorway()
+        vm.onPanStart(0.5, 0.2, ZoneGrab.RectCorner(zone = 0, corner = 1))
+        vm.onPanUpdate(0.7, 0.1)
+        vm.onPanEnd()
+        assertPoints(listOf(0.1, 0.1, 0.7, 0.8), vm.zones[0].points)
+
+        val vm2 = vmWithDoorway()
+        vm2.onPanStart(0.1, 0.8, ZoneGrab.RectCorner(zone = 0, corner = 3))
+        vm2.onPanUpdate(0.05, 0.9)
+        vm2.onPanEnd()
+        assertPoints(listOf(0.05, 0.2, 0.5, 0.9), vm2.zones[0].points)
+    }
+
+    @Test
+    fun resizeClampsToUnitSquare() {
+        val vm = vmWithDoorway()
+        vm.onPanStart(0.5, 0.8, ZoneGrab.RectCorner(zone = 0, corner = 2))
+        vm.onPanUpdate(1.5, 1.5)
+        vm.onPanEnd()
+        assertPoints(listOf(0.1, 0.2, 1.0, 1.0), vm.zones[0].points)
+    }
+
+    @Test
+    fun resizeEnforcesMinSizeAgainstAnchor() {
+        val vm = vmWithDoorway()
+        vm.onPanStart(0.5, 0.8, ZoneGrab.RectCorner(zone = 0, corner = 2))
+        vm.onPanUpdate(0.11, 0.21)
+        vm.onPanEnd()
+        // Anchor is corner 0 (0.1, 0.2): the edge stops MIN_ZONE past it.
+        assertPoints(listOf(0.1, 0.2, 0.12, 0.22), vm.zones[0].points)
+    }
+
+    @Test
+    fun releaseNormalizesLegacyInvertedRect() {
+        val vm = ZoneEditorViewModel(
+            listOf(
+                DetectionZone(
+                    id = "r0",
+                    shape = DetectionZoneShape.rect,
+                    label = "legacy",
+                    points = listOf(0.5, 0.8, 0.1, 0.2),
+                ),
+            ),
+        )
+        // Corner 2 of inverted points sits at (0.1, 0.2); drag it outward.
+        vm.onPanStart(0.1, 0.2, ZoneGrab.RectCorner(zone = 0, corner = 2))
+        vm.onPanUpdate(0.3, 0.4)
+        vm.onPanEnd()
+        assertPoints(listOf(0.3, 0.4, 0.5, 0.8), vm.zones[0].points)
+    }
+
+    @Test
+    fun mismatchedGrabFallsBackToMove() {
+        val vm = vmWithDoorway()
+        // A rect corner grab on a rect zone is fine; prove the fallback with
+        // a poly grab on the rect instead — the whole zone must move.
+        vm.onPanStart(0.3, 0.5, ZoneGrab.PolyVertex(zone = 0, vertex = 0))
+        vm.onPanUpdate(0.4, 0.6)
+        vm.onPanEnd()
+        assertPoints(listOf(0.2, 0.3, 0.6, 0.9), vm.zones[0].points)
+    }
+
+    @Test
+    fun polyVertexDragMovesVertexAndClamps() {
+        val vm = ZoneEditorViewModel(
+            listOf(
+                DetectionZone(
+                    id = "p0",
+                    shape = DetectionZoneShape.poly,
+                    label = "tri",
+                    points = listOf(0.1, 0.1, 0.9, 0.1, 0.5, 0.9),
+                ),
+            ),
+        )
+        vm.onPanStart(0.5, 0.9, ZoneGrab.PolyVertex(zone = 0, vertex = 2))
+        vm.onPanUpdate(0.7, 1.5)
+        vm.onPanEnd()
+        assertPoints(listOf(0.1, 0.1, 0.9, 0.1, 0.7, 1.0), vm.zones[0].points)
     }
 
     @Test
